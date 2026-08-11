@@ -1,0 +1,4 @@
+ALTER TABLE "public"."Product"
+ADD COLUMN "subtype" TEXT,
+ADD COLUMN "styleTags" TEXT[] DEFAULT ARRAY[]::TEXT[] NOT NULL,
+ADD COLUMN "stoneTags" TEXT[] DEFAULT ARRAY[]::TEXT[] NOT NULL;

@@ -1,0 +1,43 @@
+{
+  "name": "jewellery-website",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "postinstall": "prisma generate",
+    "dev": "vite",
+    "build": "prisma generate && vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "db:seed:embeddings": "node --env-file=.env scripts/seed-embeddings.mjs",
+    "db:seed:image-embeddings": "node --env-file=.env scripts/seed-image-embeddings.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock": "^3.1079.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1079.0",
+    "@aws-sdk/client-s3": "^3.1075.0",
+    "@aws-sdk/client-sts": "^3.1079.0",
+    "@aws-sdk/s3-request-presigner": "^3.1075.0",
+    "@prisma/client": "^6.14.0",
+    "prisma": "^6.14.0",
+    "razorpay": "^2.9.6",
+    "sharp": "^0.35.3",
+    "vue": "^3.5.25",
+    "vue-router": "^4.6.4",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@vitejs/plugin-vue": "^6.0.2",
+    "@vue/tsconfig": "^0.8.1",
+    "autoprefixer": "^10.4.24",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1",
+    "vue-tsc": "^3.1.5"
+  },
+  "packageManager": "pnpm@10.30.2+sha512.36cdc707e7b7940a988c9c1ecf88d084f8514b5c3f085f53a2e244c2921d3b2545bc20dd4ebe1fc245feec463bb298aecea7a63ed1f7680b877dc6379d8d0cb4"
+}

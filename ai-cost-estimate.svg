@@ -1,0 +1,39 @@
+<svg viewBox="0 0 600 600" width="600" height="600" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="600" height="600" fill="#ffffff"/>
+<rect x="0.5" y="0.5" width="599" height="599" fill="none" stroke="#D3D1C7" stroke-width="1"/>
+
+<text x="36" y="56" font-size="28" font-weight="700" fill="#2C2C2A">AI Search — Cost</text>
+<text x="36" y="86" font-size="18" fill="#5F5E5A">Estimate for 1,000 users / month</text>
+<line x1="36" y1="104" x2="564" y2="104" stroke="#D3D1C7" stroke-width="1"/>
+
+<rect x="36" y="124" width="252" height="92" rx="12" fill="#E1F5EE"/>
+<text x="58" y="154" font-size="16" font-weight="600" fill="#0F6E56">Text search</text>
+<text x="58" y="190" font-size="30" font-weight="700" fill="#04342C">~20</text>
+<text x="58" y="210" font-size="14" fill="#0F6E56">tokens · ~free</text>
+
+<rect x="312" y="124" width="252" height="92" rx="12" fill="#FAECE7"/>
+<text x="334" y="154" font-size="16" font-weight="600" fill="#993C1D">Image search</text>
+<text x="334" y="190" font-size="30" font-weight="700" fill="#4A1B0C">~2,100</text>
+<text x="334" y="210" font-size="14" fill="#993C1D">tokens · ~$0.008</text>
+
+<text x="36" y="246" font-size="14" fill="#888780">Image search burns ~100x more tokens than text.</text>
+<line x1="36" y1="266" x2="564" y2="266" stroke="#D3D1C7" stroke-width="1"/>
+
+<rect x="36" y="286" width="528" height="72" rx="12" fill="#EAF3DE"/>
+<text x="58" y="320" font-size="17" font-weight="600" fill="#3B6D11">Light usage</text>
+<text x="58" y="344" font-size="13" fill="#639922">2 image · 10 text · 3 chats / user</text>
+<text x="542" y="334" font-size="30" font-weight="700" fill="#173404" text-anchor="end">≈ $18</text>
+
+<rect x="36" y="368" width="528" height="72" rx="12" fill="#FAEEDA"/>
+<text x="58" y="402" font-size="17" font-weight="600" fill="#854F0B">Moderate usage</text>
+<text x="58" y="426" font-size="13" fill="#BA7517">5 image · 20 text · 5 chats / user</text>
+<text x="542" y="416" font-size="30" font-weight="700" fill="#412402" text-anchor="end">≈ $43</text>
+
+<rect x="36" y="450" width="528" height="72" rx="12" fill="#FCEBEB"/>
+<text x="58" y="484" font-size="17" font-weight="600" fill="#A32D2D">Heavy usage</text>
+<text x="58" y="508" font-size="13" fill="#E24B4A">10 image · 40 text · 10 chats / user</text>
+<text x="542" y="498" font-size="30" font-weight="700" fill="#501313" text-anchor="end">≈ $85</text>
+
+<text x="36" y="552" font-size="13" fill="#5F5E5A">Models: image gpt-4o · text embeddings · chat gpt-4o-mini</text>
+<text x="36" y="574" font-size="13" fill="#185FA5">Image search = ~93% of cost · "low" detail ~halves it</text>
+</svg>

@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply ect-antialiased ect-bg-cream ect-text-charcoal;
+  margin: 0;
+  overflow-x: hidden;
+  font-family: Helvetica, Arial, sans-serif;
+  font-feature-settings: 'ss01' 1, 'ss02' 1;
+  letter-spacing: 0;
+}
+
+#app {
+  @apply ect-min-h-screen;
+}
+
+/* Refined text selection — quiet gold tint */
+::selection {
+  background: rgba(201, 162, 39, 0.18);
+  color: #1b1917;
+}
+
+/* Display headings: elegant serif */
+.ect-font-display {
+  letter-spacing: -0.035em;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+}
+.ect-text-2xl.ect-font-display,
+.ect-text-3xl.ect-font-display,
+.ect-text-4xl.ect-font-display,
+.ect-text-5xl.ect-font-display {
+  line-height: 1.18;
+  letter-spacing: 0.025em;
+}
+
+/* Body copy: comfortable reading */
+.ect-font-body.ect-text-base,
+.ect-font-body.ect-text-lg {
+  line-height: 1.6;
+}
+
+/* Luxury detail: a fine gold rule used as a section accent */
+.ect-gold-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #c9a227 50%, transparent);
+}
+
+/* Tasteful entrance — elements rise gently into place on load */
+@keyframes ectFadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ect-fade-up {
+  animation: ectFadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .ect-fade-up { animation: none; }
+}
+
+/* Content protection: deter casual image copying. Product imagery should not be
+   draggable or selectable. Note: this cannot block OS-level screenshots. */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Optional anti-screenshot blur, toggled by useContentProtection (off by default). */
+.content-protected-blur body {
+  filter: blur(18px);
+  transition: filter 0.1s ease-out;
+}

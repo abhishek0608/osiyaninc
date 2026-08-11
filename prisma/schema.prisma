@@ -1,0 +1,467 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum SalesChannel {
+  B2C
+  B2B
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  FULFILLED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  COD
+  CARD
+  UPI
+  NETBANKING
+  WALLET
+  BANK_TRANSFER
+}
+
+enum ServiceRequestStatus {
+  NEW
+  REVIEWING
+  QUOTED
+}
+
+model Product {
+  id           String           @id @default(cuid())
+  slug         String           @unique
+  title        String
+  category     String
+  subtype      String?
+  material     String
+  color        String
+  description  String?
+  aiDescription String?
+  productAttributes Json?
+  styleTags    String[]         @default([])
+  stoneTags    String[]         @default([])
+  customizationOptions Json?
+  isNewArrival Boolean          @default(false)
+  isBestSeller Boolean          @default(false)
+  rating       Float?
+  reviewCount  Int?
+  active       Boolean          @default(true)
+  embedding    Unsupported("vector(1536)")?
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  variants     ProductVariant[]
+  images       ProductImage[]
+  inventories  Inventory[]
+  priceBookMap PriceBookItem[]
+  wishlists    WishlistItem[]
+  imageEmbeddings ProductImageEmbedding[]
+}
+
+// One row per product photo, embedded as an IMAGE (Bedrock Titan multimodal,
+// 1024 dims) — unlike Product.embedding, which embeds a text description.
+// Visual search compares the query photo against these directly and takes the
+// best-matching photo per product. imageKey is a sha256 of the source
+// reference (URL or data-URI) so re-saving a product only re-embeds changed
+// images — the raw source is never stored here (data-URIs can be multi-MB).
+model ProductImageEmbedding {
+  id        String   @id @default(cuid())
+  productId String
+  imageKey  String
+  embedding Unsupported("vector(1024)")?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, imageKey])
+}
+
+model HomepageSlide {
+  id          String   @id @default(cuid())
+  imageUrl    String
+  mobileImageUrl String?
+  headline    String?
+  subheadline String?
+  ctaLabel    String?
+  ctaHref     String?
+  device      String   @default("all")
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+// Registry of stone sizes (dimensions, e.g. "6 mm", "4×6 mm") that are actually
+// in use across products. It auto-fills whenever a product is saved or bulk
+// imported — it never restricts what can be entered. The storefront reads it to
+// offer the set of sizes currently offered; the internal workspace can curate
+// label/sortOrder/active.
+model StoneSize {
+  id         String   @id @default(cuid())
+  value      String   @unique
+  label      String?
+  sortOrder  Int      @default(0)
+  active     Boolean  @default(true)
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+// Singleton row (id = "default") holding editable storefront branding such as
+// the site logo. Managed from the internal workspace.
+model SiteConfig {
+  id        String   @id @default("default")
+  logoUrl   String?
+  // Site-wide volume (quantity) discount. When enabled, the storefront applies
+  // the best matching tier based on the total number of items in the cart.
+  // volumeDiscountTiers is a JSON array of { minQty, percent } objects.
+  volumeDiscountEnabled Boolean @default(false)
+  volumeDiscountTiers   Json?
+  // Per-collection tile images for the homepage "Shop by Collection" grid,
+  // stored as a JSON map of collection slug -> image URL. Slugs that aren't
+  // present fall back to the bundled gradient placeholder.
+  collectionImages      Json?
+  // Editable About Us page content, managed from the internal workspace:
+  // { heroEyebrow, heroHeadline, heroSubheadline,
+  //   journey: [{ year, place, title, desc, imageUrl, active }],
+  //   team:    [{ name, role, imageUrl, active }] }
+  // Absent fields/empty lists fall back to the bundled defaults on the
+  // storefront, so this can never break the About page.
+  aboutContent          Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  alt       String?
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+}
+
+model ProductVariant {
+  id             String      @id @default(cuid())
+  productId      String
+  sku            String      @unique
+  title          String?
+  attributes     Json?
+  listPricePaise Int
+  currency       String      @default("USD")
+  active         Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  product        Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  quoteItems     QuoteItem[]
+}
+
+model Inventory {
+  id           String   @id @default(cuid())
+  productId    String
+  locationCode String
+  quantity     Int      @default(0)
+  reserved     Int      @default(0)
+  updatedAt    DateTime @updatedAt
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locationCode])
+}
+
+model PriceBook {
+  id        String          @id @default(cuid())
+  name      String
+  channel   SalesChannel
+  currency  String          @default("USD")
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  items     PriceBookItem[]
+}
+
+model PriceBookItem {
+  id          String    @id @default(cuid())
+  priceBookId String
+  productId   String
+  pricePaise  Int
+  minQty      Int       @default(1)
+  validFrom   DateTime?
+  validTo     DateTime?
+  priceBook   PriceBook @relation(fields: [priceBookId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([priceBookId, productId, minQty])
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String?       @unique
+  phone        String?       @unique
+  firstName    String?
+  lastName     String?
+  passwordHash String?
+  resetTokenHash   String?
+  resetTokenExpiry DateTime?
+  isInternal   Boolean       @default(false)
+  isAdmin      Boolean       @default(false)
+  channel      SalesChannel  @default(B2C)
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  addresses    Address[]
+  carts        Cart[]
+  wishlists    WishlistItem[]
+  orders       Order[]
+  companyUsers CompanyUser[]
+}
+
+model WishlistItem {
+  id         String   @id @default(cuid())
+  customerId String
+  productId  String
+  groupName  String?
+  createdAt  DateTime @default(now())
+  customer   User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, productId])
+  @@index([customerId, createdAt])
+}
+
+model CompanyAccount {
+  id          String        @id @default(cuid())
+  legalName   String
+  gstin       String?       @unique
+  pan         String?
+  channel     SalesChannel  @default(B2B)
+  creditLimit Int? // in paise
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  users       CompanyUser[]
+  quotes      Quote[]
+  orders      Order[]
+  invoices    Invoice[]
+}
+
+model CompanyUser {
+  id         String         @id @default(cuid())
+  companyId  String
+  customerId String
+  role       String         @default("buyer")
+  createdAt  DateTime       @default(now())
+  company    CompanyAccount @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer   User           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, customerId])
+}
+
+model Address {
+  id            String   @id @default(cuid())
+  customerId    String
+  type          String   @default("shipping")
+  line1         String
+  line2         String?
+  city          String
+  state         String
+  country       String   @default("IN")
+  postalCode    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  customer      User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ordersBilling Order[]  @relation("OrderBillingAddress")
+  ordersShip    Order[]  @relation("OrderShippingAddress")
+}
+
+model Cart {
+  id         String       @id @default(cuid())
+  customerId String
+  channel    SalesChannel @default(B2C)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  customer   User         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items      CartItem[]
+}
+
+model CartItem {
+  id            String         @id @default(cuid())
+  cartId        String
+  variantId     String
+  qty           Int            @default(1)
+  customization Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  cart          Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([cartId, variantId])
+}
+
+model Order {
+  id                String          @id @default(cuid())
+  orderNo           String          @unique
+  channel           SalesChannel
+  status            OrderStatus     @default(PENDING)
+  customerId        String?
+  companyId         String?
+  billingAddressId  String?
+  shippingAddressId String?
+  subtotalPaise     Int
+  taxPaise          Int             @default(0)
+  discountPaise     Int             @default(0)
+  shippingPaise     Int             @default(0)
+  totalPaise        Int
+  currency          String          @default("USD")
+  notes             String?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  customer          User?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  company           CompanyAccount? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  billingAddress    Address?        @relation("OrderBillingAddress", fields: [billingAddressId], references: [id], onDelete: SetNull)
+  shippingAddress   Address?        @relation("OrderShippingAddress", fields: [shippingAddressId], references: [id], onDelete: SetNull)
+  items             OrderItem[]
+  payments          Payment[]
+  shipments         Shipment[]
+  invoice           Invoice?
+}
+
+model OrderItem {
+  id            String         @id @default(cuid())
+  orderId       String
+  variantId     String
+  titleSnapshot String
+  pricePaise    Int
+  qty           Int
+  createdAt     DateTime       @default(now())
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  orderId     String
+  provider    String?
+  providerRef String?
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  amountPaise Int
+  currency    String        @default("USD")
+  paidAt      DateTime?
+  createdAt   DateTime      @default(now())
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Shipment {
+  id          String    @id @default(cuid())
+  orderId     String
+  carrier     String?
+  trackingNo  String?
+  status      String    @default("pending")
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Quote {
+  id            String         @id @default(cuid())
+  quoteNo       String         @unique
+  companyId     String
+  status        String         @default("draft")
+  validUntil    DateTime?
+  currency      String         @default("USD")
+  subtotalPaise Int            @default(0)
+  discountPaise Int            @default(0)
+  totalPaise    Int            @default(0)
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  company       CompanyAccount @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  items         QuoteItem[]
+}
+
+model QuoteItem {
+  id         String         @id @default(cuid())
+  quoteId    String
+  variantId  String
+  pricePaise Int
+  qty        Int
+  createdAt  DateTime       @default(now())
+  quote      Quote          @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  variant    ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+}
+
+// Craft-service bookings (CAD / wax / casting / finishing) captured from the
+// storefront booking modal or keyed in by the team. `rows` snapshots the
+// label/value pairs the customer reviewed at submission; uploaded reference
+// files live in S3 and only their public URLs are stored here.
+model ServiceRequest {
+  id                  String               @id @default(cuid())
+  reference           String               @unique
+  serviceId           String
+  serviceTitle        String
+  serviceNo           String?
+  status              ServiceRequestStatus @default(NEW)
+  customerName        String
+  customerEmail       String
+  customerPhone       String?
+  rows                Json?
+  inspirationImageUrl String?
+  cadFileUrl          String?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([status, createdAt])
+  @@index([customerEmail])
+}
+
+model Invoice {
+  id          String          @id @default(cuid())
+  invoiceNo   String          @unique
+  orderId     String?         @unique
+  companyId   String?
+  amountPaise Int
+  taxPaise    Int             @default(0)
+  status      String          @default("issued")
+  dueDate     DateTime?
+  paidAt      DateTime?
+  createdAt   DateTime        @default(now())
+  order       Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  company     CompanyAccount? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+}
