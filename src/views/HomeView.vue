@@ -83,7 +83,7 @@ function subscribe() {
 </template>
 
 <style scoped>
-.osiyan-home { background: #fff; color: #000; font-family: Helvetica, Arial, sans-serif; }
+.osiyan-home { background: #fff; color: #000; }
 .home-hero { width: 100%; height: clamp(630px, 77.2vw, 988px); overflow: hidden; }
 .home-hero img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .unseen-section { display: grid; grid-template-columns: 1fr 1fr; height: 1008px; }

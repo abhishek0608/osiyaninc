@@ -5,8 +5,11 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        display: ['Helvetica', 'Arial', 'sans-serif'],
-        body: ['Helvetica', 'Arial', 'sans-serif'],
+        // Resolved from the tokens in src/style.css. `sans` is overridden too so
+        // Tailwind's ui-sans-serif default can never leak in alongside them.
+        display: ['var(--font-display)'],
+        body: ['var(--font-body)'],
+        sans: ['var(--font-body)'],
       },
       letterSpacing: {
         'display-tight': '-0.02em',

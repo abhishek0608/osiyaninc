@@ -30,3 +30,4 @@ Aivi-Solution-Quotation-PSG.pdf
 backups/
 .vercel
 .env*
+!.env.example

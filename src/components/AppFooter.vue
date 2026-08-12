@@ -32,7 +32,7 @@ const year = new Date().getFullYear()
 </template>
 
 <style scoped>
-.osiyan-footer { position: relative; min-height: 361px; padding: 62px clamp(35px, 7vw, 90px) 54px; display: grid; grid-template-columns: 1fr 1fr 1fr; background: #fff; color: #000; border-top: 1px solid #eee; font-family: Helvetica, Arial, sans-serif; }
+.osiyan-footer { position: relative; min-height: 361px; padding: 62px clamp(35px, 7vw, 90px) 54px; display: grid; grid-template-columns: 1fr 1fr 1fr; background: #fff; color: #000; border-top: 1px solid #eee; }
 .osiyan-footer section { display: flex; flex-direction: column; align-items: flex-start; }
 .osiyan-footer h2 { margin: 0 0 21px; font-size: 23px; line-height: 1.25; font-weight: 700; }
 .osiyan-footer a, .osiyan-footer p { color: inherit; text-decoration: none; font-size: 16px; line-height: 1.55; }
