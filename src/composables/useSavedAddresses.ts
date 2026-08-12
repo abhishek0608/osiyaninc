@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 
-const STORAGE_KEY = 'kiana-saved-addresses-v1'
+const STORAGE_KEY = 'osiyan-saved-addresses-v1'
 
 export const COUNTRY_OPTIONS = [
   { code: 'IN', name: 'India' },

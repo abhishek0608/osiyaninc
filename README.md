@@ -1,4 +1,4 @@
-# Kiana — Jewellery Website
+# Osiyan — Jewellery Website
 
 A Vue 3 + TypeScript jewellery landing page with Tailwind CSS (ect prefix).
 
@@ -9,7 +9,10 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
+Open [http://localhost:5173](http://localhost:5173). During local development,
+Vite serves the functions in `api/` on the same origin and those functions read
+the server-only values in `.env`. Set `VITE_API_PROXY_TARGET` only when you
+intentionally want to use a separately deployed API.
 
 ## Build
 

@@ -7,7 +7,7 @@ const loading = ref(false)
 const loaded = ref(false)
 const error = ref<string | null>(null)
 
-const CACHE_KEY = 'kiana:catalog-products:v3'
+const CACHE_KEY = 'osiyan:catalog-products:v1'
 const CACHE_TTL_MS = 5 * 60 * 1000
 
 function readCachedProducts() {

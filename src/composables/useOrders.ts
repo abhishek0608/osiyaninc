@@ -2,7 +2,7 @@ import { reactive, computed } from 'vue'
 import type { CartItem, ProductCustomization } from './useCart'
 import { getNextReferenceNumber } from './useReferenceNumbers'
 
-const ORDERS_STORAGE_KEY = 'kiana-demo-orders'
+const ORDERS_STORAGE_KEY = 'osiyan-orders-v1'
 
 export interface OrderItem {
   slug: string

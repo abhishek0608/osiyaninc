@@ -13,7 +13,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 const REGION = process.env.AWS_REGION || 'us-east-1'
 const BUCKET = process.env.AWS_S3_BUCKET || ''
 // Top-level folder for homepage banner uploads. Trailing slash optional.
-const HOMEPAGE_PREFIX = (process.env.AWS_S3_HOMEPAGE_PREFIX || 'kiana-homepage-banners').replace(
+const HOMEPAGE_PREFIX = (process.env.AWS_S3_HOMEPAGE_PREFIX || 'osiyan-homepage-banners').replace(
   /\/+$/,
   '',
 )
@@ -106,7 +106,7 @@ export async function createPresignedHomepageUpload({ contentType, target } = {}
 
 // Top-level folder for customer service-booking uploads (reference photos and
 // CAD files attached to a booking). Trailing slash optional.
-const SERVICE_PREFIX = (process.env.AWS_S3_SERVICE_PREFIX || 'kiana-service-uploads').replace(
+const SERVICE_PREFIX = (process.env.AWS_S3_SERVICE_PREFIX || 'osiyan-service-uploads').replace(
   /\/+$/,
   '',
 )

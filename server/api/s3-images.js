@@ -20,7 +20,7 @@ import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3'
 const REGION = process.env.AWS_REGION || 'us-east-1'
 const BUCKET = process.env.AWS_S3_BUCKET || ''
 // Top-level prefix that contains the per-slug folders. Trailing slash optional.
-const BASE_PREFIX = (process.env.AWS_S3_BASE_PREFIX || 'Kiana-product-images').replace(/\/+$/, '')
+const BASE_PREFIX = (process.env.AWS_S3_BASE_PREFIX || 'Osiyan-product-images').replace(/\/+$/, '')
 
 const IMAGE_EXTENSIONS = /\.(webp|jpe?g|png|avif|gif)$/i
 // A trailing ".<letters>" is a file extension. Deliberately letters-only: a name

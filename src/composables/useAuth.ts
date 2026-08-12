@@ -1,7 +1,7 @@
 import { reactive, computed } from 'vue'
 import { API_BASE } from '../config-api'
 
-const AUTH_STORAGE_KEY = 'kiana-auth-user'
+const AUTH_STORAGE_KEY = 'osiyan-auth-user-v1'
 const CUSTOMER_IDLE_TIMEOUT_MS = 60 * 60 * 1000
 const INTERNAL_IDLE_TIMEOUT_MS = 30 * 60 * 1000
 const ABSOLUTE_SESSION_TIMEOUT_MS = 12 * 60 * 60 * 1000

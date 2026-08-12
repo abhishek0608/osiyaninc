@@ -21,7 +21,7 @@ import { folderMatchesSlug, isImageFilename } from './s3-images.js'
 
 const REGION = process.env.AWS_REGION || 'us-east-1'
 const BUCKET = process.env.AWS_S3_BUCKET || ''
-const BASE_PREFIX = (process.env.AWS_S3_BASE_PREFIX || 'Kiana-product-images').replace(/\/+$/, '')
+const BASE_PREFIX = (process.env.AWS_S3_BASE_PREFIX || 'Osiyan-product-images').replace(/\/+$/, '')
 
 const IMAGE_EXTENSIONS = /\.(webp|jpe?g|png|avif|gif)$/i
 

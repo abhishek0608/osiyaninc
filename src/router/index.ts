@@ -4,7 +4,7 @@ import InternalProductDetailView from '../views/InternalProductDetailView.vue'
 import { useAuth } from '../composables/useAuth'
 import { clearProductJsonLd, setPageMeta } from '../composables/useSeo'
 
-const CHUNK_RELOAD_FLAG = 'kiana:chunk-reload-attempted'
+const CHUNK_RELOAD_FLAG = 'osiyan:chunk-reload-attempted'
 
 const router = createRouter({
   history: createWebHistory(),

@@ -38,7 +38,7 @@ export function isPriceOnRequestCartItem(item: Pick<CartItem, 'product'>) {
 }
 
 const LEGACY_CART_STORAGE_KEY = 'kiana-demo-cart'
-const CART_CACHE_KEY = 'kiana-cart-cache'
+const CART_CACHE_KEY = 'osiyan-cart-cache-v1'
 
 function clearLegacyCartStorage() {
   try {
