@@ -40,9 +40,9 @@ async function handleSubmit() {
 
         <div class="ect-px-8 ect-pt-10 ect-pb-8 sm:ect-px-10 sm:ect-pt-12 sm:ect-pb-10">
           <header class="ect-text-center ect-mb-8">
-            <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.2em] ect-text-gold-700 ect-mb-3">Kiana Jewels</p>
+            <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.2em] ect-text-gold-700 ect-mb-3">Osiyan</p>
             <h1 class="ect-font-display ect-text-3xl sm:ect-text-4xl ect-font-light ect-text-charcoal ect-tracking-wide ect-mb-2">Create account</h1>
-            <p class="ect-font-body ect-text-base ect-text-charcoal/60">{{ cameFromLockedCollection ? 'Create an account to unlock every design' : 'Join the Kiana experience' }}</p>
+            <p class="ect-font-body ect-text-base ect-text-charcoal/60">{{ cameFromLockedCollection ? 'Create an account to unlock every design' : 'Join the Osiyan experience' }}</p>
           </header>
 
           <form @submit.prevent="handleSubmit" class="ect-space-y-5">
