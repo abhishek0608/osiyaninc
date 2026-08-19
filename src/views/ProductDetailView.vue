@@ -525,7 +525,7 @@ async function handleAddToCart() {
 </script>
 
 <template>
-  <section v-if="product" class="ect-pt-28 sm:ect-pt-36 ect-pb-28 ect-px-4 sm:ect-px-6 ect-bg-cream ect-min-h-screen">
+  <section v-if="product" class="ect-pt-6 sm:ect-pt-14 ect-pb-28 ect-px-4 sm:ect-px-6 ect-bg-cream ect-min-h-screen">
     <article class="ect-max-w-6xl ect-mx-auto">
       <button
         type="button"
@@ -1073,12 +1073,12 @@ async function handleAddToCart() {
     </article>
   </section>
 
-  <section v-else-if="loading" class="ect-pt-28 sm:ect-pt-36 ect-pb-28 ect-px-6 ect-bg-cream ect-min-h-screen ect-flex ect-flex-col ect-items-center ect-justify-center ect-text-center">
+  <section v-else-if="loading" class="ect-pt-6 sm:ect-pt-14 ect-pb-28 ect-px-6 ect-bg-cream ect-min-h-screen ect-flex ect-flex-col ect-items-center ect-justify-center ect-text-center">
     <span class="ect-inline-block ect-w-10 ect-h-10 ect-rounded-full ect-border-2 ect-border-sand ect-border-t-charcoal ect-animate-spin ect-mb-5" aria-hidden="true" />
     <p class="ect-font-body ect-text-sm ect-uppercase ect-tracking-[0.15em] ect-text-charcoal/55">Loading product</p>
   </section>
 
-  <section v-else class="ect-pt-28 sm:ect-pt-36 ect-pb-28 ect-px-6 ect-bg-cream ect-min-h-screen ect-flex ect-flex-col ect-items-center ect-justify-center ect-text-center">
+  <section v-else class="ect-pt-6 sm:ect-pt-14 ect-pb-28 ect-px-6 ect-bg-cream ect-min-h-screen ect-flex ect-flex-col ect-items-center ect-justify-center ect-text-center">
     <span class="ect-w-20 ect-h-20 ect-rounded-full ect-bg-champagne ect-flex ect-items-center ect-justify-center ect-mb-6">
       <svg class="ect-w-9 ect-h-9 ect-text-gold-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
         <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />

@@ -259,7 +259,7 @@ const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code
 </script>
 
 <template>
-  <section class="ect-min-h-screen ect-bg-cream ect-pt-28 sm:ect-pt-36 ect-pb-28 ect-px-4 sm:ect-px-6">
+  <section class="ect-min-h-screen ect-bg-cream ect-pt-6 sm:ect-pt-14 ect-pb-28 ect-px-4 sm:ect-px-6">
 
     <!-- Empty cart state -->
     <article v-if="!items.length" class="ect-max-w-lg ect-mx-auto ect-text-center ect-py-28">

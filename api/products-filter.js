@@ -104,7 +104,7 @@ export default async function handler(req, res) {
       },
       orderBy: { createdAt: 'desc' },
     })
-    const products = Array.isArray(dbProducts) ? dbProducts.map(toApiProduct) : []
+    const products = Array.isArray(dbProducts) ? dbProducts.map((dbProduct) => toApiProduct(dbProduct)) : []
 
     // This query reads images straight from the DB, but S3 is the source of
     // truth for photos, so the cached catalog's set (already S3-resolved) wins

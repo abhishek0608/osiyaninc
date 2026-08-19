@@ -602,6 +602,22 @@ async function handlePostServiceUpload(res, body) {
   }
 }
 
+// Classify a thrown error into a short, non-sensitive reason code. Prisma puts
+// the useful detail in the message text rather than a property, but that text
+// can embed the database host and connection parameters — so we match against
+// known phrases and return only the label, never the message itself.
+function describeFailure(err) {
+  const text = String(err?.message || '')
+  const pCode = /\bP\d{4}\b/.exec(text)?.[0] || err?.errorCode || null
+  let reason = 'UNKNOWN'
+  if (/Authentication failed/i.test(text)) reason = 'DB_AUTH_FAILED'
+  else if (/Can't reach database server|ECONNREFUSED|ENOTFOUND/i.test(text)) reason = 'DB_UNREACHABLE'
+  else if (/Environment variable not found/i.test(text)) reason = 'DB_URL_MISSING'
+  else if (/timed out|ETIMEDOUT/i.test(text)) reason = 'DB_TIMEOUT'
+  else if (/too many connections|connection limit/i.test(text)) reason = 'DB_CONNECTION_LIMIT'
+  return { error: err?.name || 'Error', reason, code: pCode }
+}
+
 export default async function handler(req, res) {
   const preflight = handlePreflight(req, res)
   if (preflight) return preflight
@@ -636,6 +652,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' })
   } catch (err) {
     console.error('Account API failed:', err)
-    return res.status(500).json({ message: 'Account operation failed.' })
+    // Surface a non-sensitive reason alongside the generic message so
+    // production failures are diagnosable from the response alone.
+    return res.status(500).json({ message: 'Account operation failed.', ...describeFailure(err) })
   }
 }

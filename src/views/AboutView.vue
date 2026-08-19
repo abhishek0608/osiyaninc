@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="ect-min-h-screen ect-bg-pearl ect-pt-28">
+  <main class="ect-min-h-screen ect-bg-pearl ect-pt-6">
 
     <!-- ── FULL-BLEED HERO (Our Story) ── -->
     <section

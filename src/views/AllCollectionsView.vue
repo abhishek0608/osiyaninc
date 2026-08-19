@@ -10,7 +10,7 @@ setPreset({ tab: 'all' })
 </script>
 
 <template>
-  <section class="ect-pt-32">
+  <section class="ect-pt-10">
     <!-- Compact page header (no banner) -->
     <header class="ect-px-6 ect-max-w-7xl ect-mx-auto">
       <nav class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mb-1.5" aria-label="Breadcrumb">

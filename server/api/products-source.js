@@ -116,7 +116,7 @@ async function fetchCatalogProductsFromDb() {
     orderBy: { createdAt: 'desc' },
   })
 
-  const products = Array.isArray(dbProducts) ? dbProducts.map(toApiProduct) : []
+  const products = Array.isArray(dbProducts) ? dbProducts.map((dbProduct) => toApiProduct(dbProduct)) : []
   return applyS3Images(products)
 }
 

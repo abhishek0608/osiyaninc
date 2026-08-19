@@ -66,8 +66,8 @@ onMounted(async () => {
 
 <template>
   <section
-    class="ect-relative ect-overflow-hidden ect-w-full ect-min-h-screen ect-bg-[radial-gradient(110%_130%_at_50%_-8%,#fff7f2_0%,#f7ece8_56%,#f1e5e0_100%)]"
-    :style="{ paddingTop: headerOffset + 'px' }"
+    class="ect-relative ect-overflow-hidden ect-w-full ect-bg-[radial-gradient(110%_130%_at_50%_-8%,#fff7f2_0%,#f7ece8_56%,#f1e5e0_100%)]"
+    :style="{ minHeight: 'calc(100svh - ' + headerOffset + 'px)' }"
   >
     <!-- Background blobs -->
     <span class="ect-pointer-events-none ect-absolute ect--top-28 ect-left-1/2 ect--translate-x-1/2 ect-w-[58rem] ect-h-[24rem] ect-rounded-full ect-bg-gold-200/30 ect-blur-3xl" />

@@ -601,7 +601,7 @@ watch(
 </script>
 
 <template>
-  <section class="ect-min-h-screen ect-bg-[#f6efec] ect-pt-32 ect-pb-16">
+  <section class="ect-min-h-screen ect-bg-[#f6efec] ect-pt-6 sm:ect-pt-14 ect-pb-16">
     <div class="ect-max-w-7xl ect-mx-auto ect-px-5">
       <InternalWorkspaceTabs />
 

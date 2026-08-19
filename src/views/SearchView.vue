@@ -255,7 +255,7 @@ onMounted(async () => {
     @change="onImageFileChange"
   />
 
-  <main class="ect-min-h-screen ect-bg-cream ect-pt-32 ect-pb-20 ect-px-5">
+  <main class="ect-min-h-screen ect-bg-cream ect-pt-10 ect-pb-20 ect-px-5">
     <section class="ect-max-w-5xl ect-mx-auto">
 
       <!-- Search bar (desktop only — mobile uses the header's search bar) -->

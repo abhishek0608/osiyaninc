@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import CollectionGrid from '../components/CollectionGrid.vue'
 import { findCollectionBySlug } from '../data/collections'
 import { useCollectionPreset } from '../composables/useCollectionPreset'
+import { parseCollectionQuery } from '../data/nav-menu'
 import { setPageMeta } from '../composables/useSeo'
 
 const route = useRoute()
@@ -19,18 +20,29 @@ function applyForSlug() {
     router.replace('/')
     return
   }
-  setPreset(c.preset)
+  // The header's mega menu carries filter intent in the URL (?style=stud,
+  // ?metal=yellow, ?tab=new), so those links deep-link into a filtered grid and
+  // stay shareable. Anything the query doesn't name falls back to the
+  // collection's own preset.
+  const q = parseCollectionQuery(route.query)
+  setPreset({
+    ...c.preset,
+    ...(q.style ? { subtypes: [q.style] } : {}),
+    ...(q.metal ? { color: q.metal } : {}),
+    ...(q.material ? { material: q.material } : {}),
+    ...(q.tab ? { tab: q.tab } : {}),
+  })
   setPageMeta({ title: c.title, description: c.description })
 }
 
-// Set synchronously so the preset is in place before CollectionGrid mounts,
-// and re-apply whenever the user switches between collection pages.
+// Set synchronously so the preset is in place before CollectionGrid mounts, and
+// re-apply whenever the slug or the filter query changes.
 applyForSlug()
-watch(() => route.params.slug, applyForSlug)
+watch(() => route.fullPath, applyForSlug)
 </script>
 
 <template>
-  <section v-if="collection" class="ect-pt-28">
+  <section v-if="collection" class="ect-pt-6">
     <!-- Compact page header (no banner) -->
     <header class="ect-px-6 ect-max-w-7xl ect-mx-auto">
       <nav class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mb-1.5" aria-label="Breadcrumb">

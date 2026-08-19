@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "db:seed:embeddings": "node --env-file=.env scripts/seed-embeddings.mjs",
-    "db:seed:image-embeddings": "node --env-file=.env scripts/seed-image-embeddings.mjs"
+    "db:seed:image-embeddings": "node --env-file=.env scripts/seed-image-embeddings.mjs",
+    "db:seed:dummy-products": "node --env-file=.env scripts/seed-dummy-products.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1079.0",

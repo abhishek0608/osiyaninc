@@ -271,7 +271,7 @@ function statusClass(status: string) {
 </script>
 
 <template>
-  <section class="ect-min-h-screen ect-bg-[#f6efec] ect-pt-32 ect-pb-16">
+  <section class="ect-min-h-screen ect-bg-[#f6efec] ect-pt-6 sm:ect-pt-14 ect-pb-16">
    <div class="ect-mx-auto ect-max-w-5xl ect-px-4">
     <RouterLink :to="{ path: '/internal', query: { tab: 'products' } }"
       class="ect-font-body ect-text-sm ect-text-charcoal/60 hover:ect-text-rose-700 hover:ect-underline">

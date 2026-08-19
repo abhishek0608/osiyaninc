@@ -59,7 +59,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="ect-min-h-screen ect-bg-cream ect-pt-28">
+  <main class="ect-min-h-screen ect-bg-cream ect-pt-6">
 
     <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
     <section class="ect-relative ect-overflow-hidden ect-bg-charcoal ect-text-cream ect-py-16 sm:ect-py-24 ect-px-6">

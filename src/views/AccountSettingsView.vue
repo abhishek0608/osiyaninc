@@ -48,7 +48,7 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <section class="ect-min-h-screen ect-px-4 sm:ect-px-6 ect-pt-28 ect-pb-16 ect-bg-gradient-to-b ect-from-cream ect-via-champagne/40 ect-to-cream">
+  <section class="ect-min-h-screen ect-px-4 sm:ect-px-6 ect-pt-6 ect-pb-16 ect-bg-gradient-to-b ect-from-cream ect-via-champagne/40 ect-to-cream">
     <div class="ect-max-w-5xl ect-mx-auto">
       <header class="ect-mb-8 lg:ect-mb-10">
         <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.2em] ect-text-gold-700 ect-mb-2">Osiyan</p>
