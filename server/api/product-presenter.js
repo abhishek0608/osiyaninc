@@ -127,6 +127,20 @@ function normalizeProductAttributes(input) {
   return hasValues ? normalized : undefined
 }
 
+// Certification as the storefront consumes it. certLab is the switch: without a
+// grading house there is nothing to claim, so the whole object is dropped and
+// no tag renders. `fileUrl` is absent until the report itself is uploaded — a
+// piece can be tagged as certified before its scan is on file.
+function normalizeCertification(dbProduct) {
+  const lab = String(dbProduct?.certLab || '').trim()
+  if (!lab) return undefined
+  return {
+    lab,
+    number: String(dbProduct?.certNumber || '').trim(),
+    fileUrl: String(dbProduct?.certFileUrl || '').trim(),
+  }
+}
+
 /** Prefer a variant with a real list price; catalog query sorts by listPricePaise asc so a $0 stub would otherwise win. */
 export function pickVariantForPricing(activeVariants, preferredVariant) {
   if (preferredVariant) return preferredVariant
@@ -187,5 +201,6 @@ export function toApiProduct(dbProduct, preferredVariant = null) {
     reviewCount: typeof dbProduct.reviewCount === 'number' ? dbProduct.reviewCount : 0,
     customizationOptions: normalizeCustomizationOptions(dbProduct.customizationOptions),
     productAttributes: normalizeProductAttributes(dbProduct.productAttributes),
+    certification: normalizeCertification(dbProduct),
   }
 }

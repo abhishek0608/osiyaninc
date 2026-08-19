@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { Material, Product } from '../data/products'
 import { useCart, isCustomizedCartItem } from '../composables/useCart'
 import { useWishlist } from '../composables/useWishlist'
+import CertifiedBadge from './CertifiedBadge.vue'
 import ImageWatermark from './ImageWatermark.vue'
 import QuantityStepper from './QuantityStepper.vue'
 
@@ -110,6 +111,9 @@ const PLACEHOLDER_GRADIENT = 'ect-from-champagne ect-to-cream'
         <span v-if="product?.isNewArrival" class="ect-absolute ect-top-3 ect-left-3 ect-inline-flex ect-items-center ect-px-2.5 ect-py-1 ect-rounded-md ect-font-body ect-text-[9px] ect-font-semibold ect-uppercase ect-tracking-[0.16em] ect-bg-rose-900 ect-text-white">
           New
         </span>
+
+        <!-- Certification tag (bottom-left) — only on pieces we certify -->
+        <CertifiedBadge v-if="images?.length" :certification="product?.certification" size="sm" />
 
         <!-- Wishlist button (top-right) — always visible -->
         <button

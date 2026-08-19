@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import ProductCard from '../components/ProductCard.vue'
 import StarRating from '../components/StarRating.vue'
 import VolumeDiscountInfo from '../components/VolumeDiscountInfo.vue'
+import CertifiedBadge from '../components/CertifiedBadge.vue'
 import ImageWatermark from '../components/ImageWatermark.vue'
 import { useCart, type ProductCustomization } from '../composables/useCart'
 import { useProductsApi } from '../composables/useProductsApi'
@@ -200,11 +201,21 @@ const colorOptions = computed(() => {
   return baseOptions
 })
 
+// Only pieces we actually certify carry a lab; everything downstream (the tag
+// on the photo, the badge, the report link) hangs off this being present.
+const certification = computed(() => product.value?.certification || null)
+const certificationLabel = computed(() => {
+  const lab = certification.value?.lab?.trim() || ''
+  if (!lab) return ''
+  return /^in[-\s]?house$/i.test(lab) ? 'Certified in-house' : `${lab} certified`
+})
+
 const productBadges = computed(() => {
   if (!product.value) return []
   return [
     product.value.isNewArrival ? 'New arrival' : '',
     product.value.isBestSeller ? 'Best seller' : '',
+    certificationLabel.value,
   ].filter(Boolean)
 })
 
@@ -249,6 +260,10 @@ const productDetailRows = computed<Array<{ label: string; value: string }>>(() =
       { label: 'Center Shape', value: selectedCenterShape.value },
       { label: 'Center Stone Size', value: selectedCenterStoneSize.value },
     )
+  }
+
+  if (certification.value?.number) {
+    rows.push({ label: `${certification.value.lab} Report No.`, value: certification.value.number })
   }
 
   if (isRingProduct.value) rows.push({ label: 'Ring Size', value: selectedRingSize.value })
@@ -556,6 +571,11 @@ async function handleAddToCart() {
               class="ect-w-full ect-h-full ect-object-cover"
             />
             <ImageWatermark v-if="galleryImages[activeImage]" :opacity="0.5" :scale="0.1" />
+            <CertifiedBadge
+              v-if="galleryImages[activeImage]"
+              :certification="certification"
+              size="md"
+            />
             <div
               v-if="zoomActive && galleryImages[activeImage]"
               class="product-detail-lens"
@@ -718,6 +738,20 @@ async function handleAddToCart() {
                 <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
               </div>
             </dl>
+
+            <!-- The lab report itself, when it has been uploaded for this piece. -->
+            <a
+              v-if="certification?.fileUrl"
+              :href="certification.fileUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="ect-mt-5 ect-inline-flex ect-items-center ect-gap-2 ect-rounded-full ect-border ect-border-gold-200 ect-bg-gold-50 ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-gold-700 ect-transition-colors hover:ect-border-gold-300 hover:ect-bg-gold-100"
+            >
+              <svg class="ect-h-4 ect-w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 5.25-3.75 8.25-9 9.75C6.75 20.25 3 17.25 3 12V5.25l9-3 9 3V12z" />
+              </svg>
+              View {{ certification.lab }} certificate
+            </a>
 
             <section class="ect-mt-5">
               <p class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45 ect-mb-2">Metal Color</p>

@@ -20,6 +20,15 @@ export interface ProductCustomizationOptions {
   necklaceSizes?: string[]
 }
 
+// A piece's independent lab certification. `fileUrl` is the uploaded report;
+// it can be empty while the certificate is still being scanned, and the tag
+// still shows — `lab` alone is what marks a piece as certified.
+export interface ProductCertification {
+  lab: string
+  number?: string
+  fileUrl?: string
+}
+
 export interface ProductAttributes {
   grossWeight?: string
   diamondCarats?: string
@@ -70,6 +79,12 @@ export const METAL_PURITY_OPTIONS = [
   'Platinum',
   'Sterling Silver',
 ] as const
+
+// Grading houses whose reports we attach to a piece. Stored as free text on the
+// product so a lab outside this list never blocks a save; the list is only what
+// the workspace dropdown offers, and whatever is stored is what the storefront
+// tag reads ("GIA Certified").
+export const CERT_LAB_OPTIONS = ['GIA', 'IGI', 'SGL', 'GSI', 'HRD', 'AGS', 'In-house'] as const
 
 export const CENTER_SHAPE_OPTIONS = ['Cushion', 'Emerald', 'Heart', 'Long Cushion', 'Marquise', 'Oval', 'Pear', 'Princess', 'Round', 'Trillion'] as const
 
@@ -184,6 +199,7 @@ export interface Product {
   reviewCount?: number
   customizationOptions?: ProductCustomizationOptions
   productAttributes?: ProductAttributes
+  certification?: ProductCertification
 }
 
 export interface Review {

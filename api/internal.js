@@ -19,7 +19,12 @@ import {
   invalidateStoneSizesCache,
   syncStoneSizesInUse,
 } from '../server/api/stone-size-source.js'
-import { createPresignedHomepageUpload, isUploadConfigured } from '../server/api/s3-upload.js'
+import {
+  createPresignedCertificateUpload,
+  createPresignedHomepageUpload,
+  deleteCertificateFile,
+  isUploadConfigured,
+} from '../server/api/s3-upload.js'
 import {
   createPresignedProductImageUploads,
   deleteProductImage,
@@ -808,6 +813,23 @@ function normalizeProductAttributes(input) {
   return hasValues ? normalized : null
 }
 
+// Certification metadata sent by the edit form. certLab is the on/off switch:
+// clearing it un-certifies the piece, so the number and date are dropped with
+// it and the storefront tag disappears. The uploaded file is managed separately
+// (resource=product-certificate) and is deliberately untouched here.
+function normalizeCertificationInput(body) {
+  const lab = String(body?.certLab || '').trim()
+  if (!lab) return { certLab: null, certNumber: null, certifiedAt: null }
+
+  const rawDate = String(body?.certifiedAt || '').trim()
+  const parsed = rawDate ? new Date(rawDate) : null
+  return {
+    certLab: lab,
+    certNumber: String(body?.certNumber || '').trim() || null,
+    certifiedAt: parsed && !Number.isNaN(parsed.getTime()) ? parsed : null,
+  }
+}
+
 function toNumberOrNull(value) {
   if (value === null || value === undefined || value === '') return null
   const n = Number(value)
@@ -1219,6 +1241,11 @@ async function getProductPayload(slug) {
     description: product.description || '',
     aiDescription: product.aiDescription || '',
     productAttributes: normalizeProductAttributes(product.productAttributes),
+    certLab: product.certLab || '',
+    certNumber: product.certNumber || '',
+    certFileUrl: product.certFileUrl || '',
+    certFileKey: product.certFileKey || '',
+    certifiedAt: product.certifiedAt || null,
     styleTags: Array.isArray(product.styleTags) ? product.styleTags : [],
     stoneTags: Array.isArray(product.stoneTags) ? product.stoneTags : [],
     customizationOptions: normalizeCustomizationOptions(product.customizationOptions),
@@ -1340,6 +1367,7 @@ async function handleProductPatch(res, currentSlug, body, userId) {
   if (imageError) return res.status(400).json({ message: imageError })
   const customizationOptions = normalizeCustomizationOptions(body?.customizationOptions)
   const productAttributes = normalizeProductAttributes(body?.productAttributes)
+  const certification = normalizeCertificationInput(body)
   const manualDescription = String(body?.description || '').trim()
   const variantPricePaise =
     body?.variantPricePaise === null || body?.variantPricePaise === ''
@@ -1373,6 +1401,7 @@ async function handleProductPatch(res, currentSlug, body, userId) {
           description: manualDescription || null,
           aiDescription: nextAiDescription,
           productAttributes,
+          ...certification,
           styleTags: Array.isArray(body?.styleTags) ? normalizeTags(body.styleTags) : undefined,
           stoneTags: Array.isArray(body?.stoneTags) ? normalizeTags(body.stoneTags) : undefined,
           customizationOptions,
@@ -1467,6 +1496,7 @@ async function handleProductPost(res, body, userId) {
   if (imageError) return res.status(400).json({ message: imageError })
   const customizationOptions = normalizeCustomizationOptions(body?.customizationOptions)
   const productAttributes = normalizeProductAttributes(body?.productAttributes)
+  const certification = normalizeCertificationInput(body)
   const manualDescription = String(body?.description || '').trim()
   const variantPricePaise =
     body?.variantPricePaise === null || body?.variantPricePaise === ''
@@ -1506,6 +1536,7 @@ async function handleProductPost(res, body, userId) {
           description: manualDescription || null,
           aiDescription,
           productAttributes,
+          ...certification,
           styleTags: Array.isArray(body?.styleTags) ? normalizeTags(body.styleTags) : undefined,
           stoneTags: Array.isArray(body?.stoneTags) ? normalizeTags(body.stoneTags) : undefined,
           customizationOptions,
@@ -1991,6 +2022,101 @@ async function handleServicesResource(req, res, body) {
 }
 
 // ---------------------------------------------------------------------------
+// Product certificates in S3 (resource=product-certificate)
+// ---------------------------------------------------------------------------
+
+// A lab report is one file per piece, so — unlike the photo gallery — the
+// product row holds the pointer to it (certFileUrl/certFileKey):
+//   action=presign -> presigned PUT URL; the browser sends the bytes itself.
+//   action=attach  -> called once the PUT lands; saves url+key on the product
+//                     and deletes the file it replaced.
+//   action=delete  -> removes the object and clears the pointer.
+// The mutating actions return the refreshed product so the workspace re-renders
+// from the saved row rather than from optimistic client state.
+async function handleProductCertificateResource(req, res, body) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST,OPTIONS')
+    return res.status(405).json({ message: 'Method not allowed' })
+  }
+
+  const userId = String(req?.query?.userId || body?.userId || '').trim()
+  const internalUser = await assertInternalStrict(userId)
+  if (!internalUser) return res.status(403).json({ message: 'Internal access required.' })
+
+  if (!isUploadConfigured()) {
+    return res.status(501).json({ message: 'Certificate storage is not configured.' })
+  }
+
+  const action = String(body?.action || '').trim()
+  const slug = String(body?.slug || '').trim()
+  if (!slug) return res.status(400).json({ message: 'slug is required.' })
+
+  const product = await prisma.product.findUnique({
+    where: { slug },
+    select: { id: true, certFileKey: true },
+  })
+  if (!product) return res.status(404).json({ message: 'Product not found.' })
+
+  try {
+    if (action === 'presign') {
+      const upload = await createPresignedCertificateUpload({
+        slug,
+        contentType: String(body?.contentType || ''),
+      })
+      return res.status(200).json({ upload })
+    }
+
+    if (action === 'attach') {
+      const url = String(body?.url || '').trim()
+      const key = String(body?.key || '').trim()
+      if (!url || !key) return res.status(400).json({ message: 'Certificate url and key are required.' })
+
+      await prisma.product.update({
+        where: { id: product.id },
+        data: { certFileUrl: url, certFileKey: key, updatedById: userId || null },
+      })
+
+      // Replacing a certificate: the superseded object is now unreachable, so
+      // drop it rather than leaving it to age in the bucket. A failure here is
+      // only wasted storage — the row already points at the new file.
+      if (product.certFileKey && product.certFileKey !== key) {
+        try {
+          await deleteCertificateFile({ key: product.certFileKey })
+        } catch (error) {
+          console.error('[internal-product-certificate] stale file cleanup failed:', error?.message || error)
+        }
+      }
+    } else if (action === 'delete') {
+      if (product.certFileKey) {
+        await deleteCertificateFile({ key: product.certFileKey })
+      }
+      await prisma.product.update({
+        where: { id: product.id },
+        data: { certFileUrl: null, certFileKey: null, updatedById: userId || null },
+      })
+    } else {
+      return res.status(400).json({ message: 'Unknown action.' })
+    }
+
+    // The certificate link is part of the cached catalog payload.
+    invalidateCatalogProductsCache()
+    const updated = await getProductPayload(slug)
+    return res.status(200).json({ product: updated })
+  } catch (error) {
+    if (
+      error?.code === 'UNSUPPORTED_TYPE' ||
+      error?.code === 'MISSING_SLUG' ||
+      error?.code === 'MISSING_KEY' ||
+      error?.code === 'KEY_MISMATCH'
+    ) {
+      return res.status(400).json({ message: error.message })
+    }
+    console.error('[internal-product-certificate]', action, 'failed:', error)
+    return res.status(500).json({ message: 'Unable to update the certificate.' })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
 
@@ -2013,6 +2139,7 @@ export default async function handler(req, res) {
   if (resource === 'stone-sizes') return handleStoneSizesResource(req, res, body)
   if (resource === 'upload-image') return handleUploadImageResource(req, res, body)
   if (resource === 'product-image') return handleProductImageResource(req, res, body)
+  if (resource === 'product-certificate') return handleProductCertificateResource(req, res, body)
   if (resource === 'services') return handleServicesResource(req, res, body)
   return handleDashboardResource(req, res, body)
 }

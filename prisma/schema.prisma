@@ -59,6 +59,16 @@ model Product {
   customizationOptions Json?
   isNewArrival Boolean          @default(false)
   isBestSeller Boolean          @default(false)
+  // Independent lab certification for a single piece. certLab is the grading
+  // house ("GIA", "IGI", ...) and doubles as the "is this piece certified?"
+  // flag — null means uncertified and the storefront shows no tag. certFileKey
+  // is the S3 object key, kept alongside the public URL so the certificate can
+  // be replaced or deleted from the bucket.
+  certLab      String?
+  certNumber   String?
+  certFileUrl  String?
+  certFileKey  String?
+  certifiedAt  DateTime?
   rating       Float?
   reviewCount  Int?
   active       Boolean          @default(true)

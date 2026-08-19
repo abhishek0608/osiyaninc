@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 // Presigned-upload helper for internal-managed assets (e.g. homepage hero
@@ -162,6 +162,85 @@ export async function createPresignedServiceUpload({ kind, contentType, fileName
   const uploadUrl = await getSignedUrl(client, command, { expiresIn: 300 })
 
   return { uploadUrl, publicUrl: publicUrlForKey(key), key }
+}
+
+// ---------------------------------------------------------------------------
+// Product certificates (resource=product-certificate)
+// ---------------------------------------------------------------------------
+
+// Top-level folder for lab certificates (GIA/IGI reports) attached to a piece.
+// Deliberately NOT under AWS_S3_BASE_PREFIX: that prefix is swept by
+// s3-images.js to build each product's gallery, so an image certificate stored
+// there would surface on the storefront as a product photo.
+const CERTIFICATE_PREFIX = (process.env.AWS_S3_CERTIFICATE_PREFIX || 'osiyan-certificates').replace(
+  /\/+$/,
+  '',
+)
+
+// Certificates arrive as the lab's PDF or as a scan/photo of it.
+const CERTIFICATE_TYPES = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
+
+// Presigned PUT for one product's certificate. Certificates are grouped by
+// product slug so the bucket stays browsable, and the key carries a timestamp
+// so replacing a certificate never collides with the cached copy of the old one.
+export async function createPresignedCertificateUpload({ slug, contentType } = {}) {
+  const folder = String(slug || '').trim()
+  if (!folder) {
+    const err = new Error('slug is required.')
+    err.code = 'MISSING_SLUG'
+    throw err
+  }
+
+  const ext = CERTIFICATE_TYPES[String(contentType || '').toLowerCase()]
+  if (!ext) {
+    const err = new Error('Unsupported certificate file. Use PDF, JPG, PNG, or WEBP.')
+    err.code = 'UNSUPPORTED_TYPE'
+    throw err
+  }
+
+  const client = getClient()
+  const now = Date.now()
+  const rand = Math.random().toString(36).slice(2, 10)
+  const key = `${CERTIFICATE_PREFIX}/${folder}/${now}-${rand}.${ext}`
+
+  const command = new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    ContentType: contentType,
+    // Inline so "View certificate" opens the report in the browser rather than
+    // pushing a download; keys are unique per upload, so cache hard.
+    ContentDisposition: 'inline',
+    CacheControl: 'public, max-age=31536000, immutable',
+  })
+
+  const uploadUrl = await getSignedUrl(client, command, { expiresIn: 300 })
+
+  return { uploadUrl, publicUrl: publicUrlForKey(key), key, contentType }
+}
+
+// Remove a certificate object. Scoped to the certificate prefix so a stray or
+// tampered key can never delete a product photo or a homepage banner.
+export async function deleteCertificateFile({ key } = {}) {
+  const objectKey = String(key || '').trim()
+  if (!objectKey) {
+    const err = new Error('key is required.')
+    err.code = 'MISSING_KEY'
+    throw err
+  }
+  if (!objectKey.startsWith(`${CERTIFICATE_PREFIX}/`)) {
+    const err = new Error('That file does not belong to the certificate store.')
+    err.code = 'KEY_MISMATCH'
+    throw err
+  }
+
+  const client = getClient()
+  await client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: objectKey }))
 }
 
 // Upload a banner straight from the server (no presigned round-trip). Used by

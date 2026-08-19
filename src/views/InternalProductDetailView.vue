@@ -5,7 +5,7 @@ import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
 import { invalidateProductsCache } from '../composables/useProductsApi'
-import { BANGLE_SIZE_OPTIONS, CATEGORIES, CENTER_SHAPE_OPTIONS, COLORS, DIAMOND_QUALITY_OPTIONS, METAL_PURITY_OPTIONS, NECKLACE_SIZE_OPTIONS, RING_SIZE_OPTIONS } from '../data/products'
+import { BANGLE_SIZE_OPTIONS, CATEGORIES, CENTER_SHAPE_OPTIONS, CERT_LAB_OPTIONS, COLORS, DIAMOND_QUALITY_OPTIONS, METAL_PURITY_OPTIONS, NECKLACE_SIZE_OPTIONS, RING_SIZE_OPTIONS } from '../data/products'
 
 // One photo in the product's S3 folder. `key` is the object key, which the
 // delete endpoint needs; display order comes from the "_<n>" filename suffix.
@@ -14,6 +14,13 @@ interface ProductImage {
   key: string
   sku: string | null
   sortOrder: number
+}
+
+// The uploaded lab report. Like the gallery, it is written to S3 the moment it
+// is picked rather than on Save, so it lives outside ProductForm.
+interface ProductCertificate {
+  url: string
+  key: string
 }
 
 interface ProductForm {
@@ -38,6 +45,9 @@ interface ProductForm {
   ringSize: string
   bangleSize: string
   necklaceSize: string
+  certLab: string
+  certNumber: string
+  certifiedAt: string
   variantPricePaise: string
   rating: string
   reviewCount: string
@@ -66,6 +76,11 @@ const imageDeletingKey = ref('')
 // the only source of product photos: uploads go straight into the folder and
 // removals delete the object, so this list is always what the storefront shows.
 const productImages = ref<ProductImage[]>([])
+// The piece's lab report, read back from the saved product row.
+const productCertificate = ref<ProductCertificate>({ url: '', key: '' })
+const certificateUploadInput = ref<HTMLInputElement | null>(null)
+const certificateUploading = ref(false)
+const certificateDeleting = ref(false)
 const fieldSkeletonRows = Array.from({ length: 9 }, (_, index) => index)
 const materialOptions = [
   { value: 'gold', label: 'Gold' },
@@ -143,6 +158,9 @@ function emptyProductForm(): ProductForm {
     ringSize: '',
     bangleSize: '',
     necklaceSize: '',
+    certLab: '',
+    certNumber: '',
+    certifiedAt: '',
     variantPricePaise: '',
     rating: '',
     reviewCount: '',
@@ -182,6 +200,9 @@ const form = ref<ProductForm>({
   ringSize: '',
   bangleSize: '',
   necklaceSize: '',
+  certLab: '',
+  certNumber: '',
+  certifiedAt: '',
   variantPricePaise: '',
   rating: '',
   reviewCount: '',
@@ -256,6 +277,18 @@ const customizationDisplayRows = computed(() => {
   return rows
 })
 
+const certificateFileName = computed(() => {
+  const key = productCertificate.value.key
+  return key ? key.split('/').pop() || key : ''
+})
+
+const certificationDisplayRows = computed(() => [
+  { label: 'Certifying lab', value: displayValue(form.value.certLab, 'Not certified') },
+  { label: 'Certificate no.', value: displayValue(form.value.certNumber) },
+  { label: 'Certified on', value: displayValue(form.value.certifiedAt) },
+  { label: 'Certificate file', value: displayValue(certificateFileName.value, 'Not uploaded') },
+])
+
 const statusDisplayRows = computed(() => [
   { label: 'Active', value: displayBoolean(form.value.active) },
   { label: 'New arrival', value: displayBoolean(form.value.isNewArrival) },
@@ -299,6 +332,9 @@ function mapIncomingProduct(product: any): ProductForm {
     ringSize: Array.isArray(product?.customizationOptions?.ringSizes) ? (product.customizationOptions.ringSizes[0] || '') : '',
     bangleSize: Array.isArray(product?.customizationOptions?.bangleSizes) ? (product.customizationOptions.bangleSizes[0] || '') : '',
     necklaceSize: Array.isArray(product?.customizationOptions?.necklaceSizes) ? (product.customizationOptions.necklaceSizes[0] || '') : '',
+    certLab: String(product?.certLab || ''),
+    certNumber: String(product?.certNumber || ''),
+    certifiedAt: toDateInputValue(product?.certifiedAt),
     variantPricePaise:
       typeof product?.variantPricePaise === 'number' ? String(product.variantPricePaise) : '',
     rating: typeof product?.rating === 'number' ? String(product.rating) : '',
@@ -306,6 +342,22 @@ function mapIncomingProduct(product: any): ProductForm {
     isNewArrival: Boolean(product?.isNewArrival),
     isBestSeller: Boolean(product?.isBestSeller),
     active: product?.active !== false,
+  }
+}
+
+// `<input type="date">` only accepts YYYY-MM-DD, and the API returns an ISO
+// timestamp (or nothing at all, for an undated certificate).
+function toDateInputValue(value: unknown): string {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10)
+}
+
+function mapIncomingCertificate(product: any): ProductCertificate {
+  return {
+    url: String(product?.certFileUrl || ''),
+    key: String(product?.certFileKey || ''),
   }
 }
 
@@ -426,11 +478,110 @@ async function onImageUploadChange(event: Event) {
 
     const data = await postImageAction({ action: 'uploaded' })
     productImages.value = mapIncomingImages(data.product)
+    productCertificate.value = mapIncomingCertificate(data.product)
     invalidateProductsCache()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to upload images.'
   } finally {
     imageUploadProcessing.value = false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Certificate file (S3, one per product)
+// ---------------------------------------------------------------------------
+
+// Certificates are filed under the product slug, so — as with photos — the row
+// has to exist and own a settled slug first.
+const canManageCertificate = computed(() => !isNewProduct.value && Boolean(lastSavedSlug.value))
+
+const certificateBusy = computed(() => certificateUploading.value || certificateDeleting.value)
+
+function openCertificateUpload() {
+  if (!canManageCertificate.value || certificateBusy.value) return
+  certificateUploadInput.value?.click()
+}
+
+async function postCertificateAction(payload: Record<string, unknown>) {
+  const userId = user.value?.id
+  if (!userId) throw new Error('Sign in again to manage the certificate.')
+  const res = await fetch(
+    `${API_BASE}/api/internal?resource=product-certificate&userId=${encodeURIComponent(userId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, slug: lastSavedSlug.value, ...payload }),
+    },
+  )
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(
+      data?.message ||
+        (res.status === 501
+          ? 'Certificate storage is not configured for this environment.'
+          : 'Unable to update the certificate.'),
+    )
+  }
+  return data
+}
+
+// Presign, PUT the bytes to S3 from the browser, then let the server point the
+// product at the new file and clean up the one it replaced. Uploading applies
+// immediately, like gallery photos — it does not wait for Save.
+async function onCertificateUploadChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] || null
+  input.value = ''
+  if (!file || !canManageCertificate.value) return
+
+  certificateUploading.value = true
+  error.value = ''
+  try {
+    const { upload } = await postCertificateAction({
+      action: 'presign',
+      contentType: file.type,
+    })
+    if (!upload?.uploadUrl || !upload?.publicUrl || !upload?.key) {
+      throw new Error('Unable to start the upload.')
+    }
+
+    const putRes = await fetch(upload.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': upload.contentType || file.type },
+      body: file,
+    })
+    if (!putRes.ok) throw new Error(`Upload failed for ${file.name}.`)
+
+    const data = await postCertificateAction({
+      action: 'attach',
+      url: upload.publicUrl,
+      key: upload.key,
+    })
+    productCertificate.value = mapIncomingCertificate(data.product)
+    invalidateProductsCache()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Unable to upload the certificate.'
+  } finally {
+    certificateUploading.value = false
+  }
+}
+
+// Same bargain as photos: the object goes from S3 straight away, with no Save
+// to undo it, so confirm first.
+async function removeCertificate() {
+  if (!canManageCertificate.value || !productCertificate.value.key || certificateBusy.value) return
+  if (!window.confirm('Delete this certificate from S3? This permanently removes the file.')) return
+
+  certificateDeleting.value = true
+  error.value = ''
+  try {
+    const data = await postCertificateAction({ action: 'delete' })
+    productCertificate.value = mapIncomingCertificate(data.product)
+    invalidateProductsCache()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Unable to delete the certificate.'
+  } finally {
+    certificateDeleting.value = false
   }
 }
 
@@ -446,6 +597,7 @@ async function removeImage(image: ProductImage) {
   try {
     const data = await postImageAction({ action: 'delete', key: image.key })
     productImages.value = mapIncomingImages(data.product)
+    productCertificate.value = mapIncomingCertificate(data.product)
     invalidateProductsCache()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to delete image.'
@@ -459,6 +611,7 @@ async function loadProduct() {
   if (isNewProduct.value) {
     applyNewProductRoute()
     productImages.value = []
+    productCertificate.value = { url: '', key: '' }
     formSnapshot.value = null
     isEditing.value = false
     loading.value = false
@@ -476,6 +629,7 @@ async function loadProduct() {
     if (!res.ok) throw new Error(data.message || 'Unable to load internal product.')
     form.value = mapIncomingProduct(data.product)
     productImages.value = mapIncomingImages(data.product)
+    productCertificate.value = mapIncomingCertificate(data.product)
     lastSavedSlug.value = String(data.product?.slug || slug)
     slugManuallyEdited.value = false
     formSnapshot.value = cloneForm(form.value)
@@ -504,6 +658,11 @@ async function saveProduct() {
     description: form.value.description,
     productAttributes: buildProductAttributesPayload(),
     customizationOptions: buildCustomizationOptionsPayload(),
+    // Clearing the lab un-certifies the piece: the API drops the number and
+    // date with it and the storefront tag disappears.
+    certLab: normalizeInputValue(form.value.certLab),
+    certNumber: normalizeInputValue(form.value.certNumber),
+    certifiedAt: normalizeInputValue(form.value.certifiedAt),
     variantPricePaise: normalizeInputValue(form.value.variantPricePaise),
     rating: normalizeInputValue(form.value.rating),
     reviewCount: normalizeInputValue(form.value.reviewCount),
@@ -530,6 +689,7 @@ async function saveProduct() {
     invalidateProductsCache()
     form.value = mapIncomingProduct(data.product)
     productImages.value = mapIncomingImages(data.product)
+    productCertificate.value = mapIncomingCertificate(data.product)
     formSnapshot.value = cloneForm(form.value)
     saved.value = true
     lastSavedSlug.value = form.value.slug
@@ -566,6 +726,7 @@ async function generateAiDescription() {
     invalidateProductsCache()
     form.value = mapIncomingProduct(data.product)
     productImages.value = mapIncomingImages(data.product)
+    productCertificate.value = mapIncomingCertificate(data.product)
     formSnapshot.value = cloneForm(form.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to generate AI description.'
@@ -612,6 +773,14 @@ watch(
         multiple
         class="ect-hidden"
         @change="onImageUploadChange"
+      />
+
+      <input
+        ref="certificateUploadInput"
+        type="file"
+        accept="application/pdf,image/jpeg,image/png,image/webp"
+        class="ect-hidden"
+        @change="onCertificateUploadChange"
       />
 
       <header class="ect-flex ect-flex-col sm:ect-flex-row sm:ect-items-end sm:ect-justify-between ect-gap-4 ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5 ect-mb-6">
@@ -1078,6 +1247,116 @@ watch(
               No images yet. The first upload creates this product's folder in S3.
             </p>
           </article>
+
+          <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">
+            <div class="ect-mb-4">
+              <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Certification</h2>
+              <p class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-1">
+                Setting a lab tags this piece as certified on the storefront — the tag appears on its
+                photos and the report is linked from the product page. Clearing the lab removes both.
+              </p>
+            </div>
+
+            <div class="ect-grid md:ect-grid-cols-3 ect-gap-4">
+              <label class="ect-block">
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Certifying lab</span>
+                <select
+                  v-model="form.certLab"
+                  :disabled="!fieldsEditable"
+                  :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : 'ect-bg-white']"
+                >
+                  <option value="">Not certified</option>
+                  <option v-for="lab in CERT_LAB_OPTIONS" :key="lab" :value="lab">{{ lab }}</option>
+                </select>
+              </label>
+              <label class="ect-block">
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Certificate no.</span>
+                <input
+                  v-model="form.certNumber"
+                  type="text"
+                  :disabled="!fieldsEditable || !form.certLab"
+                  placeholder="e.g. 2141438171"
+                  :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable || !form.certLab ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                />
+                <span class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">Shown on the product page.</span>
+              </label>
+              <label class="ect-block">
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Certified on</span>
+                <input
+                  v-model="form.certifiedAt"
+                  type="date"
+                  :disabled="!fieldsEditable || !form.certLab"
+                  :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable || !form.certLab ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                />
+                <span class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">Internal record only.</span>
+              </label>
+            </div>
+
+            <div class="ect-mt-4">
+              <p class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Certificate file</p>
+
+              <p
+                v-if="!canManageCertificate"
+                class="ect-rounded-lg ect-border ect-border-dashed ect-border-charcoal/15 ect-p-6 ect-text-center ect-font-body ect-text-sm ect-text-charcoal/45"
+              >
+                Save the product first. Certificates are filed under the slug, so one can only be
+                uploaded once the slug is final.
+              </p>
+
+              <div
+                v-else-if="productCertificate.url"
+                class="ect-flex ect-flex-wrap ect-items-center ect-justify-between ect-gap-3 ect-rounded-lg ect-border ect-border-rose-100 ect-bg-rose-50/40 ect-px-4 ect-py-3"
+              >
+                <a
+                  :href="productCertificate.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="ect-min-w-0 ect-font-body ect-text-sm ect-font-semibold ect-text-rose-700 hover:ect-underline ect-truncate"
+                >
+                  {{ certificateFileName || 'View certificate' }}
+                </a>
+                <div class="ect-flex ect-shrink-0 ect-items-center ect-gap-2">
+                  <button
+                    type="button"
+                    class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal hover:ect-border-rose-300 hover:ect-text-rose-700 ect-transition-colors disabled:ect-cursor-not-allowed disabled:ect-opacity-50"
+                    :disabled="certificateBusy"
+                    @click="openCertificateUpload"
+                  >
+                    {{ certificateUploading ? 'Uploading...' : 'Replace' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-white ect-border ect-border-red-200 ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-red-700 hover:ect-bg-red-50 ect-transition-colors disabled:ect-cursor-not-allowed disabled:ect-opacity-50"
+                    :disabled="certificateBusy"
+                    @click="removeCertificate"
+                  >
+                    {{ certificateDeleting ? 'Deleting...' : 'Delete' }}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                v-else
+                class="ect-flex ect-flex-col ect-items-center ect-gap-3 ect-rounded-lg ect-border ect-border-dashed ect-border-charcoal/15 ect-p-6 ect-text-center"
+              >
+                <p class="ect-font-body ect-text-sm ect-text-charcoal/45">
+                  No certificate on file. PDF, JPG, PNG, or WEBP.
+                </p>
+                <button
+                  type="button"
+                  class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-white hover:ect-bg-rose-700 ect-transition-colors disabled:ect-cursor-not-allowed disabled:ect-opacity-50"
+                  :disabled="certificateBusy"
+                  @click="openCertificateUpload"
+                >
+                  {{ certificateUploading ? 'Uploading...' : 'Upload certificate' }}
+                </button>
+              </div>
+
+              <p class="ect-mt-2 ect-font-body ect-text-[11px] ect-text-charcoal/40">
+                Uploads and removals apply to S3 immediately — they don't wait for Save.
+              </p>
+            </div>
+          </article>
         </section>
 
         <aside class="ect-space-y-5">
@@ -1219,6 +1498,31 @@ watch(
             <p v-else class="ect-rounded-lg ect-border ect-border-dashed ect-border-charcoal/15 ect-p-6 ect-text-center ect-font-body ect-text-sm ect-text-charcoal/45">
               No images in S3 yet. Use Edit to upload the first one.
             </p>
+          </article>
+
+          <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">
+            <div class="ect-mb-4">
+              <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Certification</h2>
+              <p class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-1">
+                A certifying lab tags this piece on the storefront and links its report. Use Edit to
+                change the lab or upload the certificate.
+              </p>
+            </div>
+            <dl class="ect-grid md:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-4">
+              <div v-for="row in certificationDisplayRows" :key="row.label" class="ect-min-w-0">
+                <dt class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-1.5">{{ row.label }}</dt>
+                <dd class="ect-font-body ect-text-sm ect-leading-6 ect-text-charcoal ect-break-words">{{ row.value }}</dd>
+              </div>
+            </dl>
+            <a
+              v-if="productCertificate.url"
+              :href="productCertificate.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="ect-mt-4 ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/75 hover:ect-border-rose-300 hover:ect-text-rose-700 ect-transition-colors"
+            >
+              Open certificate
+            </a>
           </article>
         </section>
 
