@@ -22,9 +22,9 @@ const emit = defineEmits<{ change: [qty: number] }>()
 
 const SKINS = {
   solid: {
-    shell: 'ect-h-9 ect-rounded-lg ect-bg-rose-600 ect-text-white ect-overflow-hidden',
-    button: 'ect-w-9 ect-h-9 hover:ect-bg-rose-700',
-    field: 'ect-w-12 ect-h-9 ect-bg-rose-700/40 ect-text-white hover:ect-bg-rose-700/60 focus:ect-bg-rose-700/60',
+    shell: 'ect-h-9 ect-rounded-lg ect-bg-charcoal ect-text-white ect-overflow-hidden',
+    button: 'ect-w-9 ect-h-9 hover:ect-bg-noir',
+    field: 'ect-w-12 ect-h-9 ect-bg-white/10 ect-text-white hover:ect-bg-white/20 focus:ect-bg-white/20',
   },
   quiet: {
     shell: 'ect-h-8 ect-rounded-full ect-border ect-border-sand ect-bg-cream ect-text-charcoal',

@@ -155,8 +155,8 @@ const PLACEHOLDER_GRADIENT = 'ect-from-champagne ect-to-cream'
         :disabled="cartLoading"
         class="ect-shrink-0 ect-w-9 ect-h-9 sm:ect-w-auto sm:ect-h-auto sm:ect-px-3.5 sm:ect-py-2 ect-rounded-lg ect-flex ect-items-center ect-justify-center sm:ect-gap-1.5 ect-font-body ect-text-sm ect-font-semibold ect-tracking-wide ect-transition-all ect-duration-200 focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400 focus:ect-ring-offset-1"
         :class="cartLoading
-          ? 'ect-bg-rose-500/70 ect-text-white ect-cursor-wait'
-          : 'ect-bg-rose-500 ect-text-white hover:ect-bg-rose-600'"
+          ? 'ect-bg-charcoal/70 ect-text-white ect-cursor-wait'
+          : 'ect-bg-charcoal ect-text-white hover:ect-bg-noir'"
       >
         <svg v-if="cartLoading" class="ect-w-4 ect-h-4 ect-shrink-0 ect-animate-spin" fill="none" viewBox="0 0 24 24">
           <circle class="ect-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3.5" />
