@@ -22,6 +22,7 @@ const { user, isLoggedIn, isInternalUser, logout } = useAuth()
 const { query, searchByImage, submitTextSearch } = useSearch()
 
 const headerEl = ref<HTMLElement | null>(null)
+const spacerEl = ref<HTMLElement | null>(null)
 const menuOpen = ref(false)
 const accountMenuOpen = ref(false)
 const accountMenuRoot = ref<HTMLElement | null>(null)
@@ -136,9 +137,18 @@ function toggleDrawerCategory(key: string) {
 // --- Scroll state ------------------------------------------------------------
 // Read straight from the passive listener: layout is already clean during a
 // scroll event, so scrollY is free, and the ref only writes when the boolean
-// actually flips.
+// actually flips. The two thresholds are deliberately apart: a single 120px
+// line makes the bar pump between its two heights while a trackpad wobbles on
+// the boundary, and each flip costs a 200ms height animation.
+// Keep EXPAND_AT above the difference between the resting and condensed heights
+// (66px at the widest breakpoint) — below that the condensed bar no longer
+// covers the spacer and a strip of page background shows above the content.
+const CONDENSE_AT = 120
+const EXPAND_AT = 80
+
 function onScroll() {
-  const next = window.scrollY > 120
+  const y = window.scrollY
+  const next = isCondensed.value ? y > EXPAND_AT : y > CONDENSE_AT
   if (next === isCondensed.value) return
   isCondensed.value = next
   // Condensing while a panel hangs open would leave it detached mid-scroll.
@@ -146,14 +156,15 @@ function onScroll() {
 }
 
 // --- Header height ------------------------------------------------------------
-// Pages that offset content by the header (Hero, ChatView) need its *resting*
-// height. Publishing the live height instead would make them jump every time the
-// bar condenses on scroll, so only measure while the header is at full size.
+// Pages that offset content by the header (ChatView) need its *resting* height.
+// Measure the spacer, not the bar: the spacer is the element that actually holds
+// the page's top offset and its height is pure CSS, so it stays at the resting
+// value while the bar animates between its two sizes.
 let heightObserver: ResizeObserver | null = null
 
 function publishRestHeight() {
-  const el = headerEl.value
-  if (!el || isCondensed.value) return
+  const el = spacerEl.value
+  if (!el) return
   const height = Math.ceil(el.getBoundingClientRect().height)
   if (height > 0) document.documentElement.style.setProperty('--osiyan-header-height', `${height}px`)
 }
@@ -181,15 +192,6 @@ watch(
 // The drawer covers the viewport, so freeze the page behind it while it's open.
 watch(menuOpen, (open) => {
   document.body.classList.toggle('osiyan-menu-open', open)
-  void nextTick(publishRestHeight)
-})
-
-watch(searchExpanded, () => {
-  void nextTick(publishRestHeight)
-})
-
-watch(isCondensed, (condensed) => {
-  if (!condensed) void nextTick(publishRestHeight)
 })
 
 watch(isLoggedIn, (loggedIn) => {
@@ -273,9 +275,9 @@ onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   onScroll()
   publishRestHeight()
-  if (headerEl.value && typeof ResizeObserver !== 'undefined') {
+  if (spacerEl.value && typeof ResizeObserver !== 'undefined') {
     heightObserver = new ResizeObserver(publishRestHeight)
-    heightObserver.observe(headerEl.value)
+    heightObserver.observe(spacerEl.value)
   }
 })
 
@@ -416,6 +418,11 @@ onBeforeUnmount(() => {
               <span v-if="wishlistCount > 0" class="count-badge" aria-hidden="true">{{ wishlistBadge }}</span>
             </RouterLink>
 
+            <RouterLink to="/cart" class="bag-pill" :aria-label="`Bag with ${totalItems} items`" title="Bag">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.75 9.75V6a3.75 3.75 0 1 0-7.5 0v3.75m-2.737-2.243-1.263 12a1.125 1.125 0 0 0 1.12 1.243h13.26a1.125 1.125 0 0 0 1.12-1.243l-1.263-12a1.125 1.125 0 0 0-1.119-1.007H6.632c-.576 0-1.059.435-1.119 1.007Z" /></svg>
+              <span v-if="totalItems > 0" class="bag-count" aria-hidden="true">{{ cartBadge }}</span>
+            </RouterLink>
+
             <RouterLink v-if="!isLoggedIn" to="/login" class="action-link account-link" aria-label="Sign in" title="Sign in">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7.25" r="4" /><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" /></svg>
             </RouterLink>
@@ -466,11 +473,6 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </div>
-
-            <RouterLink to="/cart" class="bag-pill" :aria-label="`Bag with ${totalItems} items`" title="Bag">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.75 9.75V6a3.75 3.75 0 1 0-7.5 0v3.75m-2.737-2.243-1.263 12a1.125 1.125 0 0 0 1.12 1.243h13.26a1.125 1.125 0 0 0 1.12-1.243l-1.263-12a1.125 1.125 0 0 0-1.119-1.007H6.632c-.576 0-1.059.435-1.119 1.007Z" /></svg>
-              <span v-if="totalItems > 0" class="bag-count" aria-hidden="true">{{ cartBadge }}</span>
-            </RouterLink>
           </div>
         </nav>
       </div>
@@ -605,9 +607,32 @@ onBeforeUnmount(() => {
       </div>
     </nav>
   </header>
+
+  <!-- Holds the page's top offset. The bar itself is fixed, so it can shrink on
+       scroll without ever resizing anything in flow; this spacer keeps its
+       resting height and never moves. -->
+  <div ref="spacerEl" class="osiyan-header-spacer" aria-hidden="true" />
 </template>
 
 <style scoped>
+/* Resting row heights. The bar reads them through --utility-height/--main-height
+   (which the condensed state overrides) while the spacer reads them directly, so
+   the two can never drift apart. */
+.osiyan-header,
+.osiyan-header-spacer {
+  --utility-rest: 38px;
+  --main-rest: 88px;
+}
+
+/* The bar is fixed and the spacer reserves its resting height, so condensing on
+   scroll resizes nothing in flow. Keeping the bar in flow instead would pull the
+   page up 66px the moment it condensed, and scroll anchoring would push the
+   scroll position back down past the threshold — the bar then expands, the page
+   drops back, and the two fight frame after frame as visible flicker. */
+.osiyan-header-spacer {
+  height: calc(var(--utility-rest) + var(--main-rest) + 1px);
+}
+
 /* Design tokens — Osiyan nav redesign, direction 1a. */
 .osiyan-header {
   --plum: #4b2d55;
@@ -623,14 +648,16 @@ onBeforeUnmount(() => {
   --border-soft: #f2eef0;
   --border-field: #dcd6d9;
   --surface-pill: #f6f2f7;
-  --utility-height: 38px;
-  --main-height: 88px;
+  --utility-height: var(--utility-rest);
+  --main-height: var(--main-rest);
   --gutter: clamp(20px, 2.8vw, 40px);
   --logo-scale: 0.7391;
 
-  position: sticky;
+  position: fixed;
   z-index: 50;
   top: 0;
+  left: 0;
+  right: 0;
   background: #fff;
   font-family: Jost, Helvetica, Arial, sans-serif;
 }
@@ -944,7 +971,8 @@ onBeforeUnmount(() => {
 /* The 7 categories, search field and icon cluster need ~1150px before they stop
    colliding, so tablets get the drawer too. */
 @media (max-width: 1150px) {
-  .osiyan-header { --main-height: 64px; --utility-height: 34px; --logo-scale: 0.6522; }
+  .osiyan-header, .osiyan-header-spacer { --main-rest: 64px; --utility-rest: 34px; }
+  .osiyan-header { --logo-scale: 0.6522; }
   .osiyan-header.is-condensed { --main-height: 56px; --utility-height: 0px; --logo-scale: 0.5652; }
 
   .utility-inner { justify-content: center; font-size: 11.5px; }
