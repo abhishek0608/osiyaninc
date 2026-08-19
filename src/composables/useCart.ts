@@ -1,5 +1,5 @@
 import { reactive, computed, watch, ref } from 'vue'
-import type { Product } from '../data/products'
+import { type Product } from '../data/products'
 import { useAuth } from './useAuth'
 import { useSiteConfig, type VolumeDiscountTier } from './useSiteConfig'
 import { API_BASE } from '../config-api'
@@ -27,14 +27,6 @@ export interface CartItem {
 
 export function isCustomizedCartItem(item: Pick<CartItem, 'customization'>) {
   return Boolean(item.customization?.isCustomized)
-}
-
-// Unpriced ("$0") products are quoted individually, so cart/checkout labels
-// them "Price on request" rather than displaying a zero amount.
-export function isPriceOnRequestCartItem(item: Pick<CartItem, 'product'>) {
-  const value =
-    item.product.priceValue ?? Number(String(item.product.price || '').replace(/[^0-9.]/g, ''))
-  return !(Number.isFinite(value) && value > 0)
 }
 
 const LEGACY_CART_STORAGE_KEY = 'kiana-demo-cart'

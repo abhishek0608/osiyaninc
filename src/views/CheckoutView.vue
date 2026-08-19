@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCart, isCustomizedCartItem, isPriceOnRequestCartItem } from '../composables/useCart'
+import { useCart, isCustomizedCartItem } from '../composables/useCart'
 import { useOrders } from '../composables/useOrders'
 import { useQuotes } from '../composables/useQuotes'
 import { useSavedAddresses, COUNTRY_OPTIONS, countryDisplayName } from '../composables/useSavedAddresses'
@@ -109,9 +109,6 @@ function saveCurrentAddress() {
 
 const hasCustomizedItems = computed(() =>
   items.some((item) => isCustomizedCartItem(item)),
-)
-const hasPriceOnRequestItems = computed(() =>
-  items.some((item) => !isCustomizedCartItem(item) && isPriceOnRequestCartItem(item)),
 )
 
 function buildCustomizationMap(customization: Record<string, unknown> | null | undefined): Record<string, string> | null {
@@ -498,8 +495,7 @@ const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code
                   <p class="ect-font-body ect-text-sm ect-font-medium ect-text-charcoal ect-truncate">{{ item.product.title }}</p>
                   <p class="ect-font-body ect-text-xs ect-text-charcoal/50">{{ item.product.category }}</p>
                 </section>
-                <span v-if="isPriceOnRequestCartItem(item)" class="ect-font-body ect-text-xs ect-text-gold-700 ect-font-medium ect-whitespace-nowrap">Price on request</span>
-                <span v-else class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-whitespace-nowrap">{{ item.product.price }}</span>
+                <span class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-whitespace-nowrap">{{ item.product.price }}</span>
               </li>
             </ul>
 
@@ -513,10 +509,6 @@ const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code
               <article v-if="volumeDiscountTier" class="ect-flex ect-justify-between">
                 <span class="ect-font-body ect-text-sm ect-text-gold-600">Volume discount ({{ discountPercent }}%)</span>
                 <span class="ect-font-body ect-text-sm ect-font-semibold ect-text-gold-600">− {{ formattedDiscount }}</span>
-              </article>
-              <article v-if="hasPriceOnRequestItems" class="ect-flex ect-justify-between">
-                <span class="ect-font-body ect-text-sm ect-text-gold-700">Price-on-request items</span>
-                <span class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium">Quoted separately</span>
               </article>
               <article class="ect-flex ect-justify-between">
                 <span class="ect-font-body ect-text-sm ect-text-charcoal/60">Shipping</span>

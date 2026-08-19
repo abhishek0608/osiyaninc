@@ -27,6 +27,8 @@ export interface ProductCertification {
   lab: string
   number?: string
   fileUrl?: string
+  /** ISO date the report was issued; empty until the grading date is recorded. */
+  certifiedAt?: string
 }
 
 export interface ProductAttributes {
@@ -200,6 +202,21 @@ export interface Product {
   customizationOptions?: ProductCustomizationOptions
   productAttributes?: ProductAttributes
   certification?: ProductCertification
+}
+
+interface PriceFields {
+  price?: string
+  priceValue?: number | null
+}
+
+// Label for a priced piece: the formatted string the API sends, falling back to
+// the numeric value because chat and search payloads sometimes carry only one
+// of the two.
+export function formatProductPrice(product: PriceFields) {
+  const label = String(product.price || '').trim()
+  if (label) return label
+  const value = Number(product.priceValue)
+  return Number.isFinite(value) ? `$${Math.round(value).toLocaleString('en-US')}` : ''
 }
 
 export interface Review {

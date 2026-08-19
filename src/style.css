@@ -8,6 +8,11 @@
 :root {
   --font-body: Helvetica, Arial, sans-serif;
   --font-display: Helvetica, Arial, sans-serif;
+
+  /* Osiyan's brand aubergine, used for primary storefront actions. AppHeader.vue
+     mirrors these as --plum/--plum-ink for the logo and bag pill. */
+  --brand: #4b2d55;
+  --brand-ink: #2c1c33;
 }
 
 html {

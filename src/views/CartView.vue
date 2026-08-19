@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import { useCart, type CartItem, isCustomizedCartItem, isPriceOnRequestCartItem } from '../composables/useCart'
+import { useCart, type CartItem, isCustomizedCartItem } from '../composables/useCart'
 import VolumeDiscountInfo from '../components/VolumeDiscountInfo.vue'
 import QuantityStepper from '../components/QuantityStepper.vue'
 
@@ -53,21 +53,9 @@ function isItemCustomized(item: CartItem) {
   return isCustomizedCartItem(item)
 }
 
-// Customized items take the "Quote" label; this covers the rest of the
-// unpriced pieces so no line ever reads "$0".
-function isItemPriceOnRequest(item: CartItem) {
-  return !isItemCustomized(item) && isPriceOnRequestCartItem(item)
-}
-
 const hasCustomItems = computed(() => items.some(isItemCustomized))
-const hasPriceOnRequestItems = computed(() => items.some(isItemPriceOnRequest))
 
-const quoteNote = computed(() => {
-  if (hasCustomItems.value && hasPriceOnRequestItems.value) return '+ quote for custom & unpriced items'
-  if (hasPriceOnRequestItems.value) return '+ quote for unpriced items'
-  if (hasCustomItems.value) return '+ quote for custom items'
-  return ''
-})
+const quoteNote = computed(() => (hasCustomItems.value ? '+ quote for custom items' : ''))
 
 function itemSubtotal(item: CartItem) {
   if (isItemCustomized(item)) return null
@@ -195,7 +183,6 @@ function customizationEntries(item: CartItem) {
                   </section>
                   <!-- Price (desktop) -->
                   <p v-if="isItemCustomized(item)" class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium ect-hidden sm:ect-block">Quote</p>
-                  <p v-else-if="isItemPriceOnRequest(item)" class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium ect-whitespace-nowrap ect-hidden sm:ect-block">Price on request</p>
                   <p v-else class="ect-font-display ect-text-base sm:ect-text-lg ect-font-medium ect-text-charcoal ect-whitespace-nowrap ect-hidden sm:ect-block">{{ itemSubtotal(item) }}</p>
                 </section>
 
@@ -215,7 +202,6 @@ function customizationEntries(item: CartItem) {
                   <section class="ect-flex ect-items-center ect-gap-3">
                     <!-- Price (mobile) -->
                     <p v-if="isItemCustomized(item)" class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium sm:ect-hidden">Quote</p>
-                    <p v-else-if="isItemPriceOnRequest(item)" class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium sm:ect-hidden">Price on request</p>
                     <p v-else class="ect-font-display ect-text-base ect-font-medium ect-text-charcoal sm:ect-hidden">{{ itemSubtotal(item) }}</p>
                     <svg
                       v-if="isRowLoading(item.id)"
@@ -241,7 +227,7 @@ function customizationEntries(item: CartItem) {
                 </section>
 
                 <!-- Price breakup tooltip -->
-                <span v-if="!isItemCustomized(item) && !isItemPriceOnRequest(item)" class="ect-relative ect-inline-block ect-group/tip ect-mt-2 ect-self-start">
+                <span v-if="!isItemCustomized(item)" class="ect-relative ect-inline-block ect-group/tip ect-mt-2 ect-self-start">
                   <span class="ect-font-body ect-text-[11px] ect-text-gold-600 ect-cursor-default ect-border-b ect-border-dashed ect-border-gold-400/60">View price breakup</span>
                   <span class="ect-absolute ect-left-0 ect-bottom-full ect-mb-2 ect-w-56 ect-bg-white ect-rounded-xl ect-shadow-xl ect-shadow-charcoal/10 ect-ring-1 ect-ring-charcoal/[0.06] ect-p-3 ect-opacity-0 ect-invisible group-hover/tip:ect-opacity-100 group-hover/tip:ect-visible ect-transition-all ect-duration-200 ect-z-10">
                     <span class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/40 ect-block ect-mb-2">Price Breakup</span>
@@ -284,7 +270,6 @@ function customizationEntries(item: CartItem) {
                     <p class="ect-font-body ect-text-xs ect-text-charcoal/50">{{ item.product.category }}</p>
                   </section>
                   <span v-if="isItemCustomized(item)" class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium ect-whitespace-nowrap">Quote</span>
-                  <span v-else-if="isItemPriceOnRequest(item)" class="ect-font-body ect-text-xs ect-text-gold-700 ect-font-medium ect-whitespace-nowrap">Price on request</span>
                   <span v-else class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-whitespace-nowrap">{{ itemSubtotal(item) }}</span>
                 </li>
               </ul>
@@ -309,10 +294,6 @@ function customizationEntries(item: CartItem) {
                 </article>
                 <article v-if="hasCustomItems" class="ect-flex ect-justify-between">
                   <span class="ect-font-body ect-text-sm ect-text-gold-700">Custom items</span>
-                  <span class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium">Quoted separately</span>
-                </article>
-                <article v-if="hasPriceOnRequestItems" class="ect-flex ect-justify-between">
-                  <span class="ect-font-body ect-text-sm ect-text-gold-700">Price-on-request items</span>
                   <span class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium">Quoted separately</span>
                 </article>
                 <article class="ect-flex ect-justify-between">

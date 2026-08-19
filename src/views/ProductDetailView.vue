@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ProductCard from '../components/ProductCard.vue'
 import StarRating from '../components/StarRating.vue'
@@ -7,17 +7,13 @@ import VolumeDiscountInfo from '../components/VolumeDiscountInfo.vue'
 import CertifiedBadge from '../components/CertifiedBadge.vue'
 import ImageWatermark from '../components/ImageWatermark.vue'
 import { useCart, type ProductCustomization } from '../composables/useCart'
+import { useWishlist } from '../composables/useWishlist'
 import { useProductsApi } from '../composables/useProductsApi'
 import { useSiteConfig } from '../composables/useSiteConfig'
 import { setPageMeta, setProductJsonLd } from '../composables/useSeo'
 import { SITE_SETTINGS } from '../config/site-settings'
-import { BANGLE_SIZE_OPTIONS, CENTER_SHAPE_OPTIONS, CENTER_STONE_SIZE_OPTIONS, CENTER_STONE_TYPE_OPTIONS, COLORS, DIAMOND_QUALITY_OPTIONS, formatCenterStoneSize, getProductReviews, METAL_PURITY_OPTIONS, NECKLACE_SIZE_OPTIONS, RING_SIZE_OPTIONS, type Color, type Product, type ProductCustomizationOptions } from '../data/products'
+import { BANGLE_SIZE_OPTIONS, COLORS, formatProductPrice, getProductReviews, NECKLACE_SIZE_OPTIONS, RING_SIZE_OPTIONS, type Color, type Product, type ProductCustomizationOptions } from '../data/products'
 
-const DIAMOND_QUALITIES = DIAMOND_QUALITY_OPTIONS
-const METAL_OPTIONS = METAL_PURITY_OPTIONS
-const CENTER_SHAPES = CENTER_SHAPE_OPTIONS
-const CENTER_STONE_SIZES = CENTER_STONE_SIZE_OPTIONS
-const STONE_TYPES = CENTER_STONE_TYPE_OPTIONS
 const RING_SIZES = RING_SIZE_OPTIONS
 const BANGLE_SIZES = BANGLE_SIZE_OPTIONS
 const NECKLACE_SIZES = NECKLACE_SIZE_OPTIONS
@@ -32,10 +28,18 @@ function goBack() {
   else router.push('/#collections')
 }
 const { addToCart } = useCart()
+const { isWishlisted, toggle: toggleWishlist } = useWishlist()
 const { products, ensureProductsLoaded, loading } = useProductsApi()
-const { stoneSizes, ensureSiteConfigLoaded } = useSiteConfig()
+const { ensureSiteConfigLoaded } = useSiteConfig()
 
 const product = computed(() => products.value.find((p) => p.slug === String(route.params.slug || '')))
+
+const priceLabel = computed(() => (product.value ? formatProductPrice(product.value) : ''))
+const wishlisted = computed(() => (product.value ? isWishlisted(product.value.slug) : false))
+
+function handleToggleWishlist() {
+  if (product.value) toggleWishlist(product.value)
+}
 const addedImages = ref<string[]>([])
 const added = ref(false)
 const addingToCart = ref(false)
@@ -94,18 +98,17 @@ function moveZoom(event: MouseEvent) {
   }
 }
 
-const selectedDiamondQuality = ref('')
-const selectedColor = ref<(typeof COLORS)[number]['id']>('yellow')
-const selectedMetal = ref('')
-const selectedCenterShape = ref('')
-const selectedCenterStoneSize = ref('')
-const isCustomCenterStoneSizeMode = ref(false)
-const selectedStoneType = ref('')
-const isCustomStoneTypeMode = ref(false)
+// Every piece is exclusive, so its metal color is a fact of the piece rather
+// than a choice the buyer makes: it comes straight off the product, drives which
+// gallery shots are shown, and is stated in the spec sheet.
+const productColor = computed<Color>(() => product.value?.color || 'yellow')
+const productColorLabel = computed(
+  () => COLORS.find((option) => option.id === productColor.value)?.label || productColor.value
+)
+
 const selectedRingSize = ref('')
 const selectedBangleSize = ref('')
 const selectedNecklaceSize = ref('')
-const additionalRemarks = ref('')
 
 // Decode the metal color an image represents from its filename. Uploads follow
 // a "... <COLOR> (n)" convention where COLOR is a standalone R / W / Y letter
@@ -126,35 +129,36 @@ const allImages = computed(() => {
 })
 
 // Whether any image filename encodes a metal color. Products whose images
-// predate the convention show every image regardless of the selected color.
+// predate the convention show every image regardless of the piece's color.
 const hasColorTaggedImages = computed(() => allImages.value.some((img) => imageColor(img)))
 
-// Gallery filtered to the selected metal color. Color-tagged shots for the
-// chosen color are shown alongside any untagged (generic) images — including the
-// cover thumbnail, which keeps its place at the head of the rail; if the chosen
-// color has no dedicated shots, fall back to showing everything.
+// Gallery filtered to the piece's metal color. Color-tagged shots for that color
+// are shown alongside any untagged (generic) images — including the cover
+// thumbnail, which keeps its place at the head of the rail; if the color has no
+// dedicated shots, fall back to showing everything.
 const galleryImages = computed(() => {
   const all = allImages.value
   if (!hasColorTaggedImages.value) return all
   const matching = all.filter((img) => {
     const color = imageColor(img)
-    return color === null || color === selectedColor.value
+    return color === null || color === productColor.value
   })
   return matching.length ? matching : all
 })
 
-const showThumbRailControls = computed(() => galleryImages.value.length > 5)
+// The rail is horizontal under the stage on narrow screens and vertical beside it
+// from 900px up, so how many thumbs fit depends on the layout, not on a fixed
+// count — show the scroll arrows only when the rail actually overflows.
+const thumbsOverflow = ref(false)
 
-// Picking a color opens the gallery on that color's first shot rather than on the
-// untagged cover thumbnail, which stays in the rail so it can still be reached.
-// Done here rather than in a selectedColor watcher so that re-picking the color
-// already selected still moves off the cover, and so the default color seeded on
-// product load leaves the cover showing.
-function selectColor(id: Color) {
-  selectedColor.value = id
-  const firstColorShot = galleryImages.value.findIndex((img) => imageColor(img) === id)
-  activeImage.value = firstColorShot >= 0 ? firstColorShot : 0
+function measureThumbsOverflow() {
+  const rail = thumbsRef.value
+  thumbsOverflow.value = rail
+    ? rail.scrollWidth > rail.clientWidth + 1 || rail.scrollHeight > rail.clientHeight + 1
+    : false
 }
+
+const showThumbRailControls = computed(() => thumbsOverflow.value)
 
 const reviews = computed(() =>
   SITE_SETTINGS.enableReviews && product.value ? getProductReviews(product.value.slug) : []
@@ -185,20 +189,6 @@ const relatedProducts = computed<Product[]>(() => {
     .sort((a, b) => b.score - a.score)
     .slice(0, 4)
     .map(({ item }) => item)
-})
-
-const colorOptions = computed(() => {
-  const currentColor = product.value?.color
-  const baseOptions = product.value?.material === 'silver'
-    ? COLORS.filter((option) => ['white', 'oxidised'].includes(option.id))
-    : COLORS.filter((option) => option.id !== 'oxidised')
-
-  if (currentColor && !baseOptions.some((option) => option.id === currentColor)) {
-    const currentOption = COLORS.find((option) => option.id === currentColor)
-    return currentOption ? [...baseOptions, currentOption] : baseOptions
-  }
-
-  return baseOptions
 })
 
 // Only pieces we actually certify carry a lab; everything downstream (the tag
@@ -246,38 +236,45 @@ const technicalDetailRows = computed<Array<{ label: string; value: string }>>(()
   return [...attributeSpecs, ...specs]
 })
 
-const productDetailRows = computed<Array<{ label: string; value: string }>>(() => {
-  // Unset attributes are omitted entirely — a wall of "None" rows reads as
-  // missing data, not as a considered spec sheet.
-  const rows: Array<{ label: string; value: string }> = [
+// The spec sheet carries facts about the piece only. Size is already shown by its
+// own control, so mirroring that selection back here just doubles the page's
+// reading load; metal color has no control of its own — the piece exists in one
+// color — so it is stated here.
+const specRows = computed<Array<{ label: string; value: string }>>(() => {
+  const rows = [
+    { label: 'Metal Color', value: product.value ? productColorLabel.value : '' },
     ...technicalDetailRows.value,
-    { label: 'Diamond Quality', value: selectedDiamondQuality.value },
-    { label: 'Metal Purity', value: selectedMetal.value },
   ]
-
-  if (supportsCenterStoneCustomization.value) {
-    rows.push(
-      { label: 'Center Shape', value: selectedCenterShape.value },
-      { label: 'Center Stone Size', value: selectedCenterStoneSize.value },
-    )
-  }
-
-  if (certification.value?.number) {
-    rows.push({ label: `${certification.value.lab} Report No.`, value: certification.value.number })
-  }
-
-  if (isRingProduct.value) rows.push({ label: 'Ring Size', value: selectedRingSize.value })
-  if (isBangleProduct.value) rows.push({ label: 'Bangle Size', value: selectedBangleSize.value })
-  if (isNecklaceProduct.value) rows.push({ label: 'Necklace Size', value: selectedNecklaceSize.value })
 
   return rows.filter((row) => Boolean(row.value))
 })
 
-const WEIGHT_DETAIL_LABELS = new Set(['gross weight', 'diamond carats', 'gold weight', 'stone weight'])
+const hasSpecDetails = computed(() => Boolean(specRows.value.length || product.value?.details?.length))
 
-function shouldShowWeightDisclaimer(label: string) {
-  return WEIGHT_DETAIL_LABELS.has(label.trim().toLowerCase())
+// The certification accordion: everything about the report, so the "Details"
+// panel above stays about the piece itself. `lab` alone is enough to open the
+// panel — the number, date and scan each arrive on their own schedule.
+const certificationRows = computed<Array<{ label: string; value: string }>>(() => {
+  const cert = certification.value
+  if (!cert) return []
+  const isInHouse = /^in[-\s]?house$/i.test(cert.lab.trim())
+  return [
+    { label: 'Certified By', value: isInHouse ? 'Osiyan in-house assay' : cert.lab },
+    { label: 'Report No.', value: cert.number || '' },
+    { label: 'Date of Issue', value: formatCertificationDate(cert.certifiedAt) },
+  ].filter((row) => Boolean(row.value))
+})
+
+function formatCertificationDate(iso?: string) {
+  if (!iso) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+// Details stays open — it is the spec sheet buyers scan before adding to cart.
+// Certification collapses because it is a follow-up question, not a first read.
+const certificationOpen = ref(false)
 
 const isRingProduct = computed(
   () => product.value?.category === 'Rings' || !!(productCustomizationOptions.value.ringSizes?.length),
@@ -300,82 +297,11 @@ const isNecklaceProduct = computed(() => {
   return category === 'Necklaces' || category === 'Mangal Sutra'
 })
 
-const supportsCenterStoneCustomization = computed(
-  () => !isBangleProduct.value || !!(productCustomizationOptions.value.centerShapes?.length),
-)
-
 const productCustomizationOptions = computed<ProductCustomizationOptions>(() => product.value?.customizationOptions || {})
 
-const availableDiamondQualities = computed((): string[] => [...DIAMOND_QUALITIES])
-const availableMetalPurities = computed((): string[] => [...METAL_OPTIONS])
-const availableCenterShapes = computed((): string[] => [...CENTER_SHAPES])
-// Stone sizes (dimensions) come from the live registry of sizes in use; fall
-// back to the bundled defaults only if the registry hasn't loaded / is empty.
-const availableCenterStoneSizes = computed((): string[] => {
-  const fromRegistry = stoneSizes.value.map((s) => s.value)
-  return fromRegistry.length ? fromRegistry : [...CENTER_STONE_SIZES]
-})
-// Stone types offered for this product; fall back to the bundled defaults when
-// the product doesn't define its own list.
-const availableStoneTypes = computed((): string[] => {
-  const fromProduct = productCustomizationOptions.value.stoneTypes || []
-  return fromProduct.length ? fromProduct : [...STONE_TYPES]
-})
 const availableRingSizes = computed((): string[] => [...RING_SIZES])
 const availableBangleSizes = computed((): string[] => [...BANGLE_SIZES])
 const availableNecklaceSizes = computed((): string[] => [...NECKLACE_SIZES])
-
-const allowCustomCenterStoneSize = computed(
-  () => productCustomizationOptions.value.allowCustomCenterStoneSize !== false,
-)
-
-const showCustomCenterStoneSizeInput = computed(() =>
-  allowCustomCenterStoneSize.value && isCustomCenterStoneSizeMode.value,
-)
-
-const allowCustomStoneType = computed(
-  () => productCustomizationOptions.value.allowCustomStoneType !== false,
-)
-
-const showCustomStoneTypeInput = computed(() =>
-  allowCustomStoneType.value && isCustomStoneTypeMode.value,
-)
-
-function getSwatchStyle(colorId: (typeof COLORS)[number]['id']) {
-  if (colorId === 'yellow') {
-    return {
-      background: 'linear-gradient(135deg, #f4d15f 0%, #d3a22b 55%, #fde89a 100%)',
-      borderColor: '#d3b15d',
-    }
-  }
-
-  if (colorId === 'rose') {
-    return {
-      background: 'linear-gradient(135deg, #efb1bc 0%, #c87b88 55%, #f8d7de 100%)',
-      borderColor: '#cf96a0',
-    }
-  }
-
-  if (colorId === 'white') {
-    return {
-      background: 'linear-gradient(135deg, #e5e0d8 0%, #b5ada2 50%, #f7f4ef 100%)',
-      borderColor: '#b9b0a4',
-    }
-  }
-
-  return {
-    background: 'linear-gradient(135deg, #979797 0%, #5f5f5f 55%, #cbcbcb 100%)',
-    borderColor: '#7b7b7b',
-  }
-}
-
-function deriveDefaultMetal() {
-  return productCustomizationOptions.value.metalPurities?.[0] || ''
-}
-
-function deriveDefaultDiamondQuality() {
-  return productCustomizationOptions.value.diamondQualities?.[0] || ''
-}
 
 function firstProductOption(key: keyof ProductCustomizationOptions): string {
   const arr = productCustomizationOptions.value[key]
@@ -383,77 +309,22 @@ function firstProductOption(key: keyof ProductCustomizationOptions): string {
   return ''
 }
 
-function resetSelections(item?: Product) {
-  selectedDiamondQuality.value = deriveDefaultDiamondQuality()
-  selectedColor.value = item?.color || 'yellow'
-  selectedMetal.value = deriveDefaultMetal()
-  selectedCenterShape.value = firstProductOption('centerShapes')
-  selectedCenterStoneSize.value = firstProductOption('centerStoneSizes')
-  isCustomCenterStoneSizeMode.value = false
-  selectedStoneType.value = firstProductOption('stoneTypes')
-  isCustomStoneTypeMode.value = false
+function resetSelections() {
   selectedRingSize.value = firstProductOption('ringSizes')
   selectedBangleSize.value = firstProductOption('bangleSizes')
   selectedNecklaceSize.value = firstProductOption('necklaceSizes')
-  additionalRemarks.value = ''
 }
 
-const isCustomized = computed(() => {
-  if (selectedDiamondQuality.value !== deriveDefaultDiamondQuality()) return true
-  if (selectedMetal.value !== deriveDefaultMetal()) return true
-  if (selectedCenterShape.value !== firstProductOption('centerShapes')) return true
-  if (selectedCenterStoneSize.value !== firstProductOption('centerStoneSizes')) return true
-  if (selectedStoneType.value !== firstProductOption('stoneTypes')) return true
-  if (selectedRingSize.value !== firstProductOption('ringSizes')) return true
-  if (selectedBangleSize.value !== firstProductOption('bangleSizes')) return true
-  if (selectedNecklaceSize.value !== firstProductOption('necklaceSizes')) return true
-  if (additionalRemarks.value.trim()) return true
-  return false
-})
-
-function buildCustomizationPayload(): ProductCustomization {
-  if (!isCustomized.value) {
-    return { isCustomized: false }
-  }
-
+// Metal color and size describe how the piece is made and worn, not a bespoke
+// request: they ride along with the cart line so the order records them, but
+// `isCustomized` stays unset — that flag diverts an item into the quote-only
+// checkout, and we no longer take customisation orders.
+function buildSelectionPayload(): ProductCustomization {
   return {
-    isCustomized: true,
-    diamondQuality: selectedDiamondQuality.value,
-    metalColor: colorOptions.value.find((option) => option.id === selectedColor.value)?.label || selectedColor.value,
-    metalPurity: selectedMetal.value,
-    ...(supportsCenterStoneCustomization.value ? {
-      centerShape: selectedCenterShape.value,
-      centerStoneSize: selectedCenterStoneSize.value,
-      stoneType: selectedStoneType.value,
-    } : {}),
-    ...(isRingProduct.value ? { ringSize: selectedRingSize.value } : {}),
-    ...(isBangleProduct.value ? { bangleSize: selectedBangleSize.value } : {}),
-    ...(isNecklaceProduct.value ? { necklaceSize: selectedNecklaceSize.value } : {}),
-    ...(additionalRemarks.value.trim() ? { additionalRemarks: additionalRemarks.value.trim() } : {}),
-  }
-}
-
-function handleCenterStoneSizePresetChange(event: Event) {
-  const target = event.target as HTMLSelectElement | null
-  const value = target?.value?.trim()
-  if (value === '__custom__') {
-    isCustomCenterStoneSizeMode.value = true
-    selectedCenterStoneSize.value = ''
-  } else {
-    isCustomCenterStoneSizeMode.value = false
-    selectedCenterStoneSize.value = value || ''
-  }
-}
-
-function handleStoneTypePresetChange(event: Event) {
-  const target = event.target as HTMLSelectElement | null
-  const value = target?.value?.trim()
-  if (value === '__custom__') {
-    isCustomStoneTypeMode.value = true
-    selectedStoneType.value = ''
-  } else {
-    isCustomStoneTypeMode.value = false
-    selectedStoneType.value = value || ''
+    metalColor: productColorLabel.value,
+    ...(isRingProduct.value && selectedRingSize.value ? { ringSize: selectedRingSize.value } : {}),
+    ...(isBangleProduct.value && selectedBangleSize.value ? { bangleSize: selectedBangleSize.value } : {}),
+    ...(isNecklaceProduct.value && selectedNecklaceSize.value ? { necklaceSize: selectedNecklaceSize.value } : {}),
   }
 }
 
@@ -478,14 +349,41 @@ function showNextImage() {
   activeImage.value = activeImage.value >= lastIndex ? 0 : activeImage.value + 1
 }
 
+// The rail runs horizontally under the stage on narrow screens and vertically
+// beside it from 900px up, so scroll along whichever axis actually overflows.
 function scrollThumbs(direction: 'prev' | 'next') {
-  if (!thumbsRef.value) return
-  const delta = Math.max(thumbsRef.value.clientWidth * 0.75, 180)
-  thumbsRef.value.scrollBy({
-    left: direction === 'next' ? delta : -delta,
+  const rail = thumbsRef.value
+  if (!rail) return
+  const vertical = rail.scrollHeight > rail.clientHeight + 1
+  const extent = vertical ? rail.clientHeight : rail.clientWidth
+  const delta = (direction === 'next' ? 1 : -1) * Math.max(extent * 0.75, 180)
+  rail.scrollBy({
+    [vertical ? 'top' : 'left']: delta,
     behavior: 'smooth',
   })
 }
+
+// The rail's own box changes with the viewport; its content changes with the
+// gallery. Watch both — a ResizeObserver alone misses thumbs added to a rail
+// whose height is pinned to the stage.
+let thumbsObserver: ResizeObserver | null = null
+
+watch(thumbsRef, (rail) => {
+  thumbsObserver?.disconnect()
+  thumbsObserver = null
+  if (!rail || typeof ResizeObserver === 'undefined') {
+    measureThumbsOverflow()
+    return
+  }
+  thumbsObserver = new ResizeObserver(() => measureThumbsOverflow())
+  thumbsObserver.observe(rail)
+  measureThumbsOverflow()
+})
+
+onBeforeUnmount(() => {
+  thumbsObserver?.disconnect()
+  thumbsObserver = null
+})
 
 onMounted(async () => {
   void ensureSiteConfigLoaded()
@@ -495,24 +393,22 @@ onMounted(async () => {
 watch(product, (item) => {
   activeImage.value = 0
   addedImages.value = []
-  resetSelections(item)
+  resetSelections()
   if (item) {
     setPageMeta({ title: item.title, description: item.description })
     setProductJsonLd(item)
   }
 }, { immediate: true })
 
-watch(galleryImages, (images) => {
+watch(galleryImages, async (images) => {
   if (!images.length) {
     activeImage.value = 0
-    return
+  } else if (activeImage.value >= images.length) {
+    activeImage.value = images.length - 1
   }
-  if (activeImage.value >= images.length) activeImage.value = images.length - 1
+  await nextTick()
+  measureThumbsOverflow()
 })
-
-// No watcher on selectedColor: selectColor positions the gallery itself, and the
-// default color seeded by resetSelections must leave the cover thumbnail showing.
-// watch(product) already resets activeImage when the product changes.
 
 watch(activeImage, async (index) => {
   await nextTick()
@@ -526,7 +422,7 @@ async function handleAddToCart() {
 
   addingToCart.value = true
   try {
-    await addToCart(product.value, 1, buildCustomizationPayload())
+    await addToCart(product.value, 1, buildSelectionPayload())
     added.value = true
     setTimeout(() => {
       added.value = false
@@ -555,118 +451,120 @@ async function handleAddToCart() {
 
       <section class="product-detail-hero">
         <section class="product-detail-gallery">
-          <figure
-            ref="stageRef"
-            class="product-detail-stage ect-relative ect-w-full ect-aspect-square ect-rounded-2xl ect-overflow-hidden ect-bg-champagne ect-shadow-luxe-sm ect-border ect-border-sand"
-            :class="{ 'product-detail-stage--zooming': zoomActive }"
-            @mouseenter="startZoom"
-            @mouseleave="stopZoom"
-            @mousemove="moveZoom"
-          >
-            <img
-              v-if="galleryImages[activeImage]"
-              :src="galleryImages[activeImage]"
-              :alt="product.title"
-              decoding="async"
-              class="ect-w-full ect-h-full ect-object-cover"
-            />
-            <ImageWatermark v-if="galleryImages[activeImage]" :opacity="0.5" :scale="0.1" />
-            <CertifiedBadge
-              v-if="galleryImages[activeImage]"
-              :certification="certification"
-              size="md"
-            />
-            <div
-              v-if="zoomActive && galleryImages[activeImage]"
-              class="product-detail-lens"
-              :style="lensStyle"
-              aria-hidden="true"
-            />
-            <span
-              v-if="galleryImages[activeImage]"
-              class="product-detail-zoom-hint ect-pointer-events-none ect-absolute ect-bottom-4 ect-right-4 ect-inline-flex ect-items-center ect-gap-1.5 ect-rounded-full ect-bg-white/88 ect-px-3 ect-py-1 ect-font-body ect-text-[11px] ect-font-semibold ect-text-charcoal ect-shadow-sm"
+          <div class="product-detail-gallery-layout" :class="{ 'product-detail-gallery-layout--railed': galleryImages.length > 1 }">
+            <figure
+              ref="stageRef"
+              class="product-detail-stage ect-relative ect-w-full ect-aspect-square ect-rounded-2xl ect-overflow-hidden ect-bg-champagne ect-shadow-luxe-sm ect-border ect-border-sand"
+              :class="{ 'product-detail-stage--zooming': zoomActive }"
+              @mouseenter="startZoom"
+              @mouseleave="stopZoom"
+              @mousemove="moveZoom"
             >
-              <svg class="ect-h-3.5 ect-w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
-              </svg>
-              Hover to zoom
-            </span>
-            <div v-if="galleryImages.length > 1" class="ect-pointer-events-none ect-absolute ect-inset-x-0 ect-top-0 ect-z-10 ect-flex ect-items-start ect-justify-between ect-p-4">
-              <span class="ect-pointer-events-auto ect-inline-flex ect-items-center ect-rounded-full ect-bg-white/88 ect-px-3 ect-py-1 ect-font-body ect-text-[11px] ect-font-semibold ect-text-charcoal ect-shadow-sm">
-                {{ activeImage + 1 }} / {{ galleryImages.length }}
-              </span>
-            </div>
-            <div v-if="galleryImages.length > 1" class="ect-absolute ect-inset-x-0 ect-top-1/2 ect-z-10 ect-flex ect--translate-y-1/2 ect-items-center ect-justify-between ect-px-3">
-              <button
-                type="button"
-                aria-label="Show previous image"
-                class="ect-inline-flex ect-h-10 ect-w-10 ect-items-center ect-justify-center ect-rounded-full ect-bg-white/88 ect-text-charcoal ect-shadow-md ect-transition hover:ect-bg-white"
-                @click="showPreviousImage"
+              <img
+                v-if="galleryImages[activeImage]"
+                :src="galleryImages[activeImage]"
+                :alt="product.title"
+                decoding="async"
+                class="ect-w-full ect-h-full ect-object-cover"
+              />
+              <ImageWatermark v-if="galleryImages[activeImage]" :opacity="0.5" :scale="0.1" />
+              <CertifiedBadge
+                v-if="galleryImages[activeImage]"
+                :certification="certification"
+                size="md"
+              />
+              <div
+                v-if="zoomActive && galleryImages[activeImage]"
+                class="product-detail-lens"
+                :style="lensStyle"
+                aria-hidden="true"
+              />
+              <span
+                v-if="galleryImages[activeImage]"
+                class="product-detail-zoom-hint ect-pointer-events-none ect-absolute ect-bottom-4 ect-right-4 ect-inline-flex ect-items-center ect-gap-1.5 ect-rounded-full ect-bg-white/88 ect-px-3 ect-py-1 ect-font-body ect-text-[11px] ect-font-semibold ect-text-charcoal ect-shadow-sm"
               >
-                <svg class="ect-h-4 ect-w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <svg class="ect-h-3.5 ect-w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
+                </svg>
+                Hover to zoom
+              </span>
+              <div v-if="galleryImages.length > 1" class="ect-pointer-events-none ect-absolute ect-inset-x-0 ect-top-0 ect-z-10 ect-flex ect-items-start ect-justify-between ect-p-4">
+                <span class="ect-pointer-events-auto ect-inline-flex ect-items-center ect-rounded-full ect-bg-white/88 ect-px-3 ect-py-1 ect-font-body ect-text-[11px] ect-font-semibold ect-text-charcoal ect-shadow-sm">
+                  {{ activeImage + 1 }} / {{ galleryImages.length }}
+                </span>
+              </div>
+              <div v-if="galleryImages.length > 1" class="ect-absolute ect-inset-x-0 ect-top-1/2 ect-z-10 ect-flex ect--translate-y-1/2 ect-items-center ect-justify-between ect-px-3">
+                <button
+                  type="button"
+                  aria-label="Show previous image"
+                  class="ect-inline-flex ect-h-10 ect-w-10 ect-items-center ect-justify-center ect-rounded-full ect-bg-white/88 ect-text-charcoal ect-shadow-md ect-transition hover:ect-bg-white"
+                  @click="showPreviousImage"
+                >
+                  <svg class="ect-h-4 ect-w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Show next image"
+                  class="ect-inline-flex ect-h-10 ect-w-10 ect-items-center ect-justify-center ect-rounded-full ect-bg-white/88 ect-text-charcoal ect-shadow-md ect-transition hover:ect-bg-white"
+                  @click="showNextImage"
+                >
+                  <svg class="ect-h-4 ect-w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+              </div>
+              <span v-else class="ect-w-full ect-h-full ect-flex ect-items-center ect-justify-center">
+                <svg class="ect-w-16 ect-h-16 ect-text-gold-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                </svg>
+              </span>
+            </figure>
+
+            <div v-if="galleryImages.length > 1" class="product-detail-thumbrail ect-flex ect-items-center ect-gap-2 sm:ect-gap-3">
+              <button
+                v-if="showThumbRailControls"
+                type="button"
+                aria-label="Show previous thumbnails"
+                class="ect-inline-flex ect-h-8 ect-w-8 sm:ect-h-10 sm:ect-w-10 ect-shrink-0 ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-sand ect-bg-white/90 ect-text-charcoal ect-shadow-sm ect-transition hover:ect-border-gold-300 hover:ect-bg-white"
+                @click="scrollThumbs('prev')"
+              >
+                <svg class="product-detail-thumbnav-icon ect-h-4 ect-w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
                 </svg>
               </button>
-              <button
-                type="button"
-                aria-label="Show next image"
-                class="ect-inline-flex ect-h-10 ect-w-10 ect-items-center ect-justify-center ect-rounded-full ect-bg-white/88 ect-text-charcoal ect-shadow-md ect-transition hover:ect-bg-white"
-                @click="showNextImage"
+
+              <ul
+                ref="thumbsRef"
+                class="product-detail-thumbs ect-flex ect-gap-2 sm:ect-gap-3 ect-list-none ect-m-0 ect-p-0 ect-overflow-x-auto"
               >
-                <svg class="ect-h-4 ect-w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <li v-for="(img, idx) in galleryImages" :key="`${img}-${idx}`" class="ect-shrink-0">
+                  <button
+                    type="button"
+                    :data-thumb-index="idx"
+                    @click="setActiveImage(idx)"
+                    class="ect-w-14 ect-h-14 sm:ect-w-20 sm:ect-h-20 ect-rounded-xl ect-overflow-hidden ect-border-2 ect-transition-all focus:ect-outline-none focus-visible:ect-ring-2 focus-visible:ect-ring-gold-300 focus-visible:ect-ring-offset-2"
+                    :class="activeImage === idx ? 'ect-border-gold-400 ect-shadow-sm' : 'ect-border-sand ect-opacity-75 hover:ect-border-gold-300 hover:ect-opacity-100'"
+                    :aria-current="activeImage === idx ? 'true' : undefined"
+                  >
+                    <img :src="img" :alt="`${product.title} view ${idx + 1}`" loading="lazy" decoding="async" class="ect-w-full ect-h-full ect-object-cover" />
+                  </button>
+                </li>
+              </ul>
+
+              <button
+                v-if="showThumbRailControls"
+                type="button"
+                aria-label="Show next thumbnails"
+                class="ect-inline-flex ect-h-8 ect-w-8 sm:ect-h-10 sm:ect-w-10 ect-shrink-0 ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-sand ect-bg-white/90 ect-text-charcoal ect-shadow-sm ect-transition hover:ect-border-gold-300 hover:ect-bg-white"
+                @click="scrollThumbs('next')"
+              >
+                <svg class="product-detail-thumbnav-icon ect-h-4 ect-w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                 </svg>
               </button>
             </div>
-            <span v-else class="ect-w-full ect-h-full ect-flex ect-items-center ect-justify-center">
-              <svg class="ect-w-16 ect-h-16 ect-text-gold-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-              </svg>
-            </span>
-          </figure>
-
-          <div v-if="galleryImages.length > 1" class="ect-mt-4 ect-flex ect-items-center ect-gap-2 sm:ect-gap-3">
-            <button
-              v-if="showThumbRailControls"
-              type="button"
-              aria-label="Scroll image thumbnails left"
-              class="ect-inline-flex ect-h-8 ect-w-8 sm:ect-h-10 sm:ect-w-10 ect-shrink-0 ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-sand ect-bg-white/90 ect-text-charcoal ect-shadow-sm ect-transition hover:ect-border-gold-300 hover:ect-bg-white"
-              @click="scrollThumbs('prev')"
-            >
-              <svg class="ect-h-4 ect-w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-            </button>
-
-            <ul
-              ref="thumbsRef"
-              class="product-detail-thumbs ect-flex ect-gap-2 sm:ect-gap-3 ect-list-none ect-m-0 ect-p-0 ect-overflow-x-auto"
-            >
-              <li v-for="(img, idx) in galleryImages" :key="`${img}-${idx}`" class="ect-shrink-0">
-                <button
-                  type="button"
-                  :data-thumb-index="idx"
-                  @click="setActiveImage(idx)"
-                  class="ect-w-14 ect-h-14 sm:ect-w-20 sm:ect-h-20 ect-rounded-xl ect-overflow-hidden ect-border-2 ect-transition-all focus:ect-outline-none focus-visible:ect-ring-2 focus-visible:ect-ring-gold-300 focus-visible:ect-ring-offset-2"
-                  :class="activeImage === idx ? 'ect-border-gold-400 ect-shadow-sm' : 'ect-border-sand ect-opacity-75 hover:ect-border-gold-300 hover:ect-opacity-100'"
-                  :aria-current="activeImage === idx ? 'true' : undefined"
-                >
-                  <img :src="img" :alt="`${product.title} view ${idx + 1}`" loading="lazy" decoding="async" class="ect-w-full ect-h-full ect-object-cover" />
-                </button>
-              </li>
-            </ul>
-
-            <button
-              v-if="showThumbRailControls"
-              type="button"
-              aria-label="Scroll image thumbnails right"
-              class="ect-inline-flex ect-h-8 ect-w-8 sm:ect-h-10 sm:ect-w-10 ect-shrink-0 ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-sand ect-bg-white/90 ect-text-charcoal ect-shadow-sm ect-transition hover:ect-border-gold-300 hover:ect-bg-white"
-              @click="scrollThumbs('next')"
-            >
-              <svg class="ect-h-4 ect-w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            </button>
           </div>
         </section>
 
@@ -679,12 +577,16 @@ async function handleAddToCart() {
             {{ product.title }}
           </h1>
 
-          <div v-if="reviewSummary" class="ect-flex ect-flex-wrap ect-items-center ect-gap-x-4 ect-gap-y-2 ect-mb-5">
-            <div v-if="reviewSummary" class="ect-inline-flex ect-items-center ect-gap-2 ect-text-charcoal/55">
-              <StarRating :rating="product.rating || 0" size="sm" />
-              <span class="ect-font-body ect-text-sm">{{ reviewSummary }}</span>
-            </div>
+          <div v-if="reviewSummary" class="ect-inline-flex ect-items-center ect-gap-2 ect-text-charcoal/55 ect-mb-5">
+            <StarRating :rating="product.rating || 0" size="sm" />
+            <span class="ect-font-body ect-text-sm">{{ reviewSummary }}</span>
           </div>
+
+          <p
+            class="ect-font-display ect-text-2xl sm:ect-text-3xl ect-font-light ect-text-charcoal ect-tabular-nums ect-mb-5"
+          >
+            {{ priceLabel }}
+          </p>
 
           <div v-if="productBadges.length" class="ect-flex ect-flex-wrap ect-gap-2 ect-mb-5">
             <span
@@ -703,313 +605,177 @@ async function handleAddToCart() {
             {{ product.description }}
           </p>
 
-          <section
-            v-if="productDetailRows.length || technicalDetailRows.length"
-            class="ect-mb-8 ect-bg-white ect-rounded-2xl ect-border ect-border-sand ect-shadow-card ect-p-5 sm:ect-p-6"
-          >
-            <header class="ect-mb-5">
-              <h2 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50">Product details</h2>
-            </header>
-
-            <dl v-if="productDetailRows.length" class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3">
-              <div v-for="row in productDetailRows" :key="row.label" class="ect-flex ect-flex-col ect-gap-0.5">
-                <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">
-                  <span class="ect-inline-flex ect-items-center ect-gap-1">
-                    <span>{{ row.label }}</span>
-                    <span
-                      v-if="shouldShowWeightDisclaimer(row.label)"
-                      class="ect-relative ect-inline-flex ect-items-center ect-justify-center ect-group/disclaimer"
-                    >
-                      <span
-                        class="ect-inline-flex ect-h-4 ect-w-4 ect-items-center ect-justify-center ect-text-gold-500/90"
-                        aria-label="Weight disclaimer"
-                      >
-                        <svg class="ect-h-4 ect-w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                          <path d="M11 17h2v-6h-2v6zm1-8.75a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" />
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
-                        </svg>
-                      </span>
-                      <span class="ect-pointer-events-none ect-absolute ect-bottom-full ect-left-1/2 ect-z-10 ect-mb-2 ect-w-52 -ect-translate-x-1/2 ect-rounded-xl ect-bg-charcoal ect-px-3 ect-py-2 ect-text-center ect-font-body ect-text-[11px] ect-font-normal ect-normal-case ect-leading-4 ect-tracking-normal ect-text-white ect-opacity-0 ect-shadow-lg ect-transition-opacity group-hover/disclaimer:ect-opacity-100">
-                        Weights and stone measurements may vary slightly. Photos are for representation purposes only.
-                      </span>
-                    </span>
-                  </span>
-                </dt>
-                <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
-              </div>
-            </dl>
-
-            <!-- The lab report itself, when it has been uploaded for this piece. -->
-            <a
-              v-if="certification?.fileUrl"
-              :href="certification.fileUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="ect-mt-5 ect-inline-flex ect-items-center ect-gap-2 ect-rounded-full ect-border ect-border-gold-200 ect-bg-gold-50 ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-gold-700 ect-transition-colors hover:ect-border-gold-300 hover:ect-bg-gold-100"
-            >
-              <svg class="ect-h-4 ect-w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 5.25-3.75 8.25-9 9.75C6.75 20.25 3 17.25 3 12V5.25l9-3 9 3V12z" />
-              </svg>
-              View {{ certification.lab }} certificate
-            </a>
-
-            <section class="ect-mt-5">
-              <p class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45 ect-mb-2">Metal Color</p>
-              <div class="ect-flex ect-flex-wrap ect-gap-2.5">
-                <button
-                  v-for="option in colorOptions"
-                  :key="option.id"
-                  type="button"
-                  @click="selectColor(option.id)"
-                  class="ect-flex ect-items-center ect-gap-2 ect-rounded-full ect-border ect-px-3 ect-py-1.5 ect-transition-all focus:ect-outline-none"
-                  :class="selectedColor === option.id ? 'ect-border-gold-400 ect-bg-gold-50' : 'ect-border-sand ect-bg-white hover:ect-border-gold-300 hover:ect-bg-gold-50/40'"
-                  :aria-label="option.label"
-                >
-                  <span
-                    class="ect-w-5 ect-h-5 ect-rounded-full ect-border ect-shrink-0"
-                    :style="getSwatchStyle(option.id)"
-                  />
-                  <span class="ect-font-body ect-text-xs ect-text-charcoal/75">{{ option.label }}</span>
-                </button>
-              </div>
-            </section>
-
-          </section>
-
-          <section class="customization-panel ect-rounded-2xl ect-border ect-border-sand ect-shadow-card ect-p-5 sm:ect-p-6">
-            <header class="ect-mb-6">
-              <h2 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50">Customize this piece</h2>
-              <p class="ect-mt-2 ect-max-w-xl ect-font-body ect-text-sm ect-leading-7 ect-text-charcoal/50">
-                Fine-tune the finish, stone details, and sizing before adding this piece to your cart.
-              </p>
-            </header>
-
-            <div class="ect-grid ect-grid-cols-1 md:ect-grid-cols-2 ect-gap-x-4 ect-gap-y-6">
-              <section class="ect-space-y-2">
-                <label for="diamond-quality" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-                  Diamond Quality
-                </label>
-                <div class="ect-relative">
-                  <select
-                    id="diamond-quality"
-                    v-model="selectedDiamondQuality"
-                    class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-                  >
-                    <option value="">None</option>
-                    <option v-for="quality in availableDiamondQualities" :key="quality" :value="quality">{{ quality }}</option>
-                  </select>
-                  <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                    <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                    </svg>
-                  </span>
-                </div>
-              </section>
-
-              <section class="ect-space-y-2">
-                <label for="metal-choice" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-                  Metal Purity
-                </label>
-                <div class="ect-relative">
-                  <select
-                    id="metal-choice"
-                    v-model="selectedMetal"
-                    class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-                  >
-                    <option value="">None</option>
-                    <option v-for="metal in availableMetalPurities" :key="metal" :value="metal">{{ metal }}</option>
-                  </select>
-                  <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                    <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                    </svg>
-                  </span>
-                </div>
-              </section>
-
-              <section v-if="supportsCenterStoneCustomization" class="ect-space-y-2">
-                <label for="stone-type" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-                  Stone Type
-                </label>
-                <div class="ect-grid ect-gap-2">
-                  <div class="ect-relative">
-                    <select
-                      id="stone-type"
-                      :value="availableStoneTypes.includes(selectedStoneType) && !isCustomStoneTypeMode ? selectedStoneType : (isCustomStoneTypeMode ? '__custom__' : '')"
-                      @change="handleStoneTypePresetChange"
-                      class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-                    >
-                      <option value="">None</option>
-                      <option v-for="type in availableStoneTypes" :key="type" :value="type">{{ type }}</option>
-                      <option v-if="allowCustomStoneType" value="__custom__">Custom type…</option>
-                    </select>
-                    <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                      <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                      </svg>
-                    </span>
-                  </div>
-                  <input
-                    v-if="showCustomStoneTypeInput"
-                    v-model="selectedStoneType"
-                    type="text"
-                    placeholder="Type a custom stone, e.g. Tanzanite"
-                    class="customization-control ect-w-full ect-rounded-xl ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-outline-none ect-transition-all"
-                  />
-                  <p v-if="showCustomStoneTypeInput" class="ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/40">
-                    Enter the exact stone you want.
-                  </p>
-                </div>
-              </section>
-
-              <section v-if="supportsCenterStoneCustomization" class="ect-space-y-2">
-                <label for="center-shape" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-                  Center Shape
-                </label>
-                <div class="ect-relative">
-                  <select
-                    id="center-shape"
-                    v-model="selectedCenterShape"
-                    class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-                  >
-                    <option value="">None</option>
-                    <option v-for="shape in availableCenterShapes" :key="shape" :value="shape">{{ shape }}</option>
-                  </select>
-                  <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                    <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                    </svg>
-                  </span>
-                </div>
-              </section>
-
-              <section v-if="supportsCenterStoneCustomization" class="ect-space-y-2">
-                <label for="center-stone-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-                  Center Stone Size
-                </label>
-                <div class="ect-grid ect-gap-2">
-                  <div class="ect-relative">
-                    <select
-                      id="center-stone-size"
-                      :value="availableCenterStoneSizes.includes(selectedCenterStoneSize) && !isCustomCenterStoneSizeMode ? selectedCenterStoneSize : (isCustomCenterStoneSizeMode ? '__custom__' : '')"
-                      @change="handleCenterStoneSizePresetChange"
-                      class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-                    >
-                      <option value="">None</option>
-                      <option v-for="size in availableCenterStoneSizes" :key="size" :value="size">{{ formatCenterStoneSize(size) }}</option>
-                      <option v-if="allowCustomCenterStoneSize" value="__custom__">Custom size…</option>
-                    </select>
-                    <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                      <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                      </svg>
-                    </span>
-                  </div>
-                  <input
-                    v-if="showCustomCenterStoneSizeInput"
-                    v-model="selectedCenterStoneSize"
-                    type="text"
-                    inputmode="decimal"
-                    placeholder="Type a custom size, e.g. 6 mm or 9×7 mm"
-                    class="customization-control ect-w-full ect-rounded-xl ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-outline-none ect-transition-all"
-                  />
-                  <p v-if="showCustomCenterStoneSizeInput" class="ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/40">
-                    Enter the exact size you want.
-                  </p>
-                </div>
-              </section>
-
-              <section v-if="isRingProduct" class="ect-space-y-2">
-                <label for="ring-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-                  Ring Size
-                </label>
-                <div class="ect-relative">
-                  <select
-                    id="ring-size"
-                    v-model="selectedRingSize"
-                    class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-                  >
-                    <option value="">None</option>
-                    <option v-for="size in availableRingSizes" :key="size" :value="size">{{ size }}</option>
-                  </select>
-                  <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                    <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                    </svg>
-                  </span>
-                </div>
-              </section>
-
-              <section v-if="isBangleProduct" class="ect-space-y-2">
-                <label for="bangle-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-                  Bangle Size
-                </label>
-                <div class="ect-relative">
-                  <select
-                    id="bangle-size"
-                    v-model="selectedBangleSize"
-                    class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-                  >
-                    <option value="">None</option>
-                    <option v-for="size in availableBangleSizes" :key="size" :value="size">{{ size }}</option>
-                  </select>
-                  <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                    <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                    </svg>
-                  </span>
-                </div>
-              </section>
-
-              <section v-if="isNecklaceProduct" class="ect-space-y-2">
-                <label for="necklace-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-                  Necklace Size
-                </label>
-                <div class="ect-relative">
-                  <select
-                    id="necklace-size"
-                    v-model="selectedNecklaceSize"
-                    class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-                  >
-                    <option value="">None</option>
-                    <option v-for="size in availableNecklaceSizes" :key="size" :value="size">{{ size }}</option>
-                  </select>
-                  <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                    <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                    </svg>
-                  </span>
-                </div>
-              </section>
-
-              <section class="md:ect-col-span-2 ect-space-y-2">
-                <label for="remarks" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-                  Additional Remarks
-                  <span class="ect-font-normal ect-normal-case ect-tracking-normal ect-text-charcoal/40">(optional)</span>
-                </label>
-                <p class="ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/45">
-                  Add engraving notes, special sizing guidance, or anything our team should know.
-                </p>
-                <textarea
-                  id="remarks"
-                  v-model="additionalRemarks"
-                  rows="3"
-                  placeholder="Engraving, sizing, stone preferences, or special instructions"
-                  class="customization-control ect-w-full ect-resize-none ect-rounded-xl ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-outline-none ect-transition-all"
-                ></textarea>
-              </section>
+          <!-- Size is the only variant choice: each piece is made in a single
+               metal color, stated in the spec sheet below. -->
+          <section v-if="isRingProduct" class="ect-mb-6 ect-max-w-[16rem] ect-space-y-2">
+            <label for="ring-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
+              Ring Size
+            </label>
+            <div class="ect-relative">
+              <select
+                id="ring-size"
+                v-model="selectedRingSize"
+                class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
+              >
+                <option value="">None</option>
+                <option v-for="size in availableRingSizes" :key="size" :value="size">{{ size }}</option>
+              </select>
+              <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
+                <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                </svg>
+              </span>
             </div>
           </section>
 
+          <section v-if="isBangleProduct" class="ect-mb-6 ect-max-w-[16rem] ect-space-y-2">
+            <label for="bangle-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
+              Bangle Size
+            </label>
+            <div class="ect-relative">
+              <select
+                id="bangle-size"
+                v-model="selectedBangleSize"
+                class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
+              >
+                <option value="">None</option>
+                <option v-for="size in availableBangleSizes" :key="size" :value="size">{{ size }}</option>
+              </select>
+              <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
+                <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                </svg>
+              </span>
+            </div>
+          </section>
+
+          <section v-if="isNecklaceProduct" class="ect-mb-6 ect-max-w-[16rem] ect-space-y-2">
+            <label for="necklace-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
+              Necklace Size
+            </label>
+            <div class="ect-relative">
+              <select
+                id="necklace-size"
+                v-model="selectedNecklaceSize"
+                class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
+              >
+                <option value="">None</option>
+                <option v-for="size in availableNecklaceSizes" :key="size" :value="size">{{ size }}</option>
+              </select>
+              <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
+                <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                </svg>
+              </span>
+            </div>
+          </section>
+
+          <!-- Weight, carats and the certificate sit with the price, where they
+               inform the decision. Two panels: the spec sheet is always open
+               because it is part of the buying decision, while certification
+               folds away as a follow-up question. -->
+          <div
+            v-if="hasSpecDetails || certificationRows.length"
+            class="ect-mb-6 ect-border-t ect-border-sand"
+          >
+            <section v-if="hasSpecDetails" class="ect-py-5">
+              <h2 class="ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48 ect-mb-3">Details</h2>
+
+              <dl v-if="specRows.length" class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3">
+                <div v-for="row in specRows" :key="row.label" class="ect-flex ect-flex-col ect-gap-0.5">
+                  <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">{{ row.label }}</dt>
+                  <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
+                </div>
+              </dl>
+
+              <ul
+                v-if="product.details?.length"
+                class="ect-list-none ect-m-0 ect-p-0 ect-space-y-2.5"
+                :class="specRows.length ? 'ect-mt-4' : ''"
+              >
+                <li v-for="detail in product.details" :key="detail" class="ect-flex ect-gap-2.5">
+                  <span class="ect-mt-2 ect-w-1 ect-h-1 ect-rounded-full ect-bg-gold-400 ect-shrink-0" />
+                  <span class="ect-font-body ect-text-sm ect-leading-6 ect-text-charcoal/70">{{ detail }}</span>
+                </li>
+              </ul>
+
+              <p class="ect-mt-4 ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/45">
+                Weights and stone measurements may vary slightly. Photos are for representation purposes only.
+              </p>
+            </section>
+
+            <section v-if="certificationRows.length" class="ect-border-t ect-border-sand ect-py-5">
+              <h2 class="ect-m-0">
+                <button
+                  type="button"
+                  @click="certificationOpen = !certificationOpen"
+                  :aria-expanded="certificationOpen"
+                  aria-controls="product-certification-panel"
+                  class="ect-flex ect-w-full ect-items-center ect-justify-between ect-gap-4 ect-bg-transparent ect-p-0 ect-text-left focus:ect-outline-none focus-visible:ect-ring-2 focus-visible:ect-ring-gold-300 focus-visible:ect-ring-offset-4 focus-visible:ect-ring-offset-cream"
+                >
+                  <span class="ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">Certification</span>
+                  <span
+                    class="product-detail-accordion-chevron ect-flex ect-h-7 ect-w-7 ect-shrink-0 ect-items-center ect-justify-center ect-rounded-lg ect-text-gold-700"
+                    :class="certificationOpen ? 'product-detail-accordion-chevron--open' : ''"
+                    aria-hidden="true"
+                  >
+                    <svg class="ect-h-3.5 ect-w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                    </svg>
+                  </span>
+                </button>
+              </h2>
+
+              <!-- Animated on grid-template-rows so the panel slides without a
+                   measured max-height; `inert` keeps the collapsed report link
+                   out of the tab order. -->
+              <div
+                id="product-certification-panel"
+                class="product-detail-accordion-panel"
+                :class="certificationOpen ? 'product-detail-accordion-panel--open' : ''"
+                :inert="!certificationOpen"
+              >
+                <div class="ect-overflow-hidden">
+                  <dl class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3 ect-pt-4">
+                    <div v-for="row in certificationRows" :key="row.label" class="ect-flex ect-flex-col ect-gap-0.5">
+                      <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">{{ row.label }}</dt>
+                      <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
+                    </div>
+                  </dl>
+
+                  <!-- The report itself, when the scan has been uploaded. -->
+                  <a
+                    v-if="certification?.fileUrl"
+                    :href="certification.fileUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="ect-mt-4 ect-inline-flex ect-items-center ect-gap-2 ect-rounded-full ect-border ect-border-gold-200 ect-bg-gold-50 ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-gold-700 ect-transition-colors hover:ect-border-gold-300 hover:ect-bg-gold-100"
+                  >
+                    <svg class="ect-h-4 ect-w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 5.25-3.75 8.25-9 9.75C6.75 20.25 3 17.25 3 12V5.25l9-3 9 3V12z" />
+                    </svg>
+                    View certificate
+                  </a>
+
+                  <p v-else class="ect-mt-4 ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/45">
+                    The signed report is being scanned and will appear here shortly.
+                  </p>
+                </div>
+              </div>
+            </section>
+          </div>
+
           <VolumeDiscountInfo class="ect-mt-5" label="Volume discount available" />
 
-          <div class="ect-mt-3 ect-flex ect-flex-col sm:ect-flex-row ect-items-stretch sm:ect-items-center ect-gap-3">
+          <!-- Primary action pair: a gold-edged aubergine bar with the wishlist
+               square beside it, so the two read as one unit on the cream page. -->
+          <div class="ect-mt-3 ect-flex ect-items-stretch ect-gap-3">
             <button
               type="button"
               @click="handleAddToCart"
               :disabled="addingToCart"
-              class="ect-flex-1 ect-inline-flex ect-items-center ect-justify-center ect-gap-2 ect-px-7 ect-py-3.5 ect-rounded-full ect-text-white ect-font-body ect-text-sm ect-font-semibold ect-shadow-sm ect-transition-colors"
-              :class="addingToCart ? 'ect-bg-rose-300 ect-cursor-wait' : added ? 'ect-bg-rose-700' : 'ect-bg-rose-600 hover:ect-bg-rose-700'"
+              class="ect-flex-1 ect-inline-flex ect-items-center ect-justify-center ect-gap-2.5 ect-px-7 ect-py-4 ect-rounded-lg ect-border ect-border-gold-400 ect-text-cream ect-font-body ect-text-sm ect-font-medium ect-uppercase ect-tracking-[0.18em] ect-shadow-sm ect-transition-colors"
+              :class="addingToCart ? 'ect-bg-[var(--brand)] ect-opacity-70 ect-cursor-wait' : added ? 'ect-bg-[var(--brand-ink)]' : 'ect-bg-[var(--brand)] hover:ect-bg-[var(--brand-ink)]'"
             >
               <svg v-if="!addingToCart && !added" class="ect-w-4 ect-h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272" />
@@ -1017,42 +783,35 @@ async function handleAddToCart() {
               <span v-if="addingToCart">Adding…</span>
               <span v-else>{{ added ? 'Added to Cart' : 'Add to Cart' }}</span>
             </button>
-            <RouterLink
-              v-if="added"
-              to="/cart"
-              class="ect-inline-flex ect-items-center ect-justify-center ect-px-6 ect-py-3.5 ect-rounded-full ect-border ect-border-rose-200 ect-bg-white ect-font-body ect-text-sm ect-font-semibold ect-text-rose-700 hover:ect-bg-rose-50 ect-transition-colors"
+
+            <button
+              type="button"
+              @click="handleToggleWishlist"
+              :aria-pressed="wishlisted"
+              :aria-label="wishlisted ? 'Remove from wishlist' : 'Add to wishlist'"
+              class="ect-w-14 sm:ect-w-16 ect-shrink-0 ect-inline-flex ect-items-center ect-justify-center ect-rounded-lg ect-border ect-border-gold-400 ect-bg-white ect-text-[var(--brand)] ect-shadow-sm ect-transition-colors hover:ect-bg-gold-50"
             >
-              View Cart
-            </RouterLink>
+              <svg class="ect-w-5 ect-h-5" :fill="wishlisted ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+              </svg>
+            </button>
           </div>
 
-          <p class="ect-mt-3 ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/45">
-            Product details may vary slightly. Photos are for representation purposes only.
-          </p>
+          <RouterLink
+            v-if="added"
+            to="/cart"
+            class="ect-mt-3 ect-flex ect-items-center ect-justify-center ect-px-6 ect-py-3.5 ect-rounded-lg ect-border ect-border-gold-400 ect-bg-white ect-font-body ect-text-sm ect-font-medium ect-uppercase ect-tracking-[0.18em] ect-text-[var(--brand)] hover:ect-bg-gold-50 ect-transition-colors"
+          >
+            View Cart
+          </RouterLink>
 
-          <p class="ect-mt-3 ect-mb-8 ect-font-body ect-text-xs ect-text-charcoal/45 ect-flex ect-items-center ect-gap-1.5">
+          <p class="ect-mt-4 ect-mb-8 ect-font-body ect-text-xs ect-text-charcoal/45 ect-flex ect-items-center ect-gap-1.5">
             <svg class="ect-w-3.5 ect-h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Free shipping · Insured delivery · Made to order
           </p>
         </section>
-      </section>
-
-      <section
-        v-if="product.details?.length"
-        class="ect-mt-16 ect-pt-12 ect-border-t ect-border-sand ect-grid ect-grid-cols-1 ect-gap-5"
-      >
-        <section v-if="product.details?.length" class="ect-bg-white ect-rounded-2xl ect-border ect-border-sand ect-shadow-card ect-p-5 sm:ect-p-6">
-          <h2 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-4">Product Details</h2>
-          <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-2.5">
-            <li v-for="detail in product.details" :key="detail" class="ect-flex ect-gap-2.5">
-              <span class="ect-mt-2 ect-w-1 ect-h-1 ect-rounded-full ect-bg-gold-400 ect-shrink-0" />
-              <span class="ect-font-body ect-text-sm ect-leading-6 ect-text-charcoal/70">{{ detail }}</span>
-            </li>
-          </ul>
-        </section>
-
       </section>
 
       <section v-if="SITE_SETTINGS.enableReviews" class="ect-mt-16 ect-pt-12 ect-border-t ect-border-sand">
@@ -1172,10 +931,36 @@ async function handleAddToCart() {
   display: none;
 }
 
-.customization-panel {
-  background:
-    radial-gradient(circle at top right, rgba(241, 233, 218, 0.7), transparent 28%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba(252, 251, 249, 0.97));
+.product-detail-gallery-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.product-detail-accordion-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s ease;
+}
+
+.product-detail-accordion-panel--open {
+  grid-template-rows: 1fr;
+}
+
+.product-detail-accordion-chevron {
+  background: rgba(241, 233, 218, 1);
+  transition: transform 0.28s ease;
+}
+
+.product-detail-accordion-chevron--open {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-detail-accordion-panel,
+  .product-detail-accordion-chevron {
+    transition: none;
+  }
 }
 
 .customization-control {
@@ -1232,6 +1017,44 @@ select::-ms-expand {
   .product-detail-gallery {
     position: sticky;
     top: 8rem;
+  }
+
+  /* Thumbnails move to a vertical rail on the left of the stage. The rail is
+     taken out of flow so a long list scrolls inside the stage's height instead
+     of stretching the row; the stage stays first in the DOM, so reading and tab
+     order are unchanged. */
+  .product-detail-gallery-layout {
+    display: block;
+    position: relative;
+  }
+
+  .product-detail-gallery-layout--railed .product-detail-stage {
+    width: auto;
+    margin-left: 6.5rem;
+  }
+
+  /* 5rem thumb + room for the focus ring offset so it is not clipped. */
+  .product-detail-thumbrail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 5.5rem;
+    flex-direction: column;
+  }
+
+  .product-detail-thumbs {
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    align-self: stretch;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .product-detail-thumbnav-icon {
+    transform: rotate(90deg);
   }
 }
 

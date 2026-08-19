@@ -71,6 +71,7 @@ async function fetchCatalogProductsFromDb() {
       certLab: true,
       certNumber: true,
       certFileUrl: true,
+      certifiedAt: true,
       styleTags: true,
       stoneTags: true,
       customizationOptions: true,

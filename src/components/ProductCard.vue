@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { Material, Product } from '../data/products'
+import { formatProductPrice, type Material, type Product } from '../data/products'
 import { useCart, isCustomizedCartItem } from '../composables/useCart'
 import { useWishlist } from '../composables/useWishlist'
 import CertifiedBadge from './CertifiedBadge.vue'
@@ -34,6 +34,11 @@ const cartLine = computed(() => {
 
 const cartQty = computed(() => cartLine.value?.qty ?? 0)
 const inCart = computed(() => cartQty.value > 0)
+
+// Search and chat hits arrive with either the formatted string or the numeric
+// value, so the tile resolves both through the shared catalog rule.
+const priceFields = computed(() => ({ price: props.price, priceValue: props.product?.priceValue }))
+const priceLabel = computed(() => formatProductPrice(priceFields.value))
 
 function suppressNavigation(e: Event) {
   e.preventDefault()
@@ -119,10 +124,10 @@ const PLACEHOLDER_GRADIENT = 'ect-from-champagne ect-to-cream'
         <button
           type="button"
           @click="handleWishlist"
-          class="ect-absolute ect-top-3 ect-right-3 ect-w-8 ect-h-8 ect-rounded-full ect-bg-white/90 ect-backdrop-blur-sm ect-flex ect-items-center ect-justify-center ect-shadow-sm ect-transition-all ect-duration-200 hover:ect-scale-110"
+          class="ect-absolute ect-top-3 ect-right-3 ect-w-8 ect-h-8 ect-rounded-lg ect-border ect-border-gold-400 ect-bg-white/95 ect-backdrop-blur-sm ect-flex ect-items-center ect-justify-center ect-shadow-sm ect-transition-all ect-duration-200 hover:ect-bg-gold-50"
           :aria-label="wishlisted ? 'Remove from wishlist' : 'Add to wishlist'"
         >
-          <svg class="ect-w-4 ect-h-4 ect-transition-colors" :class="wishlisted ? 'ect-text-rose-500' : 'ect-text-charcoal/45'" :fill="wishlisted ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <svg class="ect-w-4 ect-h-4 ect-text-[var(--brand)]" :fill="wishlisted ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6">
             <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
           </svg>
         </button>
@@ -135,8 +140,18 @@ const PLACEHOLDER_GRADIENT = 'ect-from-champagne ect-to-cream'
       </h3>
     </RouterLink>
 
-    <!-- Product action -->
-    <section class="ect-mt-1.5 ect-flex ect-items-center ect-justify-end ect-gap-2">
+    <!-- The price takes its own line and the action spans the tile: at wide tile
+         widths a shared row left the two drifting apart with a gap in between,
+         and the full-width bar gives the label room at every breakpoint instead
+         of collapsing to an unlabelled icon on phones. `mt-auto` keeps the block
+         pinned to the bottom so tiles with a two-line title stay aligned. -->
+    <section class="ect-mt-auto ect-pt-2.5 ect-flex ect-flex-col ect-gap-2.5">
+      <p
+        class="ect-font-body ect-text-base ect-font-medium ect-tracking-[0.03em] ect-text-charcoal ect-tabular-nums ect-whitespace-nowrap"
+      >
+        {{ priceLabel }}
+      </p>
+
       <!-- In the bag: an editable quantity control, so the running count is
            visible on the catalog and buyers can type a bulk figure, adjust it,
            or drop the line without opening the cart. -->
@@ -153,19 +168,19 @@ const PLACEHOLDER_GRADIENT = 'ect-from-champagne ect-to-cream'
         @click="handleAddToCart"
         :aria-label="cartLoading ? 'Adding to cart' : 'Add to cart'"
         :disabled="cartLoading"
-        class="ect-shrink-0 ect-w-9 ect-h-9 sm:ect-w-auto sm:ect-h-auto sm:ect-px-3.5 sm:ect-py-2 ect-rounded-lg ect-flex ect-items-center ect-justify-center sm:ect-gap-1.5 ect-font-body ect-text-sm ect-font-semibold ect-tracking-wide ect-transition-all ect-duration-200 focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400 focus:ect-ring-offset-1"
+        class="ect-w-full ect-h-10 ect-rounded-lg ect-border ect-border-gold-400 ect-flex ect-items-center ect-justify-center ect-gap-2 ect-font-body ect-text-[11px] ect-font-medium ect-uppercase ect-tracking-[0.16em] ect-transition-colors ect-duration-200 focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400 focus:ect-ring-offset-1"
         :class="cartLoading
-          ? 'ect-bg-charcoal/70 ect-text-white ect-cursor-wait'
-          : 'ect-bg-charcoal ect-text-white hover:ect-bg-noir'"
+          ? 'ect-bg-[var(--brand)] ect-opacity-70 ect-text-cream ect-cursor-wait'
+          : 'ect-bg-[var(--brand)] ect-text-cream hover:ect-bg-[var(--brand-ink)]'"
       >
         <svg v-if="cartLoading" class="ect-w-4 ect-h-4 ect-shrink-0 ect-animate-spin" fill="none" viewBox="0 0 24 24">
           <circle class="ect-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3.5" />
           <path class="ect-opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z" />
         </svg>
-        <svg v-else class="ect-w-[18px] ect-h-[18px] ect-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6">
+        <svg v-else class="ect-w-4 ect-h-4 ect-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
         </svg>
-        <span class="ect-hidden sm:ect-inline">{{ cartLoading ? 'Adding...' : 'Add to Bag' }}</span>
+        <span>{{ cartLoading ? 'Adding…' : 'Add to Bag' }}</span>
       </button>
     </section>
   </article>

@@ -134,10 +134,12 @@ function normalizeProductAttributes(input) {
 function normalizeCertification(dbProduct) {
   const lab = String(dbProduct?.certLab || '').trim()
   if (!lab) return undefined
+  const certifiedAt = dbProduct?.certifiedAt ? new Date(dbProduct.certifiedAt) : null
   return {
     lab,
     number: String(dbProduct?.certNumber || '').trim(),
     fileUrl: String(dbProduct?.certFileUrl || '').trim(),
+    certifiedAt: certifiedAt && !Number.isNaN(certifiedAt.getTime()) ? certifiedAt.toISOString() : '',
   }
 }
 
