@@ -7,6 +7,19 @@ import {
   createServiceRequestRecord,
   toServiceRequestPayload,
 } from '../server/api/service-requests.js'
+import {
+  createSignupRequestRecord,
+  notifySignupRequested,
+  toSignupRequestPayload,
+} from '../server/api/signup-requests.js'
+import {
+  MemoError,
+  createMemo,
+  getMemoOutstandingPaise,
+  getMemoCustomer,
+  formatMemoMoney,
+  toMemoPayload,
+} from '../server/api/memo.js'
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto'
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
@@ -73,6 +86,9 @@ function toUserPayload(customer) {
     email: customer.email,
     isInternal: Boolean(customer.isInternal),
     isAdmin: Boolean(customer.isAdmin),
+    canMemo: Boolean(customer.canMemo),
+    memoLimitPaise: customer.memoLimitPaise ?? null,
+    memoDays: customer.memoDays ?? 30,
   }
 }
 
@@ -297,35 +313,40 @@ function normalizeGroupName(input) {
   return name.slice(0, 60)
 }
 
+// Sign-up is approval-gated: this records a SignupRequest and returns no
+// session. A Full Admin turns it into a real User from the internal workspace
+// (api/internal.js, resource=signup-requests) — see server/api/signup-requests.js.
 async function handleSignup(res, body) {
-  const name = String(body?.name || '').trim()
-  const email = String(body?.email || '')
-    .trim()
-    .toLowerCase()
-  const password = String(body?.password || '')
-  if (!email) return res.status(400).json({ message: 'Email is required.' })
-  if (password.length < 8)
-    return res.status(400).json({ message: 'Password must be at least 8 characters.' })
+  const result = await createSignupRequestRecord({ body })
+  if (result.error) return res.status(400).json({ message: result.error })
 
-  const [firstName, ...rest] = name.split(/\s+/).filter(Boolean)
-  const lastName = rest.join(' ')
-  const customer = await prisma.user.upsert({
-    where: { email },
-    update: {
-      firstName: firstName || undefined,
-      lastName: lastName || undefined,
-      passwordHash: hashPassword(password),
-      ...(isInternalEmail(email) ? { isInternal: true } : {}),
-    },
-    create: {
-      email,
-      firstName: firstName || undefined,
-      lastName: lastName || undefined,
-      passwordHash: hashPassword(password),
-      isInternal: isInternalEmail(email),
-    },
+  // Notifications must never fail the submission the applicant just made.
+  try {
+    await notifySignupRequested(result.request)
+  } catch (err) {
+    console.error('[account] Sign-up notification failed:', err?.message || err)
+  }
+
+  return res.status(200).json({
+    request: toSignupRequestPayload(result.request),
+    message:
+      'Thank you. Your sign-up request is with our team — we will email you as soon as it is approved.',
   })
-  return res.status(200).json({ user: toUserPayload(customer) })
+}
+
+// Where an email has a request but no account yet, say so instead of the
+// generic "user not found", so applicants are not left guessing.
+async function describePendingSignup(email) {
+  const request = await prisma.signupRequest.findFirst({
+    where: { email, status: { in: ['PENDING', 'REJECTED'] } },
+    orderBy: { createdAt: 'desc' },
+    select: { reference: true, status: true },
+  })
+  if (!request) return null
+  if (request.status === 'PENDING') {
+    return `Your sign-up request (${request.reference}) is awaiting approval. We will email you once it is approved.`
+  }
+  return `Your sign-up request (${request.reference}) was not approved. Please contact us if you think this was a mistake.`
 }
 
 async function handleSignin(res, body) {
@@ -336,7 +357,11 @@ async function handleSignin(res, body) {
   if (!email) return res.status(400).json({ message: 'Email is required.' })
   if (!password) return res.status(400).json({ message: 'Password is required.' })
   let customer = await prisma.user.findUnique({ where: { email } })
-  if (!customer) return res.status(404).json({ message: 'User not found. Please sign up first.' })
+  if (!customer) {
+    const pending = await describePendingSignup(email)
+    if (pending) return res.status(403).json({ message: pending })
+    return res.status(404).json({ message: 'User not found. Please sign up first.' })
+  }
   if (!customer.passwordHash || !verifyPassword(password, customer.passwordHash)) {
     return res.status(401).json({ message: 'Invalid email or password.' })
   }
@@ -618,6 +643,120 @@ function describeFailure(err) {
   return { error: err?.name || 'Error', reason, code: pCode }
 }
 
+// --- Memo (consignment) ---------------------------------------------------
+// Goods leave without payment, so the permission and the limit are enforced
+// here, server-side; the checkout button only mirrors what this allows.
+
+function memoErrorResponse(res, err) {
+  if (err instanceof MemoError) {
+    return res.status(err.status).json({ message: err.message, code: err.code })
+  }
+  throw err
+}
+
+async function handleGetMemos(res, customerId) {
+  if (!customerId) return res.status(400).json({ message: 'userId is required.' })
+  const customer = await getMemoCustomer(customerId)
+  if (!customer) return res.status(404).json({ message: 'User not found.' })
+
+  const memos = await prisma.memo.findMany({
+    where: { customerId },
+    include: { items: { orderBy: { createdAt: 'asc' } } },
+    orderBy: { issuedAt: 'desc' },
+  })
+  const outstandingPaise = await getMemoOutstandingPaise(customerId)
+  const limitPaise = customer.memoLimitPaise ?? null
+
+  return res.status(200).json({
+    canMemo: Boolean(customer.canMemo),
+    memoDays: customer.memoDays ?? 30,
+    limitPaise,
+    formattedLimit: limitPaise == null ? null : formatMemoMoney(limitPaise),
+    outstandingPaise,
+    formattedOutstanding: formatMemoMoney(outstandingPaise),
+    availablePaise: limitPaise == null ? null : Math.max(limitPaise - outstandingPaise, 0),
+    memos: memos.map((memo) => toMemoPayload(memo)),
+  })
+}
+
+async function handlePostMemo(res, customerId, body) {
+  if (!customerId) return res.status(400).json({ message: 'userId is required.' })
+
+  const cart = await resolveCart(customerId, String(body?.cartId || '').trim())
+  const rows = await prisma.cartItem.findMany({
+    where: { cartId: cart.id },
+    include: {
+      variant: {
+        include: {
+          product: {
+            include: {
+              variants: { where: { active: true }, orderBy: { listPricePaise: 'asc' } },
+              priceBookMap: {
+                where: { minQty: { lte: 1 }, priceBook: { active: true, channel: 'B2C' } },
+                include: { priceBook: true },
+                orderBy: [{ minQty: 'asc' }, { validFrom: 'desc' }],
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  if (!rows.length) return res.status(400).json({ message: 'Your cart is empty.' })
+
+  // A customized piece does not exist yet, so it cannot physically go out on
+  // memo — those lines still have to go through the quote flow.
+  const customized = rows.find((row) => normalizeCustomization(row.customization)?.isCustomized)
+  if (customized) {
+    return res.status(400).json({
+      message: `"${customized.variant.product.title}" is a customized piece and cannot go out on memo.`,
+      code: 'MEMO_CUSTOMIZED_ITEM',
+    })
+  }
+
+  const lines = rows.map((row) => {
+    const presented = toApiProduct(row.variant.product, row.variant)
+    return {
+      variantId: row.variantId,
+      titleSnapshot: row.variant.product.title,
+      pricePaise: Number(presented.priceValue) || row.variant.listPricePaise || 0,
+      qty: row.qty,
+    }
+  })
+
+  let memo
+  try {
+    memo = await createMemo({
+      customerId,
+      lines,
+      shipTo: normalizeMemoShipTo(body?.shipTo),
+      notes: String(body?.notes || '').trim(),
+      actorId: customerId,
+      currency: rows[0].variant.currency || 'USD',
+    })
+  } catch (err) {
+    return memoErrorResponse(res, err)
+  }
+
+  // The pieces are out, so they leave the cart the same way a placed order
+  // would clear it.
+  await prisma.cartItem.deleteMany({ where: { cartId: cart.id } })
+
+  return res.status(201).json({ memo: toMemoPayload(memo), cartId: cart.id, items: [] })
+}
+
+function normalizeMemoShipTo(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const allowed = ['name', 'email', 'phone', 'address', 'city', 'state', 'country', 'pincode']
+  const out = {}
+  for (const key of allowed) {
+    const value = typeof input[key] === 'string' ? input[key].trim() : ''
+    if (value) out[key] = value
+  }
+  return Object.keys(out).length ? out : null
+}
+
 export default async function handler(req, res) {
   const preflight = handlePreflight(req, res)
   if (preflight) return preflight
@@ -632,6 +771,7 @@ export default async function handler(req, res) {
       if (mode === 'profile') return await handleGetProfile(res, userId)
       if (mode === 'cart') return await handleGetCart(res, userId)
       if (mode === 'wishlist') return await handleGetWishlist(res, userId)
+      if (mode === 'memos') return await handleGetMemos(res, userId)
       return res.status(400).json({ message: 'Invalid mode for GET.' })
     }
 
@@ -643,6 +783,7 @@ export default async function handler(req, res) {
       if (mode === 'change-password') return await handleChangePassword(res, userId, body)
       if (mode === 'cart') return await handlePostCart(res, userId, body)
       if (mode === 'wishlist') return await handlePostWishlist(res, userId, body)
+      if (mode === 'memo') return await handlePostMemo(res, userId, body)
       if (mode === 'service-request') return await handlePostServiceRequest(res, body)
       if (mode === 'service-upload') return await handlePostServiceUpload(res, body)
       return res.status(400).json({ message: 'Invalid mode for POST.' })

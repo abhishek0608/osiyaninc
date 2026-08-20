@@ -8,9 +8,11 @@ const { activeTabId } = useInternalWorkspaceTab()
 
 const tabs: { id: InternalWorkspaceTabId; label: string }[] = [
   { id: 'orders', label: 'Orders' },
+  { id: 'memos', label: 'Memos' },
   { id: 'quotes', label: 'Quotes' },
   { id: 'services', label: 'Services' },
   { id: 'users', label: 'Users' },
+  { id: 'approvals', label: 'Approvals' },
   { id: 'products', label: 'Products' },
   { id: 'homepage', label: 'Homepage' },
   { id: 'about', label: 'About page' },

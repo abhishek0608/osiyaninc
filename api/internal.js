@@ -35,6 +35,23 @@ import {
   createServiceRequestRecord,
   toServiceRequestPayload,
 } from '../server/api/service-requests.js'
+import {
+  MemoError,
+  OPEN_MEMO_STATUSES,
+  MEMO_STATUSES,
+  cancelMemo,
+  convertMemoToOrder,
+  formatMemoMoney,
+  getMemoOutstandingPaise,
+  returnMemoItems,
+  toMemoPayload,
+} from '../server/api/memo.js'
+import {
+  approveSignupRequest,
+  notifySignupReviewed,
+  rejectSignupRequest,
+  toSignupRequestPayload,
+} from '../server/api/signup-requests.js'
 
 // This file is a single Vercel serverless function that fans out to the
 // internal-admin resources by `?resource=` (product, homepage-slides,
@@ -114,6 +131,9 @@ async function buildDashboardPayload() {
         lastName: true,
         isInternal: true,
         isAdmin: true,
+        canMemo: true,
+        memoLimitPaise: true,
+        memoDays: true,
         channel: true,
         createdById: true,
         updatedById: true,
@@ -186,6 +206,10 @@ async function buildDashboardPayload() {
       email: user.email || '',
       isInternal: user.isInternal,
       isAdmin: user.isAdmin,
+      canMemo: user.canMemo,
+      canMemo: user.canMemo,
+      memoLimitPaise: user.memoLimitPaise,
+      memoDays: user.memoDays,
       channel: user.channel,
       orderCount: user._count.orders,
       // A user with no recorded creator self-registered through the storefront.
@@ -220,7 +244,7 @@ async function handleUpdateUserRole(res, requesterId, body) {
 
   const target = await prisma.user.findUnique({
     where: { id: targetUserId },
-    select: { id: true, isInternal: true, isAdmin: true },
+    select: { id: true, isInternal: true, isAdmin: true, canMemo: true, memoLimitPaise: true, memoDays: true },
   })
   if (!target) return res.status(404).json({ message: 'User not found.' })
 
@@ -235,10 +259,57 @@ async function handleUpdateUserRole(res, requesterId, body) {
     return res.status(400).json({ message: 'You cannot remove your own admin access.' })
   }
 
+  // Memo (consignment) permission — goods can leave without payment, so only a
+  // full admin sets it, along with the cap on value out at any one time.
+  const nextCanMemo = typeof body?.canMemo === 'boolean' ? body.canMemo : target.canMemo
+
+  let nextMemoLimit = target.memoLimitPaise
+  if ('memoLimitPaise' in (body || {})) {
+    const raw = body.memoLimitPaise
+    if (raw === null || raw === '') {
+      nextMemoLimit = null // uncapped
+    } else {
+      const parsed = Math.round(Number(raw))
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return res.status(400).json({ message: 'Memo limit must be a positive amount, or blank for no limit.' })
+      }
+      nextMemoLimit = parsed
+    }
+  }
+
+  let nextMemoDays = target.memoDays
+  if ('memoDays' in (body || {})) {
+    const parsed = Math.floor(Number(body.memoDays))
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 365) {
+      return res.status(400).json({ message: 'Memo period must be between 1 and 365 days.' })
+    }
+    nextMemoDays = parsed
+  }
+
+  // Revoking memo while pieces are still out would strand them with no way to
+  // reconcile, so the open memos have to be closed first.
+  if (target.canMemo && !nextCanMemo) {
+    const openMemos = await prisma.memo.count({
+      where: { customerId: targetUserId, status: { in: OPEN_MEMO_STATUSES } },
+    })
+    if (openMemos > 0) {
+      return res.status(400).json({
+        message: `This user still has ${openMemos} open memo${openMemos === 1 ? '' : 's'}. Close ${openMemos === 1 ? 'it' : 'them'} before revoking memo access.`,
+      })
+    }
+  }
+
   const updated = await prisma.user.update({
     where: { id: targetUserId },
-    data: { isInternal: nextInternal, isAdmin: nextAdmin, updatedById: admin.id },
-    select: { id: true, isInternal: true, isAdmin: true },
+    data: {
+      isInternal: nextInternal,
+      isAdmin: nextAdmin,
+      canMemo: nextCanMemo,
+      memoLimitPaise: nextMemoLimit,
+      memoDays: nextMemoDays,
+      updatedById: admin.id,
+    },
+    select: { id: true, isInternal: true, isAdmin: true, canMemo: true, memoLimitPaise: true, memoDays: true },
   })
   return res.status(200).json({ user: updated })
 }
@@ -453,6 +524,199 @@ async function handleOrdersListResource(req, res, body) {
 }
 
 // ---------------------------------------------------------------------------
+// Memos (resource=memos-list, resource=memo)
+// A memo is stock sitting with a customer, unpaid — the list exists so staff
+// can see what is out, what is overdue, and close it out (return or convert).
+// ---------------------------------------------------------------------------
+
+const MEMO_PAGE_SIZE = 50
+
+function memoCustomerName(customer) {
+  return (
+    [customer?.firstName, customer?.lastName].filter(Boolean).join(' ').trim() ||
+    customer?.email ||
+    'Customer'
+  )
+}
+
+async function handleMemosListResource(req, res, body) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET,OPTIONS')
+    return res.status(405).json({ message: 'Method not allowed' })
+  }
+
+  const userId = String(req?.query?.userId || body?.userId || '').trim()
+
+  try {
+    const internalUser = await assertInternalUser(userId)
+    if (!internalUser) return res.status(403).json({ message: 'Internal access required.' })
+
+    const search = String(req?.query?.search || '').trim()
+    const statusFilter = String(req?.query?.status || '').trim().toUpperCase()
+    const skip = Math.max(Number(req?.query?.skip) || 0, 0)
+
+    const where = {}
+    if (search) {
+      where.OR = [
+        { memoNo: { contains: search, mode: 'insensitive' } },
+        { customer: { email: { contains: search, mode: 'insensitive' } } },
+        { customer: { firstName: { contains: search, mode: 'insensitive' } } },
+        { customer: { lastName: { contains: search, mode: 'insensitive' } } },
+      ]
+    }
+    // OVERDUE is not a stored status — it is an open memo past its due date.
+    if (statusFilter === 'OVERDUE') {
+      where.status = { in: OPEN_MEMO_STATUSES }
+      where.dueDate = { lt: new Date() }
+    } else if (statusFilter === 'OPEN') {
+      where.status = { in: OPEN_MEMO_STATUSES }
+    } else if (MEMO_STATUSES.includes(statusFilter)) {
+      where.status = statusFilter
+    }
+
+    const [rows, total, openRows] = await Promise.all([
+      prisma.memo.findMany({
+        where,
+        skip,
+        take: MEMO_PAGE_SIZE,
+        orderBy: { issuedAt: 'desc' },
+        include: {
+          customer: { select: { id: true, email: true, firstName: true, lastName: true } },
+          items: { orderBy: { createdAt: 'asc' } },
+        },
+      }),
+      prisma.memo.count({ where }),
+      prisma.memo.findMany({
+        where: { status: { in: OPEN_MEMO_STATUSES } },
+        select: { dueDate: true, items: { select: { pricePaise: true, qty: true, returnedQty: true, convertedQty: true } } },
+      }),
+    ])
+
+    const actorMap = await resolveActorMap(rows.flatMap((m) => [m.createdById, m.updatedById]))
+    const memos = rows.map((memo) =>
+      toMemoPayload(memo, {
+        customerId: memo.customer?.id || null,
+        customer: memoCustomerName(memo.customer),
+        customerEmail: memo.customer?.email || '',
+        itemCount: memo.items.reduce((sum, item) => sum + item.qty, 0),
+        // A memo with no recorded actor was raised by the customer at checkout.
+        createdBy: actorName(actorMap, memo.createdById) || memoCustomerName(memo.customer),
+        modifiedBy: actorName(actorMap, memo.updatedById),
+        modifiedAt: memo.updatedAt,
+      }),
+    )
+
+    // Headline numbers for the tab: value out, and how much of it is late.
+    let outstandingPaise = 0
+    let overduePaise = 0
+    let overdueCount = 0
+    const now = Date.now()
+    for (const memo of openRows) {
+      const value = memo.items.reduce(
+        (sum, item) => sum + item.pricePaise * Math.max(item.qty - item.returnedQty - item.convertedQty, 0),
+        0,
+      )
+      outstandingPaise += value
+      if (new Date(memo.dueDate).getTime() < now) {
+        overduePaise += value
+        overdueCount += 1
+      }
+    }
+
+    return res.status(200).json({
+      memos,
+      total,
+      hasMore: skip + rows.length < total,
+      summary: {
+        openCount: openRows.length,
+        outstandingPaise,
+        formattedOutstanding: formatMemoMoney(outstandingPaise),
+        overdueCount,
+        overduePaise,
+        formattedOverdue: formatMemoMoney(overduePaise),
+      },
+    })
+  } catch (err) {
+    console.error('Internal memos list failed:', err)
+    return res.status(500).json({ message: 'Unable to load memos.' })
+  }
+}
+
+async function handleMemoResource(req, res, body) {
+  const userId = String(req?.query?.userId || body?.userId || '').trim()
+
+  try {
+    const internalUser = await assertInternalUser(userId)
+    if (!internalUser) return res.status(403).json({ message: 'Internal access required.' })
+
+    const memoId = String(req?.query?.memoId || body?.memoId || '').trim()
+    if (!memoId) return res.status(400).json({ message: 'memoId is required.' })
+
+    if (req.method === 'GET') {
+      const memo = await prisma.memo.findUnique({
+        where: { id: memoId },
+        include: {
+          customer: { select: { id: true, email: true, firstName: true, lastName: true, memoLimitPaise: true } },
+          items: { orderBy: { createdAt: 'asc' } },
+          order: { select: { id: true, orderNo: true, status: true } },
+        },
+      })
+      if (!memo) return res.status(404).json({ message: 'Memo not found.' })
+      const outstandingPaise = await getMemoOutstandingPaise(memo.customerId)
+      const actorMap = await resolveActorMap([memo.createdById, memo.updatedById])
+      return res.status(200).json({
+        memo: toMemoPayload(memo, {
+          customerId: memo.customer?.id || null,
+          customer: memoCustomerName(memo.customer),
+          customerEmail: memo.customer?.email || '',
+          customerOutstandingPaise: outstandingPaise,
+          customerFormattedOutstanding: formatMemoMoney(outstandingPaise, memo.currency),
+          customerLimitPaise: memo.customer?.memoLimitPaise ?? null,
+          order: memo.order || null,
+          createdBy: actorName(actorMap, memo.createdById) || memoCustomerName(memo.customer),
+          modifiedBy: actorName(actorMap, memo.updatedById),
+          modifiedAt: memo.updatedAt,
+        }),
+      })
+    }
+
+    if (req.method === 'POST') {
+      const action = String(req?.query?.action || body?.action || '').trim().toLowerCase()
+      // Lines are optional: omitting them acts on everything still out, which is
+      // the common "all of it came back" / "they bought the lot" case.
+      const lines = Array.isArray(body?.lines) ? body.lines : null
+
+      if (action === 'return') {
+        const memo = await returnMemoItems({ memoId, lines, actorId: internalUser.id })
+        return res.status(200).json({ memo: toMemoPayload(memo) })
+      }
+      if (action === 'convert') {
+        const result = await convertMemoToOrder({ memoId, lines, actorId: internalUser.id })
+        return res.status(200).json({
+          memo: toMemoPayload(result.memo),
+          order: result.order,
+          invoice: result.invoice,
+        })
+      }
+      if (action === 'cancel') {
+        const memo = await cancelMemo({ memoId, actorId: internalUser.id })
+        return res.status(200).json({ memo: toMemoPayload(memo) })
+      }
+      return res.status(400).json({ message: 'Unknown memo action.' })
+    }
+
+    res.setHeader('Allow', 'GET,POST,OPTIONS')
+    return res.status(405).json({ message: 'Method not allowed' })
+  } catch (err) {
+    if (err instanceof MemoError) {
+      return res.status(err.status).json({ message: err.message, code: err.code })
+    }
+    console.error('Internal memo action failed:', err)
+    return res.status(500).json({ message: 'Unable to update memo.' })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Users list (resource=users-list) — paginated + searchable
 // ---------------------------------------------------------------------------
 
@@ -496,6 +760,7 @@ async function handleUsersListResource(req, res, body) {
           lastName: true,
           isInternal: true,
           isAdmin: true,
+          canMemo: true,
           channel: true,
           createdById: true,
           updatedById: true,
@@ -2117,6 +2382,129 @@ async function handleProductCertificateResource(req, res, body) {
 }
 
 // ---------------------------------------------------------------------------
+// Sign-up approvals (resource=signup-requests)
+//
+// Storefront sign-ups land in SignupRequest rather than User (see
+// server/api/signup-requests.js). Any internal user can read the queue; only a
+// Full Admin may approve or reject, and approving is what actually creates the
+// account, its address and its company record.
+// ---------------------------------------------------------------------------
+
+const SIGNUP_REQUEST_PAGE_SIZE = 50
+
+async function handleSignupRequestsResource(req, res, body) {
+  const userId = String(req?.query?.userId || body?.userId || '').trim()
+
+  try {
+    if (req.method === 'GET') {
+      const internalUser = await assertInternalUser(userId)
+      if (!internalUser) return res.status(403).json({ message: 'Internal access required.' })
+
+      const reference = String(req?.query?.reference || '').trim()
+      if (reference) {
+        const request = await prisma.signupRequest.findUnique({ where: { reference } })
+        if (!request) return res.status(404).json({ message: 'Sign-up request not found.' })
+        const actorMap = await resolveActorMap([request.reviewedById])
+        return res.status(200).json({
+          request: {
+            ...toSignupRequestPayload(request),
+            reviewedBy: actorName(actorMap, request.reviewedById),
+          },
+        })
+      }
+
+      const status = String(req?.query?.status || '').trim().toUpperCase()
+      const search = String(req?.query?.search || '').trim()
+      const skip = Math.max(Number(req?.query?.skip) || 0, 0)
+
+      const where = {}
+      if (['PENDING', 'APPROVED', 'REJECTED'].includes(status)) where.status = status
+      if (search) {
+        where.OR = [
+          { email: { contains: search, mode: 'insensitive' } },
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } },
+          { companyName: { contains: search, mode: 'insensitive' } },
+          { taxId: { contains: search, mode: 'insensitive' } },
+          { reference: { contains: search, mode: 'insensitive' } },
+        ]
+      }
+
+      const [rows, total, pendingCount] = await Promise.all([
+        prisma.signupRequest.findMany({
+          where,
+          skip,
+          take: SIGNUP_REQUEST_PAGE_SIZE,
+          // Requests still awaiting a decision sort to the top of the queue.
+          orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+        }),
+        prisma.signupRequest.count({ where }),
+        prisma.signupRequest.count({ where: { status: 'PENDING' } }),
+      ])
+
+      const actorMap = await resolveActorMap(rows.map((row) => row.reviewedById))
+      const requests = rows.map((row) => ({
+        ...toSignupRequestPayload(row),
+        reviewedBy: actorName(actorMap, row.reviewedById),
+      }))
+
+      return res.status(200).json({
+        requests,
+        total,
+        pendingCount,
+        hasMore: skip + rows.length < total,
+      })
+    }
+
+    if (req.method === 'POST') {
+      const admin = await assertAdminUser(userId)
+      if (!admin) return res.status(403).json({ message: 'Full Admin access required.' })
+
+      const reference = String(body?.reference || '').trim()
+      const action = String(body?.action || '').trim().toLowerCase()
+      if (!reference) return res.status(400).json({ message: 'reference is required.' })
+      if (action !== 'approve' && action !== 'reject') {
+        return res.status(400).json({ message: 'action must be approve or reject.' })
+      }
+
+      const result =
+        action === 'approve'
+          ? await approveSignupRequest({
+              reference,
+              adminId: admin.id,
+              channel: body?.channel,
+              role: body?.role,
+              note: body?.note,
+            })
+          : await rejectSignupRequest({ reference, adminId: admin.id, note: body?.note })
+
+      if (result.error) return res.status(result.status || 400).json({ message: result.error })
+
+      // Telling the applicant is best effort; the decision is already saved.
+      try {
+        await notifySignupReviewed(result.request)
+      } catch (err) {
+        console.error('[internal] Sign-up decision email failed:', err?.message || err)
+      }
+
+      const actorMap = await resolveActorMap([result.request.reviewedById])
+      return res.status(200).json({
+        request: {
+          ...toSignupRequestPayload(result.request),
+          reviewedBy: actorName(actorMap, result.request.reviewedById),
+        },
+      })
+    }
+
+    res.setHeader('Allow', 'GET,POST,OPTIONS')
+    return res.status(405).json({ message: 'Method not allowed' })
+  } catch (err) {
+    console.error('Internal signup-requests resource failed:', err)
+    return res.status(500).json({ message: 'Sign-up request operation failed.' })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
 
@@ -2133,6 +2521,8 @@ export default async function handler(req, res) {
   if (resource === 'users-list') return handleUsersListResource(req, res, body)
   if (resource === 'user-create') return handleUserCreateResource(req, res, body)
   if (resource === 'order-create') return handleOrderCreateResource(req, res, body)
+  if (resource === 'memos-list') return handleMemosListResource(req, res, body)
+  if (resource === 'memo') return handleMemoResource(req, res, body)
   if (resource === 'product') return handleProductResource(req, res, body)
   if (resource === 'homepage-slides') return handleSlidesResource(req, res, body)
   if (resource === 'site-config') return handleSiteConfigResource(req, res, body)
@@ -2141,5 +2531,6 @@ export default async function handler(req, res) {
   if (resource === 'product-image') return handleProductImageResource(req, res, body)
   if (resource === 'product-certificate') return handleProductCertificateResource(req, res, body)
   if (resource === 'services') return handleServicesResource(req, res, body)
+  if (resource === 'signup-requests') return handleSignupRequestsResource(req, res, body)
   return handleDashboardResource(req, res, body)
 }

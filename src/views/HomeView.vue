@@ -88,21 +88,21 @@ function subscribe() {
 .home-hero img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .unseen-section { display: grid; grid-template-columns: 1fr 1fr; height: 1008px; }
 .unseen-copy { padding: 102px clamp(42px, 6vw, 78px) 80px; }
-.unseen-copy h1 { margin: 0; font-size: clamp(48px, 4.4vw, 56px); line-height: 1.22; font-weight: 700; letter-spacing: 0; }
+.unseen-copy h1 { margin: 0; font-family: var(--font-display); font-size: clamp(48px, 4.4vw, 56px); line-height: 1.22; font-weight: 300; letter-spacing: .01em; }
 .unseen-body { width: 368px; max-width: 100%; margin: 126px auto 0; }
 .unseen-body p { margin: 0 0 35px; font-size: 24px; line-height: 1.44; }
 .unseen-image { width: 100%; height: 1008px; object-fit: cover; }
 .yoga-section { display: grid; grid-template-columns: 1fr 1fr; min-height: 912px; background: #3f7652; }
 .yoga-section article { padding: 142px clamp(36px, 5.5vw, 70px); display: flex; flex-direction: column; align-items: flex-start; }
-.yoga-section h2, .little-section h2 { margin: 0; font-size: clamp(94px, 10.8vw, 138px); line-height: .8; letter-spacing: -.065em; font-weight: 700; }
-.catalog-button { margin-top: 96px; margin-left: auto; width: 188px; height: 73px; display: grid; place-items: center; background: #000; color: #fff; text-decoration: none; font-size: 22px; }
+.yoga-section h2, .little-section h2 { margin: 0; font-family: var(--font-display); font-size: clamp(94px, 10.8vw, 138px); line-height: .85; letter-spacing: -.015em; font-weight: 300; }
+.catalog-button { margin-top: 96px; margin-left: auto; width: 188px; height: 73px; display: grid; place-items: center; background: #000; color: #fff; text-decoration: none; font-family: var(--font-display); font-size: 22px; letter-spacing: .04em; }
 .yoga-image-wrap { background: #fff; display: grid; place-items: center; overflow: hidden; }
 .yoga-image-wrap img { width: 100%; height: 100%; object-fit: contain; }
 .high-section { display: grid; grid-template-columns: 2fr 1.18fr; min-height: 867px; }
 .high-image-wrap { display: grid; place-items: center; background: #fff; overflow: hidden; }
 .high-image-wrap img { width: 100%; height: 100%; object-fit: contain; }
 .high-section article { padding: 68px clamp(32px, 4.7vw, 60px); display: flex; flex-direction: column; justify-content: center; }
-.high-section h2 { margin: 0 0 12px; font-size: 49px; line-height: 1.25; font-weight: 700; }
+.high-section h2 { margin: 0 0 12px; font-family: var(--font-accent); font-style: italic; font-size: 49px; line-height: 1.25; font-weight: 400; letter-spacing: .04em; }
 .high-section p { margin: 0 0 28px; font-size: 23px; line-height: 1.5; }
 .high-section .high-intro { margin-bottom: 33px; font-size: 16px; line-height: 1.4; }
 .explore-button { align-self: center; width: 142px; height: 40px; margin-top: 50px; display: grid; place-items: center; border: 1px solid #000; color: #000; text-decoration: none; font-size: 16px; }
@@ -111,7 +111,7 @@ function subscribe() {
 .mosaic-column { padding: 0 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: center; }
 .mosaic-column img { width: 100%; aspect-ratio: 1; object-fit: cover; }
 .mosaic-green { display: grid; place-items: center; background: #3f7652; color: rgba(255,255,255,.9); }
-.mosaic-green span { font-size: clamp(52px, 8vw, 106px); letter-spacing: .26em; padding-left: .26em; font-weight: 700; }
+.mosaic-green span { font-family: var(--font-display); font-size: clamp(52px, 8vw, 106px); letter-spacing: .26em; padding-left: .26em; font-weight: 300; }
 .little-section { display: grid; grid-template-columns: 1fr 1fr; min-height: 905px; background: #fff; }
 .little-section article { padding: 185px clamp(36px, 6.2vw, 79px) 80px; }
 .shop-button { margin-top: 96px; width: 142px; height: 45px; display: grid; place-items: center; background: #3f7652; color: #000; text-decoration: none; font-size: 16px; }
@@ -119,7 +119,7 @@ function subscribe() {
 .world-section { display: grid; grid-template-columns: 2fr 1fr; min-height: 490px; background: #fff; }
 .world-section > img { width: 100%; height: 482px; object-fit: cover; }
 .world-form { padding: 68px clamp(32px, 5.2vw, 66px) 40px; }
-.world-form h2 { margin: 0 0 16px; font-size: 34px; line-height: 1.2; font-weight: 700; }
+.world-form h2 { margin: 0 0 16px; font-family: var(--font-display); font-size: 34px; line-height: 1.2; font-weight: 400; letter-spacing: .01em; }
 .world-form > p { margin: 0 0 31px; font-size: 16px; line-height: 1.8; }
 .world-form label { display: block; margin-bottom: 8px; font-size: 14px; }
 .world-form input { width: 100%; height: 36px; border: 0; border-bottom: 1px solid #000; border-radius: 0; outline: 0; font-size: 16px; }

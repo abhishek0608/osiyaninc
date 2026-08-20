@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
@@ -22,6 +22,9 @@ interface InternalUser {
   email: string
   isInternal: boolean
   isAdmin: boolean
+  canMemo: boolean
+  memoLimitPaise: number | null
+  memoDays: number
   channel: string
   orderCount: number
   createdAt: string
@@ -86,7 +89,13 @@ const roleLabel = computed(() => {
 
 const isSelf = computed(() => targetUser.value?.id === user.value?.id)
 
-async function updateRole(changes: { isInternal?: boolean; isAdmin?: boolean }) {
+async function updateRole(changes: {
+  isInternal?: boolean
+  isAdmin?: boolean
+  canMemo?: boolean
+  memoLimitPaise?: number | null
+  memoDays?: number
+}) {
   if (!isAdminUser.value || !user.value?.id || !targetUser.value || savingRole.value) return
   savingRole.value = true
   roleError.value = ''
@@ -111,6 +120,41 @@ async function updateRole(changes: { isInternal?: boolean; isAdmin?: boolean }) 
   } finally {
     savingRole.value = false
   }
+}
+
+// --- Memo (consignment) settings -----------------------------------------
+// The limit is held in paise/cents on the record but edited in whole dollars,
+// which is how staff think about "how much can be out with this customer".
+const memoLimitInput = ref('')
+const memoDaysInput = ref('')
+const memoSettingsDirty = ref(false)
+
+watch(
+  targetUser,
+  (next) => {
+    if (!next || memoSettingsDirty.value) return
+    memoLimitInput.value = next.memoLimitPaise == null ? '' : String(Math.round(next.memoLimitPaise / 100))
+    memoDaysInput.value = String(next.memoDays ?? 30)
+  },
+  { immediate: true },
+)
+
+async function saveMemoSettings() {
+  const limitRaw = memoLimitInput.value.trim()
+  const days = Number(memoDaysInput.value)
+  if (limitRaw !== '' && (!Number.isFinite(Number(limitRaw)) || Number(limitRaw) < 0)) {
+    roleError.value = 'Memo limit must be a positive amount, or blank for no limit.'
+    return
+  }
+  if (!Number.isFinite(days) || days < 1 || days > 365) {
+    roleError.value = 'Memo period must be between 1 and 365 days.'
+    return
+  }
+  await updateRole({
+    memoLimitPaise: limitRaw === '' ? null : Math.round(Number(limitRaw) * 100),
+    memoDays: Math.floor(days),
+  })
+  memoSettingsDirty.value = false
 }
 
 onMounted(() => {
@@ -233,6 +277,63 @@ onMounted(() => {
             <p v-if="isSelf && targetUser.isAdmin" class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-2">
               You can't remove your own admin access.
             </p>
+
+            <!-- Memo: goods can leave without payment, so it is a deliberate,
+                 admin-only grant with a cap on how much can be out at once. -->
+            <div class="ect-mt-5 ect-pt-4 ect-border-t ect-border-rose-200/40">
+              <label class="ect-flex ect-items-start ect-gap-3 ect-cursor-pointer">
+                <input
+                  type="checkbox"
+                  :checked="targetUser.canMemo"
+                  :disabled="savingRole"
+                  class="ect-mt-0.5 ect-h-4 ect-w-4 ect-rounded ect-border-charcoal/25 ect-text-charcoal focus:ect-ring-gold-400"
+                  @change="updateRole({ canMemo: !targetUser.canMemo })"
+                />
+                <span>
+                  <span class="ect-block ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Memo user</span>
+                  <span class="ect-block ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-0.5">
+                    Can take pieces out on memo at checkout instead of paying. Goods stay ours until they buy or return them.
+                  </span>
+                </span>
+              </label>
+
+              <div v-if="targetUser.canMemo" class="ect-mt-4 ect-flex ect-flex-wrap ect-items-end ect-gap-3">
+                <label class="ect-block">
+                  <span class="ect-block ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35 ect-mb-1">Memo limit ($)</span>
+                  <input
+                    v-model="memoLimitInput"
+                    type="number"
+                    min="0"
+                    placeholder="No limit"
+                    class="ect-w-36 ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
+                    @input="memoSettingsDirty = true"
+                  />
+                </label>
+                <label class="ect-block">
+                  <span class="ect-block ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35 ect-mb-1">Days to return</span>
+                  <input
+                    v-model="memoDaysInput"
+                    type="number"
+                    min="1"
+                    max="365"
+                    class="ect-w-28 ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
+                    @input="memoSettingsDirty = true"
+                  />
+                </label>
+                <button
+                  type="button"
+                  :disabled="savingRole"
+                  class="ect-rounded-full ect-border ect-border-charcoal ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-white hover:ect-opacity-90 ect-transition disabled:ect-opacity-50"
+                  @click="saveMemoSettings"
+                >
+                  {{ savingRole ? 'Saving…' : 'Save memo settings' }}
+                </button>
+              </div>
+              <p v-if="targetUser.canMemo" class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-2">
+                Blank limit means no cap. The limit is checked against everything already out when a memo is raised.
+              </p>
+            </div>
+
             <p v-if="roleError" class="ect-font-body ect-text-sm ect-text-red-600 ect-mt-3">{{ roleError }}</p>
           </div>
         </article>

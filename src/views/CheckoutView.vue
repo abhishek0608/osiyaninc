@@ -5,6 +5,8 @@ import { useCart, isCustomizedCartItem } from '../composables/useCart'
 import { useOrders } from '../composables/useOrders'
 import { useQuotes } from '../composables/useQuotes'
 import { useSavedAddresses, COUNTRY_OPTIONS, countryDisplayName } from '../composables/useSavedAddresses'
+import { useAuth } from '../composables/useAuth'
+import { API_BASE } from '../config-api'
 import { notifyTransaction } from '../composables/notifyTransactionEmail'
 
 const router = useRouter()
@@ -22,7 +24,9 @@ const {
 const { addOrder } = useOrders()
 const { addQuote } = useQuotes()
 const { addresses: savedAddresses, getById, save: saveAddress } = useSavedAddresses()
+const { user, canMemoUser } = useAuth()
 const isProcessing = ref(false)
+const isMemoProcessing = ref(false)
 const submitError = ref('')
 
 const form = ref({
@@ -249,6 +253,49 @@ function handleSubmit() {
   }
 }
 
+
+// Memo checkout: the pieces go out on consignment instead of being sold. No
+// payment is taken, so this creates a Memo server-side (which re-checks the
+// permission and the customer's limit) rather than an order.
+async function handleMemo() {
+  if (isMemoProcessing.value || isProcessing.value) return
+  submitError.value = ''
+  if (!user.value?.id) {
+    submitError.value = 'Please sign in to take pieces on memo.'
+    return
+  }
+  isMemoProcessing.value = true
+  try {
+    const res = await fetch(`${API_BASE}/api/account`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'memo',
+        userId: user.value.id,
+        shipTo: {
+          name: form.value.name.trim(),
+          email: form.value.email.trim(),
+          phone: form.value.phone.trim(),
+          address: form.value.address.trim(),
+          city: form.value.city.trim(),
+          state: form.value.state.trim(),
+          country: countryDisplayName(form.value.country),
+          pincode: form.value.pincode.trim(),
+        },
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.message || 'Unable to raise this memo.')
+    // The server already emptied the cart; resync so the header count follows.
+    await clearCart().catch(() => {})
+    router.push({ path: '/order-confirmation', query: { memoId: data.memo.id, memoNo: data.memo.memoNo, kind: 'memo' } })
+  } catch (e) {
+    submitError.value = e instanceof Error ? e.message : 'Unable to raise this memo.'
+  } finally {
+    isMemoProcessing.value = false
+  }
+}
+
 const inputClass = 'ect-w-full ect-px-4 ect-py-3 ect-bg-white ect-border ect-border-sand ect-rounded-xl ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/30 focus:ect-outline-none focus:ect-border-gold-400 focus:ect-ring-2 focus:ect-ring-gold-400/25 ect-transition-all'
 
 const pinPlaceholder = computed(() => (form.value.country === 'IN' ? '400001' : 'Postal / ZIP code'))
@@ -465,6 +512,27 @@ const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code
                 : (hasCustomizedItems ? `Create Custom Request · ${formattedDiscountedTotal}` : `Place Order · ${formattedDiscountedTotal}`) }}
             </span>
           </button>
+
+          <!-- Memo checkout: only for accounts an admin has approved for it. -->
+          <button
+            v-if="canMemoUser && !hasCustomizedItems"
+            type="button"
+            :disabled="isProcessing || isMemoProcessing"
+            class="ect-w-full ect-py-4 ect-font-body ect-text-base ect-font-semibold ect-rounded-xl ect-flex ect-items-center ect-justify-center ect-gap-2.5 ect-border ect-border-charcoal/20 ect-bg-white ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-all ect-duration-200 disabled:ect-opacity-50 disabled:ect-cursor-not-allowed"
+            @click="handleMemo"
+          >
+            <svg v-if="isMemoProcessing" class="ect-w-5 ect-h-5 ect-animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="ect-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="ect-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <svg v-else class="ect-w-5 ect-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+            </svg>
+            <span>{{ isMemoProcessing ? 'Raising your memo…' : `Take on Memo · ${formattedTotal}` }}</span>
+          </button>
+          <p v-if="canMemoUser && !hasCustomizedItems" class="ect-text-center ect-font-body ect-text-xs ect-text-charcoal/45 ect--mt-2">
+            Nothing is charged now. The pieces stay ours until you buy or return them.
+          </p>
 
           <!-- Security note -->
           <p class="ect-text-center ect-font-body ect-text-xs ect-text-charcoal/40 ect-flex ect-items-center ect-justify-center ect-gap-1.5 ect--mt-2">

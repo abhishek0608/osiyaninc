@@ -8,6 +8,7 @@ export default {
         // Resolved from the tokens in src/style.css. `sans` is overridden too so
         // Tailwind's ui-sans-serif default can never leak in alongside them.
         display: ['var(--font-display)'],
+        accent: ['var(--font-accent)'],
         body: ['var(--font-body)'],
         sans: ['var(--font-body)'],
       },

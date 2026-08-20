@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -43,46 +43,66 @@ enum ServiceRequestStatus {
   QUOTED
 }
 
+enum SignupRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum MemoStatus {
+  ISSUED
+  PARTIAL
+  CONVERTED
+  RETURNED
+  CANCELLED
+}
+
+enum MemoItemStatus {
+  OUT
+  RETURNED
+  CONVERTED
+}
+
 model Product {
-  id           String           @id @default(cuid())
-  slug         String           @unique
-  title        String
-  category     String
-  subtype      String?
-  material     String
-  color        String
-  description  String?
-  aiDescription String?
-  productAttributes Json?
-  styleTags    String[]         @default([])
-  stoneTags    String[]         @default([])
+  id                   String                       @id @default(cuid())
+  slug                 String                       @unique
+  title                String
+  category             String
+  subtype              String?
+  material             String
+  color                String
+  description          String?
+  aiDescription        String?
+  productAttributes    Json?
+  styleTags            String[]                     @default([])
+  stoneTags            String[]                     @default([])
   customizationOptions Json?
-  isNewArrival Boolean          @default(false)
-  isBestSeller Boolean          @default(false)
+  isNewArrival         Boolean                      @default(false)
+  isBestSeller         Boolean                      @default(false)
   // Independent lab certification for a single piece. certLab is the grading
   // house ("GIA", "IGI", ...) and doubles as the "is this piece certified?"
   // flag — null means uncertified and the storefront shows no tag. certFileKey
   // is the S3 object key, kept alongside the public URL so the certificate can
   // be replaced or deleted from the bucket.
-  certLab      String?
-  certNumber   String?
-  certFileUrl  String?
-  certFileKey  String?
-  certifiedAt  DateTime?
-  rating       Float?
-  reviewCount  Int?
-  active       Boolean          @default(true)
-  embedding    Unsupported("vector(1536)")?
-  createdById  String?
-  updatedById  String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  variants     ProductVariant[]
-  images       ProductImage[]
-  inventories  Inventory[]
-  priceBookMap PriceBookItem[]
-  wishlists    WishlistItem[]
-  imageEmbeddings ProductImageEmbedding[]
+  certLab              String?
+  certNumber           String?
+  certFileUrl          String?
+  certFileKey          String?
+  certifiedAt          DateTime?
+  rating               Float?
+  reviewCount          Int?
+  active               Boolean                      @default(true)
+  embedding            Unsupported("vector(1536)")?
+  createdById          String?
+  updatedById          String?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  variants             ProductVariant[]
+  images               ProductImage[]
+  inventories          Inventory[]
+  priceBookMap         PriceBookItem[]
+  wishlists            WishlistItem[]
+  imageEmbeddings      ProductImageEmbedding[]
 }
 
 // One row per product photo, embedded as an IMAGE (Bedrock Titan multimodal,
@@ -92,32 +112,32 @@ model Product {
 // reference (URL or data-URI) so re-saving a product only re-embeds changed
 // images — the raw source is never stored here (data-URIs can be multi-MB).
 model ProductImageEmbedding {
-  id        String   @id @default(cuid())
+  id        String                       @id @default(cuid())
   productId String
   imageKey  String
   embedding Unsupported("vector(1024)")?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime                     @default(now())
+  updatedAt DateTime                     @updatedAt
+  product   Product                      @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, imageKey])
 }
 
 model HomepageSlide {
-  id          String   @id @default(cuid())
-  imageUrl    String
+  id             String   @id @default(cuid())
+  imageUrl       String
   mobileImageUrl String?
-  headline    String?
-  subheadline String?
-  ctaLabel    String?
-  ctaHref     String?
-  device      String   @default("all")
-  sortOrder   Int      @default(0)
-  active      Boolean  @default(true)
-  createdById String?
-  updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  headline       String?
+  subheadline    String?
+  ctaLabel       String?
+  ctaHref        String?
+  device         String   @default("all")
+  sortOrder      Int      @default(0)
+  active         Boolean  @default(true)
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([active, sortOrder])
 }
@@ -143,12 +163,12 @@ model StoneSize {
 // Singleton row (id = "default") holding editable storefront branding such as
 // the site logo. Managed from the internal workspace.
 model SiteConfig {
-  id        String   @id @default("default")
-  logoUrl   String?
+  id                    String   @id @default("default")
+  logoUrl               String?
   // Site-wide volume (quantity) discount. When enabled, the storefront applies
   // the best matching tier based on the total number of items in the cart.
   // volumeDiscountTiers is a JSON array of { minQty, percent } objects.
-  volumeDiscountEnabled Boolean @default(false)
+  volumeDiscountEnabled Boolean  @default(false)
   volumeDiscountTiers   Json?
   // Per-collection tile images for the homepage "Shop by Collection" grid,
   // stored as a JSON map of collection slug -> image URL. Slugs that aren't
@@ -161,8 +181,8 @@ model SiteConfig {
   // Absent fields/empty lists fall back to the bundled defaults on the
   // storefront, so this can never break the About page.
   aboutContent          Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model ProductImage {
@@ -194,6 +214,7 @@ model ProductVariant {
   cartItems      CartItem[]
   orderItems     OrderItem[]
   quoteItems     QuoteItem[]
+  memoItems      MemoItem[]
 }
 
 model Inventory {
@@ -234,26 +255,32 @@ model PriceBookItem {
 }
 
 model User {
-  id           String        @id @default(cuid())
-  email        String?       @unique
-  phone        String?       @unique
-  firstName    String?
-  lastName     String?
-  passwordHash String?
+  id               String         @id @default(cuid())
+  email            String?        @unique
+  phone            String?        @unique
+  firstName        String?
+  lastName         String?
+  passwordHash     String?
   resetTokenHash   String?
   resetTokenExpiry DateTime?
-  isInternal   Boolean       @default(false)
-  isAdmin      Boolean       @default(false)
-  channel      SalesChannel  @default(B2C)
-  createdById  String?
-  updatedById  String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  addresses    Address[]
-  carts        Cart[]
-  wishlists    WishlistItem[]
-  orders       Order[]
-  companyUsers CompanyUser[]
+  isInternal       Boolean        @default(false)
+  isAdmin          Boolean        @default(false)
+  // Memo (consignment) permission: goods can leave without payment, so this is
+  // granted per customer by an admin, with a cap on the value out at any time.
+  canMemo          Boolean        @default(false)
+  memoLimitPaise   Int? // null = uncapped
+  memoDays         Int            @default(30)
+  channel          SalesChannel   @default(B2C)
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  addresses        Address[]
+  carts            Cart[]
+  wishlists        WishlistItem[]
+  orders           Order[]
+  memos            Memo[]
+  companyUsers     CompanyUser[]
 }
 
 model WishlistItem {
@@ -366,6 +393,7 @@ model Order {
   payments          Payment[]
   shipments         Shipment[]
   invoice           Invoice?
+  memo              Memo?
 }
 
 model OrderItem {
@@ -461,6 +489,40 @@ model ServiceRequest {
   @@index([customerEmail])
 }
 
+// Storefront sign-ups are approval-gated: the form writes one of these rows
+// instead of a User, and only a Full Admin can turn it into a real account.
+// The password the applicant chose is hashed here (same scrypt scheme as
+// api/account.js) and copied onto the User at approval, so nobody has to
+// re-enter it. Rejected rows are kept for the audit trail; the applicant can
+// submit again, which creates a new row.
+model SignupRequest {
+  id             String              @id @default(cuid())
+  reference      String              @unique
+  status         SignupRequestStatus @default(PENDING)
+  firstName      String
+  lastName       String
+  email          String
+  phone          String
+  companyName    String
+  taxId          String
+  addressLine1   String
+  addressLine2   String?
+  city           String
+  state          String
+  postalCode     String
+  country        String              @default("IN")
+  passwordHash   String
+  reviewNote     String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  approvedUserId String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([status, createdAt])
+  @@index([email])
+}
+
 model Invoice {
   id          String          @id @default(cuid())
   invoiceNo   String          @unique
@@ -474,4 +536,55 @@ model Invoice {
   createdAt   DateTime        @default(now())
   order       Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
   company     CompanyAccount? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+}
+
+// A memo is jewellery handed to a customer on consignment: the goods leave the
+// premises but ownership (and the inventory) stays with us until the customer
+// either buys the pieces or returns them. It is deliberately NOT an Order —
+// there is no payment, and stock is reserved rather than sold.
+model Memo {
+  id            String     @id @default(cuid())
+  memoNo        String     @unique
+  customerId    String
+  status        MemoStatus @default(ISSUED)
+  issuedAt      DateTime   @default(now())
+  dueDate       DateTime
+  closedAt      DateTime?
+  // Prices are locked when the goods go out, not when the memo converts.
+  subtotalPaise Int
+  currency      String     @default("USD")
+  // Ship-to is a snapshot: storefront addresses are not rows in Address.
+  shipTo        Json?
+  notes         String?
+  orderId       String?    @unique // set when the memo converts to a sale
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  customer      User       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  order         Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  items         MemoItem[]
+
+  @@index([customerId, status])
+  @@index([status, dueDate])
+}
+
+model MemoItem {
+  id            String         @id @default(cuid())
+  memoId        String
+  variantId     String
+  titleSnapshot String
+  pricePaise    Int
+  qty           Int
+  // A customer keeping some pieces and returning the rest is the normal case,
+  // so each line closes independently of the others.
+  returnedQty   Int            @default(0)
+  convertedQty  Int            @default(0)
+  status        MemoItemStatus @default(OUT)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  memo          Memo           @relation(fields: [memoId], references: [id], onDelete: Cascade)
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([memoId])
 }

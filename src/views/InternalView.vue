@@ -15,6 +15,12 @@ import { useInternalWorkspaceTab } from '../composables/useInternalWorkspaceTab'
 import { useOrders } from '../composables/useOrders'
 import { useQuotes } from '../composables/useQuotes'
 import { fetchServiceRequests, type ServiceRequest } from '../composables/useServiceRequests'
+import {
+  fetchSignupRequests,
+  reviewSignupRequest,
+  type SignupRequest,
+  type SignupRequestStatus,
+} from '../composables/useSignupRequests'
 import { COLLECTION_LINKS } from '../data/collections'
 
 
@@ -179,6 +185,107 @@ function onOrderSearchInput() {
   orderSearchDebounce = setTimeout(() => void loadOrders(true), 300)
 }
 
+// --- Memos tab: goods out on consignment, searchable + paginated ---
+interface InternalMemoItem {
+  id: string
+  title: string
+  qty: number
+  outQty: number
+  returnedQty: number
+  convertedQty: number
+  status: string
+  formattedPrice: string
+}
+
+interface InternalMemo {
+  id: string
+  memoNo: string
+  status: string
+  isOverdue: boolean
+  customerId: string | null
+  customer: string
+  customerEmail: string
+  itemCount: number
+  issuedAt: string
+  dueDate: string
+  formattedSubtotal: string
+  formattedOutstanding: string
+  createdBy?: string
+  modifiedBy?: string
+  modifiedAt?: string
+  items: InternalMemoItem[]
+}
+
+const memos = ref<InternalMemo[]>([])
+const memoSearch = ref('')
+const memoStatusFilter = ref('OPEN')
+const memoTotal = ref(0)
+const memoHasMore = ref(false)
+const memoListLoading = ref(false)
+const memoLoadingMore = ref(false)
+const memoSummary = ref<{
+  openCount: number
+  formattedOutstanding: string
+  overdueCount: number
+  formattedOverdue: string
+} | null>(null)
+let memoSearchDebounce: ReturnType<typeof setTimeout> | undefined
+
+const memoStatusOptions = [
+  { value: 'OPEN', label: 'Open' },
+  { value: 'OVERDUE', label: 'Overdue' },
+  { value: 'CONVERTED', label: 'Converted' },
+  { value: 'RETURNED', label: 'Returned' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: '', label: 'All' },
+]
+
+async function loadMemos(reset = true) {
+  if (!isInternalUser.value || !user.value?.id) return
+  const skip = reset ? 0 : memos.value.length
+  if (reset) memoListLoading.value = true
+  else memoLoadingMore.value = true
+  try {
+    const params = new URLSearchParams({
+      resource: 'memos-list',
+      userId: user.value.id,
+      skip: String(skip),
+    })
+    if (memoSearch.value.trim()) params.set('search', memoSearch.value.trim())
+    if (memoStatusFilter.value) params.set('status', memoStatusFilter.value)
+    const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || 'Unable to load memos.')
+    memos.value = reset ? data.memos : [...memos.value, ...data.memos]
+    memoTotal.value = data.total ?? memos.value.length
+    memoHasMore.value = Boolean(data.hasMore)
+    memoSummary.value = data.summary || null
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Unable to load memos.'
+  } finally {
+    memoListLoading.value = false
+    memoLoadingMore.value = false
+  }
+}
+
+function onMemoSearchInput() {
+  if (memoSearchDebounce) clearTimeout(memoSearchDebounce)
+  memoSearchDebounce = setTimeout(() => void loadMemos(true), 300)
+}
+
+function memoDaysLeft(memo: InternalMemo) {
+  const ms = new Date(memo.dueDate).getTime() - Date.now()
+  const days = Math.ceil(ms / 86400000)
+  if (memo.status === 'CONVERTED' || memo.status === 'RETURNED' || memo.status === 'CANCELLED') return '—'
+  if (days < 0) return `${Math.abs(days)}d overdue`
+  if (days === 0) return 'Due today'
+  return `${days}d left`
+}
+
+function openMemoDetail(memo: InternalMemo) {
+  void router.push({ name: 'internal-memo', params: { id: memo.id } })
+}
+
 // --- Users tab: searchable + paginated list ---
 const users = ref<InternalUser[]>([])
 const userSearch = ref('')
@@ -219,6 +326,100 @@ function onUserSearchInput() {
   userSearchDebounce = setTimeout(() => void loadUsers(true), 300)
 }
 
+// --- Approvals tab: the storefront sign-up queue ---
+// Sign-ups create a SignupRequest instead of a User; approving one is what
+// creates the account, so only Full Admins get the approve/reject buttons
+// (api/internal.js enforces the same rule).
+const signupRequests = ref<SignupRequest[]>([])
+const signupSearch = ref('')
+const signupStatusFilter = ref<SignupRequestStatus | 'all'>('pending')
+const signupStatusOptions = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'all', label: 'All requests' },
+]
+const signupTotal = ref(0)
+const signupPendingCount = ref(0)
+const signupHasMore = ref(false)
+const signupListLoading = ref(false)
+const signupLoadingMore = ref(false)
+const signupError = ref('')
+const signupActionReference = ref('')
+const signupMessage = ref('')
+const signupSkeletonWidths = ['ect-w-24', 'ect-w-40', 'ect-w-36', 'ect-w-28', 'ect-w-20', 'ect-w-24']
+let signupSearchDebounce: ReturnType<typeof setTimeout> | undefined
+
+async function loadSignupRequests(reset = true) {
+  if (!isInternalUser.value || !user.value?.id) return
+  const skip = reset ? 0 : signupRequests.value.length
+  if (reset) signupListLoading.value = true
+  else signupLoadingMore.value = true
+  signupError.value = ''
+  try {
+    const page = await fetchSignupRequests(user.value.id, {
+      status: signupStatusFilter.value,
+      search: signupSearch.value,
+      skip,
+    })
+    signupRequests.value = reset ? page.requests : [...signupRequests.value, ...page.requests]
+    signupTotal.value = page.total
+    signupPendingCount.value = page.pendingCount
+    signupHasMore.value = page.hasMore
+  } catch (e) {
+    signupError.value = e instanceof Error ? e.message : 'Unable to load sign-up requests.'
+  } finally {
+    signupListLoading.value = false
+    signupLoadingMore.value = false
+  }
+}
+
+function onSignupSearchInput() {
+  if (signupSearchDebounce) clearTimeout(signupSearchDebounce)
+  signupSearchDebounce = setTimeout(() => void loadSignupRequests(true), 300)
+}
+
+function onSignupStatusChange(next: string) {
+  signupStatusFilter.value = next as SignupRequestStatus | 'all'
+  void loadSignupRequests(true)
+}
+
+// Rejecting asks for a reason first — it is emailed to the applicant.
+async function decideSignupRequest(request: SignupRequest, action: 'approve' | 'reject') {
+  if (!user.value?.id || signupActionReference.value) return
+  let note = ''
+  if (action === 'reject') {
+    const reason = window.prompt(`Why is ${request.reference} being rejected? (optional)`, '')
+    if (reason === null) return
+    note = reason
+  } else if (!window.confirm(`Approve ${request.reference} and create an account for ${request.email}?`)) {
+    return
+  }
+  signupActionReference.value = request.reference
+  signupMessage.value = ''
+  signupError.value = ''
+  try {
+    await reviewSignupRequest(user.value.id, request.reference, action, { note })
+    signupMessage.value =
+      action === 'approve'
+        ? `${request.reference} approved — the account for ${request.email} is live.`
+        : `${request.reference} rejected.`
+    await loadSignupRequests(true)
+    // An approval adds a customer, so the users tab is stale until reloaded.
+    if (action === 'approve') void loadUsers(true)
+  } catch (e) {
+    signupError.value = e instanceof Error ? e.message : 'Could not update this request.'
+  } finally {
+    signupActionReference.value = ''
+  }
+}
+
+function signupStatusClass(status: SignupRequestStatus) {
+  if (status === 'approved') return 'ect-bg-emerald-100 ect-text-emerald-800'
+  if (status === 'rejected') return 'ect-bg-red-100 ect-text-red-700'
+  return 'ect-bg-sand ect-text-gold-700'
+}
+
 // --- "New …" creation modals, one per tab ---
 const newOrderOpen = ref(false)
 const newQuoteOpen = ref(false)
@@ -228,6 +429,7 @@ const newUserOpen = ref(false)
 function onOrderCreated() {
   newOrderOpen.value = false
   void loadOrders(true)
+  void loadMemos(true)
 }
 
 function onUserCreated() {
@@ -1295,6 +1497,7 @@ onMounted(() => {
   void loadServiceRequests()
   void loadOrders(true)
   void loadUsers(true)
+  void loadSignupRequests(true)
   void loadProducts(true)
   void loadHomepageSlides()
   void loadSiteConfig()
@@ -1392,6 +1595,110 @@ onBeforeUnmount(() => {
               @click="loadOrders(false)"
             >
               {{ orderLoadingMore ? 'Loading…' : 'Load more' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-else-if="activeTabId === 'memos'" class="ect-overflow-x-auto">
+          <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-2 ect-border-b ect-border-sand ect-bg-cream ect-px-4 ect-py-3">
+            <div class="ect-relative ect-w-full sm:ect-w-72">
+              <svg class="ect-absolute ect-left-3 ect-top-1/2 -ect-translate-y-1/2 ect-w-4 ect-h-4 ect-text-charcoal/35" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/></svg>
+              <input
+                v-model="memoSearch"
+                type="search"
+                placeholder="Search memos…"
+                class="ect-w-full ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-pl-9 ect-pr-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-border-gold-400 focus:ect-outline-none"
+                @input="onMemoSearchInput"
+              />
+            </div>
+            <select
+              v-model="memoStatusFilter"
+              class="ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
+              @change="loadMemos(true)"
+            >
+              <option v-for="opt in memoStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+            <p v-if="memoSummary" class="sm:ect-ml-auto ect-font-body ect-text-xs ect-text-charcoal/55">
+              <span class="ect-font-semibold ect-text-charcoal">{{ memoSummary.formattedOutstanding }}</span>
+              out on {{ memoSummary.openCount }} memo{{ memoSummary.openCount === 1 ? '' : 's' }}
+              <span v-if="memoSummary.overdueCount" class="ect-text-red-600">
+                · {{ memoSummary.formattedOverdue }} overdue ({{ memoSummary.overdueCount }})
+              </span>
+            </p>
+          </div>
+          <table class="ect-w-full ect-min-w-[980px] ect-border-collapse">
+            <thead class="ect-bg-cream"><tr><th v-for="h in ['Memo', 'Customer', 'Pieces', 'Status', 'Value out', 'Due', 'Issued']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
+            <tbody>
+              <template v-if="memoListLoading">
+                <tr v-for="index in skeletonRows" :key="index" class="ect-border-t ect-border-sand">
+                  <td v-for="width in orderSkeletonWidths" :key="width" class="ect-px-4 ect-py-3">
+                    <div class="ect-h-4 ect-rounded ect-bg-sand ect-animate-pulse" :class="width"></div>
+                  </td>
+                </tr>
+              </template>
+              <tr
+                v-for="memo in memos"
+                v-else
+                :key="memo.id"
+                class="ect-cursor-pointer ect-border-t ect-border-sand hover:ect-bg-cream"
+                tabindex="0"
+                @click="openMemoDetail(memo)"
+                @keydown.enter="openMemoDetail(memo)"
+              >
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-font-semibold">
+                  <RouterLink :to="{ name: 'internal-memo', params: { id: memo.id } }" class="ect-text-charcoal hover:ect-text-gold-700 hover:ect-underline" @click.stop>
+                    {{ memo.memoNo }}
+                  </RouterLink>
+                </td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">
+                  <RouterLink
+                    v-if="memo.customerId"
+                    :to="{ name: 'internal-user', params: { id: memo.customerId } }"
+                    class="ect-text-charcoal hover:ect-text-gold-700 hover:ect-underline"
+                    @click.stop
+                  >
+                    {{ memo.customer }}
+                  </RouterLink>
+                  <span v-else>{{ memo.customer }}</span>
+                  <span class="ect-block ect-text-xs ect-text-charcoal/40">{{ memo.customerEmail }}</span>
+                </td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">{{ memo.itemCount }}</td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">
+                  <span
+                    class="ect-inline-flex ect-items-center ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold"
+                    :class="memo.isOverdue
+                      ? 'ect-bg-red-50 ect-text-red-700'
+                      : memo.status === 'CONVERTED'
+                        ? 'ect-bg-emerald-50 ect-text-emerald-700'
+                        : memo.status === 'RETURNED' || memo.status === 'CANCELLED'
+                          ? 'ect-bg-charcoal/5 ect-text-charcoal/60'
+                          : 'ect-bg-amber-50 ect-text-amber-700'"
+                  >
+                    {{ memo.isOverdue ? 'Overdue' : memo.status.toLowerCase() }}
+                  </span>
+                </td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-font-semibold">{{ memo.formattedOutstanding }}</td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/55">
+                  {{ formatDate(memo.dueDate) }}
+                  <span class="ect-block ect-text-xs" :class="memo.isOverdue ? 'ect-text-red-600' : 'ect-text-charcoal/40'">{{ memoDaysLeft(memo) }}</span>
+                </td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/55">{{ formatDate(memo.issuedAt) }}<span class="ect-block ect-text-xs ect-text-charcoal/40">by {{ memo.createdBy || '—' }}</span></td>
+              </tr>
+              <tr v-if="!memoListLoading && !memos.length" class="ect-border-t ect-border-sand">
+                <td colspan="7" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No memos found.</td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="!memoListLoading && memos.length" class="ect-flex ect-flex-col ect-items-center ect-gap-3 ect-border-t ect-border-sand ect-px-4 ect-py-4">
+            <p class="ect-font-body ect-text-xs ect-text-charcoal/45">Showing {{ memos.length }} of {{ memoTotal }}</p>
+            <button
+              v-if="memoHasMore"
+              type="button"
+              :disabled="memoLoadingMore"
+              class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-50 disabled:ect-cursor-not-allowed"
+              @click="loadMemos(false)"
+            >
+              {{ memoLoadingMore ? 'Loading…' : 'Load more' }}
             </button>
           </div>
         </div>
@@ -1568,6 +1875,113 @@ onBeforeUnmount(() => {
               @click="loadUsers(false)"
             >
               {{ userLoadingMore ? 'Loading…' : 'Load more' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Approvals: storefront sign-ups waiting for a Full Admin. Approving
+             one creates the User, their address and their company record. -->
+        <div v-else-if="activeTabId === 'approvals'" class="ect-overflow-x-auto">
+          <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-2 ect-border-b ect-border-sand ect-bg-cream ect-px-4 ect-py-3">
+            <div class="ect-relative ect-w-full sm:ect-w-72">
+              <svg class="ect-absolute ect-left-3 ect-top-1/2 -ect-translate-y-1/2 ect-w-4 ect-h-4 ect-text-charcoal/35" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/></svg>
+              <input
+                v-model="signupSearch"
+                type="search"
+                placeholder="Search name, email, company, tax ID…"
+                class="ect-w-full ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-pl-9 ect-pr-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-border-gold-400 focus:ect-outline-none"
+                @input="onSignupSearchInput"
+              />
+            </div>
+            <div class="ect-w-full sm:ect-w-44">
+              <UiSelect :model-value="signupStatusFilter" :options="signupStatusOptions" @update:model-value="onSignupStatusChange" />
+            </div>
+            <p class="sm:ect-ml-auto ect-font-body ect-text-sm ect-text-charcoal/55">
+              <span class="ect-font-semibold ect-text-charcoal">{{ signupPendingCount }}</span> awaiting approval
+            </p>
+          </div>
+
+          <p v-if="signupMessage" class="ect-border-b ect-border-sand ect-bg-emerald-50 ect-px-4 ect-py-2.5 ect-font-body ect-text-sm ect-text-emerald-800">{{ signupMessage }}</p>
+          <p v-if="signupError" class="ect-border-b ect-border-sand ect-bg-red-50 ect-px-4 ect-py-2.5 ect-font-body ect-text-sm ect-text-red-700">{{ signupError }}</p>
+
+          <table class="ect-w-full ect-min-w-[1040px] ect-border-collapse">
+            <thead class="ect-bg-cream">
+              <tr>
+                <th v-for="h in ['Reference', 'Applicant', 'Company', 'Phone', 'Location', 'Submitted', 'Status', '']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-if="signupListLoading">
+                <tr v-for="index in skeletonRows" :key="index" class="ect-border-t ect-border-sand">
+                  <td v-for="width in signupSkeletonWidths" :key="width" class="ect-px-4 ect-py-3">
+                    <div class="ect-h-4 ect-rounded ect-bg-sand ect-animate-pulse" :class="width"></div>
+                  </td>
+                  <td class="ect-px-4 ect-py-3"><div class="ect-h-4 ect-w-16 ect-rounded ect-bg-sand ect-animate-pulse"></div></td>
+                  <td class="ect-px-4 ect-py-3"><div class="ect-h-4 ect-w-24 ect-rounded ect-bg-sand ect-animate-pulse"></div></td>
+                </tr>
+              </template>
+              <tr v-for="row in signupRequests" v-else :key="row.reference" class="ect-border-t ect-border-sand">
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-font-semibold">
+                  <RouterLink :to="{ name: 'internal-signup-request', params: { reference: row.reference } }" class="ect-text-charcoal hover:ect-text-gold-700 hover:ect-underline">{{ row.reference }}</RouterLink>
+                </td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">
+                  {{ row.name }}
+                  <span class="ect-block ect-text-xs ect-text-charcoal/40">{{ row.email }}</span>
+                </td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">
+                  {{ row.companyName }}
+                  <span class="ect-block ect-text-xs ect-text-charcoal/40">Tax ID {{ row.taxId }}</span>
+                </td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">{{ row.phone }}</td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">
+                  {{ row.city }}, {{ row.state }}
+                  <span class="ect-block ect-text-xs ect-text-charcoal/40">{{ row.postalCode }} · {{ row.country }}</span>
+                </td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/55">{{ formatDate(row.createdAt) }}</td>
+                <td class="ect-px-4 ect-py-3">
+                  <span class="ect-rounded-full ect-px-2.5 ect-py-1 ect-font-body ect-text-xs ect-font-semibold ect-capitalize" :class="signupStatusClass(row.status)">{{ row.status }}</span>
+                  <span v-if="row.status !== 'pending' && row.reviewedBy" class="ect-block ect-mt-1 ect-text-xs ect-text-charcoal/40">by {{ row.reviewedBy }}</span>
+                </td>
+                <td class="ect-px-4 ect-py-3 ect-whitespace-nowrap">
+                  <template v-if="row.status === 'pending' && isAdminUser">
+                    <button
+                      type="button"
+                      :disabled="signupActionReference === row.reference"
+                      class="ect-rounded-full ect-bg-charcoal ect-px-3.5 ect-py-1.5 ect-font-body ect-text-xs ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-50 disabled:ect-cursor-not-allowed"
+                      @click="decideSignupRequest(row, 'approve')"
+                    >
+                      {{ signupActionReference === row.reference ? 'Working…' : 'Approve' }}
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="signupActionReference === row.reference"
+                      class="ect-ml-2 ect-rounded-full ect-border ect-border-charcoal/15 ect-px-3.5 ect-py-1.5 ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/70 hover:ect-border-red-400 hover:ect-text-red-700 ect-transition-colors disabled:ect-opacity-50 disabled:ect-cursor-not-allowed"
+                      @click="decideSignupRequest(row, 'reject')"
+                    >
+                      Reject
+                    </button>
+                  </template>
+                  <span v-else-if="row.status === 'pending'" class="ect-font-body ect-text-xs ect-text-charcoal/40">Full Admin approval required</span>
+                  <span v-else class="ect-font-body ect-text-xs ect-text-charcoal/40">{{ row.reviewedAt ? formatDate(row.reviewedAt) : '—' }}</span>
+                </td>
+              </tr>
+              <tr v-if="!signupListLoading && !signupRequests.length" class="ect-border-t ect-border-sand">
+                <td colspan="8" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">
+                  {{ signupSearch.trim() ? 'No sign-up requests match your search.' : 'No sign-up requests in this view.' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="!signupListLoading && signupRequests.length" class="ect-flex ect-flex-col ect-items-center ect-gap-3 ect-border-t ect-border-sand ect-px-4 ect-py-4">
+            <p class="ect-font-body ect-text-xs ect-text-charcoal/45">Showing {{ signupRequests.length }} of {{ signupTotal }}</p>
+            <button
+              v-if="signupHasMore"
+              type="button"
+              :disabled="signupLoadingMore"
+              class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-50 disabled:ect-cursor-not-allowed"
+              @click="loadSignupRequests(false)"
+            >
+              {{ signupLoadingMore ? 'Loading…' : 'Load more' }}
             </button>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { reactive, computed } from 'vue'
 import { API_BASE } from '../config-api'
+import { submitSignupRequest, type SignupRequestInput } from './useSignupRequests'
 
 const AUTH_STORAGE_KEY = 'osiyan-auth-user-v1'
 const CUSTOMER_IDLE_TIMEOUT_MS = 60 * 60 * 1000
@@ -14,6 +15,10 @@ interface User {
   email: string
   isInternal?: boolean
   isAdmin?: boolean
+  // Memo (consignment) permission — lets this customer take goods out without paying.
+  canMemo?: boolean
+  memoLimitPaise?: number | null
+  memoDays?: number
 }
 
 interface StoredSession {
@@ -133,6 +138,7 @@ export function useAuth() {
   const isLoggedIn = computed(() => !!state.user)
   const isInternalUser = computed(() => Boolean(state.user?.isInternal || state.user?.isAdmin))
   const isAdminUser = computed(() => Boolean(state.user?.isAdmin))
+  const canMemoUser = computed(() => Boolean(state.user?.canMemo))
   const user = computed(() => state.user)
   const sessionExpiresSoon = computed(() => state.expiresSoon)
 
@@ -161,16 +167,10 @@ export function useAuth() {
     return data.user as User
   }
 
-  async function signup(name: string, email: string, password?: string) {
-    const res = await fetch(`${API_BASE}/api/account`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'signup', name, email, password }),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data?.message || 'Unable to sign up.')
-    setUser(data.user, true)
-    return data.user as User
+  // Sign-up no longer creates a session: the form files a request that a Full
+  // Admin approves before the account exists. See useSignupRequests.ts.
+  async function signup(input: SignupRequestInput) {
+    return submitSignupRequest(input)
   }
 
   async function requestPasswordReset(email: string) {
@@ -223,9 +223,9 @@ export function useAuth() {
     return data.user as User
   }
 
-  // Backward-compatible alias for older calls.
-  async function login(name: string, email: string) {
-    if (name?.trim()) return signup(name, email)
+  // Backward-compatible alias for older calls. Creating an account now goes
+  // through the approval queue, so this only ever signs an existing user in.
+  async function login(_name: string, email: string) {
     return signin(email)
   }
 
@@ -233,5 +233,5 @@ export function useAuth() {
     clearSession()
   }
 
-  return { user, isLoggedIn, isInternalUser, isAdminUser, sessionExpiresSoon, login, signin, signup, requestPasswordReset, resetPassword, changePassword, refreshCurrentUser, logout, setUser }
+  return { user, isLoggedIn, isInternalUser, isAdminUser, canMemoUser, sessionExpiresSoon, login, signin, signup, requestPasswordReset, resetPassword, changePassword, refreshCurrentUser, logout, setUser }
 }

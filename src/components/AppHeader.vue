@@ -659,7 +659,7 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   background: #fff;
-  font-family: Jost, Helvetica, Arial, sans-serif;
+  font-family: var(--font-display);
 }
 
 /* Condensed: the utility strip folds away and the bar drops to 60px. */
@@ -934,7 +934,7 @@ onBeforeUnmount(() => {
 }
 .account-profile { padding: 22px 26px 18px; }
 .account-name, .account-email { overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; }
-.account-name { color: var(--plum-ink); font-family: Marcellus, Georgia, serif; font-size: 19px; line-height: 1.25; }
+.account-name { color: var(--plum-ink); font-family: var(--font-display); font-size: 19px; line-height: 1.25; }
 .account-email { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.35; }
 .internal-switch-row {
   width: 100%;
@@ -1044,7 +1044,7 @@ onBeforeUnmount(() => {
     padding: 17px 0;
     color: var(--plum-ink);
     text-decoration: none;
-    font-family: Marcellus, Georgia, serif;
+    font-family: var(--font-display);
     font-size: 21px;
     letter-spacing: 0.02em;
   }

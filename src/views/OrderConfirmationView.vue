@@ -8,10 +8,14 @@ const { orders } = useOrders()
 
 const confirmationKind = computed(() => {
   const kind = String(route.query.kind || '').trim().toLowerCase()
-  return kind === 'service' ? 'service' : 'order'
+  if (kind === 'service') return 'service'
+  if (kind === 'memo') return 'memo'
+  return 'order'
 })
 
 const referenceNumber = computed(() => {
+  const memoNo = String(route.query.memoNo || '').trim()
+  if (memoNo) return memoNo
   const fromQuery = String(route.query.orderId || '').trim()
   if (fromQuery) return fromQuery
   const fromReference = String(route.query.reference || '').trim()
@@ -28,13 +32,17 @@ const referenceNumber = computed(() => {
       </svg>
 
       <h1 class="ect-font-display ect-text-4xl sm:ect-text-5xl ect-font-light ect-text-charcoal ect-mb-4">
-        {{ confirmationKind === 'service' ? 'Custom Request Received!' : 'Order Placed!' }}
+        {{ confirmationKind === 'service' ? 'Custom Request Received!' : confirmationKind === 'memo' ? 'Memo Raised!' : 'Order Placed!' }}
       </h1>
       <p class="ect-font-body ect-text-lg ect-text-charcoal/60 ect-mb-2">
-        {{ confirmationKind === 'service' ? 'Thank you for sharing your custom jewellery requirements with Kiana Jewels.' : 'Thank you for shopping with Kiana Jewels.' }}
+        {{ confirmationKind === 'service'
+          ? 'Thank you for sharing your custom jewellery requirements with Kiana Jewels.'
+          : confirmationKind === 'memo'
+            ? 'The pieces are going out to you on memo. Nothing has been charged.'
+            : 'Thank you for shopping with Kiana Jewels.' }}
       </p>
       <p class="ect-font-body ect-text-base ect-text-charcoal/50 ect-mb-10">
-        {{ confirmationKind === 'service' ? 'Your request reference is ' : 'Your order number is ' }}
+        {{ confirmationKind === 'service' ? 'Your request reference is ' : confirmationKind === 'memo' ? 'Your memo number is ' : 'Your order number is ' }}
         <span class="ect-font-semibold ect-text-charcoal">{{ referenceNumber }}</span>
       </p>
 
@@ -44,19 +52,31 @@ const referenceNumber = computed(() => {
           <li class="ect-flex ect-gap-3">
             <span class="ect-inline-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-full ect-bg-charcoal ect-text-white ect-font-body ect-text-xs ect-font-bold ect-shrink-0">1</span>
             <span class="ect-font-body ect-text-base ect-text-charcoal/70">
-              {{ confirmationKind === 'service' ? 'You’ll receive a confirmation email for your custom request shortly.' : 'You’ll receive an order confirmation email shortly.' }}
+              {{ confirmationKind === 'service'
+                ? 'You’ll receive a confirmation email for your custom request shortly.'
+                : confirmationKind === 'memo'
+                  ? 'We’ll prepare the pieces and send them out to you on memo.'
+                  : 'You’ll receive an order confirmation email shortly.' }}
             </span>
           </li>
           <li class="ect-flex ect-gap-3">
             <span class="ect-inline-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-full ect-bg-charcoal ect-text-white ect-font-body ect-text-xs ect-font-bold ect-shrink-0">2</span>
             <span class="ect-font-body ect-text-base ect-text-charcoal/70">
-              {{ confirmationKind === 'service' ? 'Our team will review the customization details and contact you to confirm the next steps.' : 'Our artisans will prepare your piece with care.' }}
+              {{ confirmationKind === 'service'
+                ? 'Our team will review the customization details and contact you to confirm the next steps.'
+                : confirmationKind === 'memo'
+                  ? 'The pieces remain ours while they are with you — keep what sells, send back the rest.'
+                  : 'Our artisans will prepare your piece with care.' }}
             </span>
           </li>
           <li class="ect-flex ect-gap-3">
             <span class="ect-inline-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-full ect-bg-charcoal ect-text-white ect-font-body ect-text-xs ect-font-bold ect-shrink-0">3</span>
             <span class="ect-font-body ect-text-base ect-text-charcoal/70">
-              {{ confirmationKind === 'service' ? 'Once approved, we’ll guide you through production timelines, pricing, and delivery.' : 'Free insured delivery within 5-7 business days.' }}
+              {{ confirmationKind === 'service'
+                ? 'Once approved, we’ll guide you through production timelines, pricing, and delivery.'
+                : confirmationKind === 'memo'
+                  ? 'We’ll invoice you for whatever you keep, at the prices locked when the goods went out.'
+                  : 'Free insured delivery within 5-7 business days.' }}
             </span>
           </li>
         </ul>

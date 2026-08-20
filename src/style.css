@@ -7,7 +7,10 @@
    needs a font stack read these, so the family is declared exactly once. */
 :root {
   --font-body: Helvetica, Arial, sans-serif;
-  --font-display: Helvetica, Arial, sans-serif;
+  --font-display: Jost, Helvetica, Arial, sans-serif;
+  /* Editorial accent — the didone standing in for the Didot italic used on
+     osiyaninc.com. Reach for it sparingly, on pull quotes and section accents. */
+  --font-accent: 'Bodoni Moda', Didot, Georgia, serif;
 
   /* Osiyan's brand aubergine, used for primary storefront actions. AppHeader.vue
      mirrors these as --plum/--plum-ink for the logo and bag pill. */
@@ -47,7 +50,7 @@ body.osiyan-menu-open {
 /* Display headings. These share the body family (see --font-display) and are
    distinguished by tracking and leading rather than by a second typeface. */
 .ect-font-display {
-  letter-spacing: -0.035em;
+  letter-spacing: -0.01em;
   font-feature-settings: 'kern' 1, 'liga' 1;
 }
 .ect-text-2xl.ect-font-display,
@@ -55,7 +58,7 @@ body.osiyan-menu-open {
 .ect-text-4xl.ect-font-display,
 .ect-text-5xl.ect-font-display {
   line-height: 1.18;
-  letter-spacing: 0.025em;
+  letter-spacing: 0.01em;
 }
 
 /* Body copy: comfortable reading */
