@@ -8,7 +8,7 @@ import { useMemos, memoDueLabel } from '../composables/useMemos'
 // the order confirmation, not a variant of it — so this view stands on its own
 // and reads the real memo (due date, pieces) rather than echoing the query.
 const route = useRoute()
-const { memos, allowance, load, loading } = useMemos()
+const { memos, allowance, load, loading, settled } = useMemos()
 
 onMounted(() => void load(true))
 
@@ -48,8 +48,17 @@ function formatDate(iso: string) {
 
       <!-- The memo's own facts: dates and pieces, never a total to pay. -->
       <section class="ect-bg-white/90 ect-backdrop-blur-sm ect-rounded-2xl ect-border ect-border-sand ect-shadow-sm ect-p-6 sm:ect-p-8 ect-mb-6">
-        <div v-if="loading && !memo" class="ect-flex ect-flex-col ect-gap-3">
-          <span v-for="n in 3" :key="n" class="ect-h-5 ect-rounded ect-bg-champagne/50 ect-animate-pulse"></span>
+        <!-- Skeleton shaped like the memo itself, so nothing jumps when it lands. -->
+        <div v-if="!settled || (loading && !memo)" class="ect-animate-pulse">
+          <div class="ect-grid ect-grid-cols-2 sm:ect-grid-cols-3 ect-gap-4 ect-mb-6">
+            <div v-for="n in 3" :key="n">
+              <span class="ect-block ect-h-3 ect-w-20 ect-rounded ect-bg-champagne/70 ect-mb-2"></span>
+              <span class="ect-block ect-h-5 ect-w-28 ect-rounded ect-bg-champagne/50"></span>
+            </div>
+          </div>
+          <div class="ect-border-t ect-border-sand ect-pt-4 ect-flex ect-flex-col ect-gap-3">
+            <span v-for="n in 2" :key="n" class="ect-block ect-h-4 ect-w-2/3 ect-rounded ect-bg-champagne/50"></span>
+          </div>
         </div>
 
         <template v-else-if="memo">

@@ -57,6 +57,11 @@ export interface MemoAllowance {
 const memos = ref<Memo[]>([])
 const allowance = ref<MemoAllowance | null>(null)
 const loading = ref(false)
+// Whether we know what this account holds yet. `loading` alone cannot answer
+// that: views mount before their onMounted fetch starts, so an unsettled page
+// would flash "nothing on memo" for a frame before the request is even sent.
+// Signed out counts as settled — there is nothing to wait for.
+const settled = ref(false)
 const error = ref('')
 // Which memo is mid-extension, so only that card shows a spinner.
 const extendingId = ref('')
@@ -70,6 +75,7 @@ let authWatchBound = false
 function reset() {
   memos.value = []
   allowance.value = null
+  settled.value = false
   error.value = ''
   extendError.value = ''
   extendMessage.value = ''
@@ -84,6 +90,7 @@ export function useMemos() {
     const userId = user.value?.id || ''
     if (!userId) {
       reset()
+      settled.value = true
       return
     }
     if (loading.value) return
@@ -111,6 +118,9 @@ export function useMemos() {
       error.value = e instanceof Error ? e.message : 'Unable to load your memos.'
     } finally {
       loading.value = false
+      // Settled either way: a failed load has an error to show, not a spinner
+      // to keep spinning.
+      settled.value = true
     }
   }
 
@@ -175,6 +185,7 @@ export function useMemos() {
     allowance: computed(() => allowance.value),
     openCount,
     loading: computed(() => loading.value),
+    settled: computed(() => settled.value),
     error: computed(() => error.value),
     extendingId: computed(() => extendingId.value),
     extendError: computed(() => extendError.value),

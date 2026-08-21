@@ -12,7 +12,7 @@ import {
 } from '../composables/useMemos'
 
 const { isLoggedIn } = useAuth()
-const { memos, allowance, openCount, loading, error, load, extend, extendingId, extendError, extendMessage } =
+const { memos, allowance, openCount, loading, settled, error, load, extend, extendingId, extendError, extendMessage } =
   useMemos()
 
 onMounted(() => void load())
@@ -65,7 +65,16 @@ function itemLine(item: Memo['items'][number]) {
 
         <!-- Allowance summary: what is out against what this account may hold. -->
         <section
-          v-if="allowance?.canMemo"
+          v-if="!settled"
+          class="ect-bg-white/90 ect-backdrop-blur-sm ect-rounded-2xl ect-border ect-border-sand ect-shadow-sm ect-p-5 sm:ect-p-6 ect-mb-5 ect-grid ect-grid-cols-2 sm:ect-grid-cols-4 ect-gap-4 ect-animate-pulse"
+        >
+          <div v-for="n in 4" :key="n">
+            <span class="ect-block ect-h-3 ect-w-20 ect-rounded ect-bg-champagne/70 ect-mb-2"></span>
+            <span class="ect-block ect-h-5 ect-w-24 ect-rounded ect-bg-champagne/50"></span>
+          </div>
+        </section>
+        <section
+          v-else-if="allowance?.canMemo"
           class="ect-bg-white/90 ect-backdrop-blur-sm ect-rounded-2xl ect-border ect-border-sand ect-shadow-sm ect-p-5 sm:ect-p-6 ect-mb-5 ect-grid ect-grid-cols-2 sm:ect-grid-cols-4 ect-gap-4"
         >
           <div>
@@ -89,8 +98,9 @@ function itemLine(item: Memo['items'][number]) {
           </p>
         </section>
 
-        <!-- Loading -->
-        <section v-if="loading && !memos.length" class="ect-flex ect-flex-col ect-gap-4">
+        <!-- Loading: held until the account's memos are known, so the empty
+             state never flashes before the request has even gone out. -->
+        <section v-if="!settled || (loading && !memos.length)" class="ect-flex ect-flex-col ect-gap-4">
           <span v-for="n in 2" :key="n" class="ect-h-28 ect-rounded-2xl ect-bg-white/70 ect-border ect-border-sand ect-animate-pulse"></span>
         </section>
 
