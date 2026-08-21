@@ -350,6 +350,8 @@ function requestDetailRows(request) {
 // Applicant acknowledgement + internal alert, sent when a request is filed.
 export async function notifySignupRequested(request) {
   const detail = renderDetails(requestDetailRows(request))
+  const applicantName =
+    request.companyName || [request.firstName, request.lastName].filter(Boolean).join(' ').trim()
   const internalRecipients = String(process.env.NOTIFY_TO_EMAIL || '')
     .split(',')
     .map((value) => value.trim())
@@ -374,14 +376,14 @@ export async function notifySignupRequested(request) {
     tasks.push(
       sendResend({
         to: internalRecipients,
-        subject: `New sign-up request ${request.reference} — ${request.companyName}`,
+        subject: `New sign-up request ${request.reference} — ${applicantName}`,
         html: renderShell({
           eyebrow: 'Approval needed',
-          title: `${request.companyName} requested an account`,
+          title: `${applicantName} requested an account`,
           intro: 'A new sign-up request is waiting for a Full Admin to approve or reject it.',
           bodyHtml: detail,
         }),
-        text: `New sign-up request ${request.reference} from ${request.companyName} (${request.email}) is awaiting approval.`,
+        text: `New sign-up request ${request.reference} from ${applicantName} (${request.email}) is awaiting approval.`,
       }),
     )
   }

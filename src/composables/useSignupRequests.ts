@@ -47,8 +47,8 @@ export interface SignupRequestInput {
   lastName: string
   email: string
   phone: string
-  companyName: string
-  taxId: string
+  companyName?: string
+  taxId?: string
   addressLine1: string
   addressLine2?: string
   city: string

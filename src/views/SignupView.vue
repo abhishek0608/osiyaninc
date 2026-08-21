@@ -181,6 +181,7 @@ async function handleSubmit() {
                   <input
                     v-model="form.firstName"
                     type="text"
+                    required
                     autocomplete="given-name"
                     placeholder="Jane"
                     :class="fieldClass('firstName')"
@@ -194,6 +195,7 @@ async function handleSubmit() {
                   <input
                     v-model="form.lastName"
                     type="text"
+                    required
                     autocomplete="family-name"
                     placeholder="Doe"
                     :class="fieldClass('lastName')"
@@ -207,6 +209,7 @@ async function handleSubmit() {
                   <input
                     v-model="form.email"
                     type="email"
+                    required
                     autocomplete="email"
                     placeholder="you@company.com"
                     :class="fieldClass('email')"
@@ -220,6 +223,7 @@ async function handleSubmit() {
                   <input
                     v-model="form.phone"
                     type="tel"
+                    required
                     autocomplete="tel"
                     placeholder="+1 (555) 123-4567"
                     :class="fieldClass('phone')"
@@ -263,6 +267,7 @@ async function handleSubmit() {
                 <input
                   v-model="form.addressLine1"
                   type="text"
+                  required
                   autocomplete="address-line1"
                   placeholder="1234 Market Street"
                   :class="fieldClass('addressLine1')"
@@ -287,6 +292,7 @@ async function handleSubmit() {
                   <input
                     v-model="form.city"
                     type="text"
+                    required
                     autocomplete="address-level2"
                     placeholder="San Francisco"
                     :class="fieldClass('city')"
@@ -311,6 +317,7 @@ async function handleSubmit() {
                   <input
                     v-model="form.postalCode"
                     type="text"
+                    required
                     inputmode="numeric"
                     autocomplete="postal-code"
                     placeholder="94103"
@@ -334,6 +341,7 @@ async function handleSubmit() {
                 <input
                   v-model="form.password"
                   type="password"
+                  required
                   autocomplete="new-password"
                   :class="fieldClass('password')"
                   :aria-invalid="!!errors.password"
