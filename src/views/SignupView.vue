@@ -108,8 +108,11 @@ async function revealFirstError() {
   const control = fieldHost?.matches('input, button, select, textarea')
     ? fieldHost
     : fieldHost?.querySelector<HTMLElement>('input, button, select, textarea')
+  // Smooth scrolling can be interrupted by the large layout shift caused by
+  // inserting every inline error at once. Position the first invalid field
+  // immediately, then focus without letting the browser move it again.
+  control?.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' })
   control?.focus({ preventScroll: true })
-  control?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 const returnTo = computed(() => {
