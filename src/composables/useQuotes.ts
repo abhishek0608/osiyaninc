@@ -112,51 +112,5 @@ export function useQuotes() {
     return quote
   }
 
-  // Internal-workspace path: the team keys in line items by hand (title, unit
-  // price, qty) instead of converting a cart, e.g. for phone/showroom enquiries.
-  function addManualQuote(
-    manualItems: { title: string; price: number; qty: number }[],
-    customer: {
-      name: string
-      email: string
-      phone: string
-      address: string
-      city: string
-      state: string
-      country: string
-      pincode: string
-    },
-  ) {
-    const items: QuoteItem[] = manualItems.map((item, index) => ({
-      slug: `manual-${index}`,
-      title: item.title,
-      price: '$' + item.price.toLocaleString('en-US'),
-      priceValue: item.price,
-      qty: item.qty,
-    }))
-    const total = items.reduce((sum, item) => sum + item.priceValue * item.qty, 0)
-    const itemCount = items.reduce((sum, item) => sum + item.qty, 0)
-    const quote: Quote = {
-      id: getNextReferenceNumber('QTE', 'quotes'),
-      createdAt: new Date().toISOString(),
-      items,
-      total,
-      formattedTotal: '$' + total.toLocaleString('en-US'),
-      status: 'pending',
-      itemCount,
-      customerName: customer.name,
-      customerEmail: customer.email,
-      customerPhone: customer.phone,
-      address: customer.address,
-      city: customer.city,
-      state: customer.state,
-      country: customer.country,
-      pincode: customer.pincode,
-    }
-    quotes.unshift(quote)
-    saveQuotes()
-    return quote
-  }
-
-  return { quotes: list, addQuote, addManualQuote }
+  return { quotes: list, addQuote }
 }

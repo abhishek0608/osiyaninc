@@ -24,6 +24,8 @@ interface MemoDetail {
   issuedAt: string
   dueDate: string
   closedAt: string | null
+  extensionCount: number
+  lastExtendedAt: string | null
   formattedSubtotal: string
   formattedOutstanding: string
   notes: string
@@ -47,6 +49,8 @@ const actionError = ref('')
 const actionMessage = ref('')
 const saving = ref(false)
 const memo = ref<MemoDetail | null>(null)
+// Days to push the due date out by, from the current due date.
+const extendDays = ref(15)
 // Per-line quantities the staff member is closing out; defaults to everything
 // still out, which is the usual case.
 const lineQty = ref<Record<string, number>>({})
@@ -93,6 +97,35 @@ async function loadMemo() {
     error.value = e instanceof Error ? e.message : 'Unable to load this memo.'
   } finally {
     loading.value = false
+  }
+}
+
+// Staff extension is not bound by the customer's last-three-days window: this
+// is how an overdue or already-extended memo gets more time.
+async function extendMemo() {
+  if (!user.value?.id || !memo.value || saving.value) return
+  const days = Math.floor(Number(extendDays.value) || 0)
+  if (days <= 0 || days > 365) {
+    actionError.value = 'Extend by between 1 and 365 days.'
+    return
+  }
+  saving.value = true
+  actionError.value = ''
+  actionMessage.value = ''
+  try {
+    const res = await fetch(`${API_BASE}/api/internal?resource=memo&action=extend`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.value.id, memoId: memo.value.id, days }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || 'Unable to extend this memo.')
+    actionMessage.value = `Due date moved out by ${days} ${days === 1 ? 'day' : 'days'}.`
+    await loadMemo()
+  } catch (e) {
+    actionError.value = e instanceof Error ? e.message : 'Unable to extend this memo.'
+  } finally {
+    saving.value = false
   }
 }
 
@@ -202,7 +235,12 @@ onMounted(() => {
             </div>
             <div>
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Due back</dt>
-              <dd class="ect-font-body ect-text-sm" :class="memo.isOverdue ? 'ect-text-red-600 ect-font-semibold' : 'ect-text-charcoal'">{{ formatDate(memo.dueDate) }}</dd>
+              <dd class="ect-font-body ect-text-sm" :class="memo.isOverdue ? 'ect-text-red-600 ect-font-semibold' : 'ect-text-charcoal'">
+                {{ formatDate(memo.dueDate) }}
+                <span v-if="memo.extensionCount" class="ect-block ect-text-xs ect-text-charcoal/40">
+                  extended {{ memo.extensionCount }}× · last on {{ formatDate(memo.lastExtendedAt) }}
+                </span>
+              </dd>
             </div>
             <div v-if="memo.closedAt">
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Closed</dt>
@@ -298,6 +336,28 @@ onMounted(() => {
             <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-3">
               Billing a memo creates a confirmed order and an invoice at the prices locked when the goods went out.
             </p>
+
+            <div class="ect-mt-4 ect-pt-4 ect-border-t ect-border-rose-200/30 ect-flex ect-flex-wrap ect-items-center ect-gap-2">
+              <span class="ect-font-body ect-text-xs ect-text-charcoal/45">Give more time</span>
+              <input
+                v-model.number="extendDays"
+                type="number"
+                min="1"
+                max="365"
+                class="ect-w-20 ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-1.5 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
+              />
+              <button
+                type="button"
+                :disabled="saving"
+                class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-50"
+                @click="extendMemo"
+              >
+                Extend due date
+              </button>
+              <span class="ect-font-body ect-text-xs ect-text-charcoal/40">
+                Counted from the current due date. Customers can self-extend only in the last 3 days.
+              </span>
+            </div>
           </div>
           <div v-else class="ect-p-5 ect-border-t ect-border-rose-200/30">
             <p v-if="actionMessage" class="ect-font-body ect-text-sm ect-text-emerald-700">{{ actionMessage }}</p>

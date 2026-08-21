@@ -5,6 +5,11 @@ export type OrderEmailItem = { title: string; qty: number; price: string }
 export type OrderEmailPayload = {
   kind: 'order'
   orderId: string
+  // 'terms' means the customer is approved to pay later; the due date and the
+  // granted period ride along so the team sees them without a lookup.
+  paymentTerm?: 'immediate' | 'terms'
+  paymentDueDate?: string
+  paymentTermDays?: number
   customerName: string
   customerEmail: string
   customerPhone: string

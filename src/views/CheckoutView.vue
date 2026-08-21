@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCart, isCustomizedCartItem } from '../composables/useCart'
-import { useOrders } from '../composables/useOrders'
+import { useOrders, type OrderPayment, type PaymentTerm } from '../composables/useOrders'
 import { useQuotes } from '../composables/useQuotes'
 import { useSavedAddresses, COUNTRY_OPTIONS, countryDisplayName } from '../composables/useSavedAddresses'
 import { useAuth } from '../composables/useAuth'
@@ -24,7 +24,7 @@ const {
 const { addOrder } = useOrders()
 const { addQuote } = useQuotes()
 const { addresses: savedAddresses, getById, save: saveAddress } = useSavedAddresses()
-const { user, canMemoUser } = useAuth()
+const { user, canMemoUser, canPayTermsUser, paymentTermDays } = useAuth()
 const isProcessing = ref(false)
 const isMemoProcessing = ref(false)
 const submitError = ref('')
@@ -111,6 +111,34 @@ function saveCurrentAddress() {
   saveAddressMessage.value = 'Saved. Choose it from Saved shipping address in Contact details anytime.'
 }
 
+// How this order gets settled. 'terms' (buy now, pay in termsDays) is only an
+// option for accounts an admin has approved for it, so an unapproved customer
+// never sees the choice and every order stays 'immediate'.
+const paymentTerm = ref<PaymentTerm>('immediate')
+
+watch(canPayTermsUser, (allowed) => {
+  if (!allowed) paymentTerm.value = 'immediate'
+})
+
+const dueDate = computed(() => {
+  const d = new Date()
+  d.setDate(d.getDate() + paymentTermDays.value)
+  return d
+})
+
+const formattedDueDate = computed(() =>
+  dueDate.value.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
+)
+
+function buildPayment(): OrderPayment {
+  if (paymentTerm.value !== 'terms') return { term: 'immediate' }
+  return {
+    term: 'terms',
+    termDays: paymentTermDays.value,
+    dueDate: dueDate.value.toISOString(),
+  }
+}
+
 const hasCustomizedItems = computed(() =>
   items.some((item) => isCustomizedCartItem(item)),
 )
@@ -138,10 +166,14 @@ function buildCustomizationMap(customization: Record<string, unknown> | null | u
 
 function finalizeStandardOrder() {
   const snapshot = [...items]
-  const order = addOrder(snapshot, discountedTotal.value)
+  const payment = buildPayment()
+  const order = addOrder(snapshot, discountedTotal.value, payment)
   void notifyTransaction({
     kind: 'order',
     orderId: order.id,
+    paymentTerm: payment.term,
+    paymentDueDate: payment.term === 'terms' ? formattedDueDate.value : undefined,
+    paymentTermDays: payment.termDays,
     customerName: form.value.name.trim(),
     customerEmail: form.value.email.trim(),
     customerPhone: form.value.phone.trim(),
@@ -210,10 +242,14 @@ function finalizeCheckout() {
     // Same volume-discount percentage the cart advertised, applied to the
     // priced (non-customized) portion of a mixed order.
     const nonCustomTotal = nonCustomGross - Math.round((nonCustomGross * discountPercent.value) / 100)
-    const order = addOrder(snapshot, nonCustomTotal)
+    const payment = buildPayment()
+    const order = addOrder(snapshot, nonCustomTotal, payment)
     void notifyTransaction({
       kind: 'order',
       orderId: order.id,
+      paymentTerm: payment.term,
+      paymentDueDate: payment.term === 'terms' ? formattedDueDate.value : undefined,
+      paymentTermDays: payment.termDays,
       customerName: form.value.name.trim(),
       customerEmail: form.value.email.trim(),
       customerPhone: form.value.phone.trim(),
@@ -288,7 +324,8 @@ async function handleMemo() {
     if (!res.ok) throw new Error(data?.message || 'Unable to raise this memo.')
     // The server already emptied the cart; resync so the header count follows.
     await clearCart().catch(() => {})
-    router.push({ path: '/order-confirmation', query: { memoId: data.memo.id, memoNo: data.memo.memoNo, kind: 'memo' } })
+    // A memo lands on its own confirmation page — no payment, no order number.
+    router.push({ path: '/memo-confirmation', query: { memoId: data.memo.id, memoNo: data.memo.memoNo } })
   } catch (e) {
     submitError.value = e instanceof Error ? e.message : 'Unable to raise this memo.'
   } finally {
@@ -472,6 +509,48 @@ const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code
             </section>
           </section>
 
+          <!-- Payment card: how this order gets settled. Customers an admin has
+               approved for terms get the choice; everyone else pays up front. -->
+          <section v-if="canPayTermsUser && !hasCustomizedItems" class="ect-bg-white ect-rounded-2xl ect-p-5 sm:ect-p-6 ect-border ect-border-sand ect-shadow-card">
+            <header class="ect-flex ect-items-center ect-gap-2.5 ect-mb-5">
+              <span class="ect-w-8 ect-h-8 ect-rounded-full ect-bg-champagne/50 ect-flex ect-items-center ect-justify-center ect-shrink-0">
+                <svg class="ect-w-4 ect-h-4 ect-text-gold-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                </svg>
+              </span>
+              <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/70">Payment</h2>
+            </header>
+            <div role="radiogroup" aria-label="Payment option" class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-2.5">
+              <label
+                class="ect-flex ect-items-start ect-gap-3 ect-p-3.5 ect-rounded-xl ect-cursor-pointer ect-border ect-transition-all ect-duration-200"
+                :class="paymentTerm === 'immediate'
+                  ? 'ect-border-gold-400 ect-bg-champagne/50 ect-shadow-card'
+                  : 'ect-border-sand hover:ect-border-gold-300 hover:ect-bg-champagne/40'"
+              >
+                <input v-model="paymentTerm" type="radio" value="immediate" class="ect-accent-charcoal ect-w-4 ect-h-4 ect-shrink-0 ect-mt-0.5" />
+                <span class="ect-flex-1 ect-min-w-0">
+                  <span class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-block">Pay immediately</span>
+                  <span class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-block">Settle the full amount now</span>
+                </span>
+              </label>
+              <label
+                class="ect-flex ect-items-start ect-gap-3 ect-p-3.5 ect-rounded-xl ect-cursor-pointer ect-border ect-transition-all ect-duration-200"
+                :class="paymentTerm === 'terms'
+                  ? 'ect-border-gold-400 ect-bg-champagne/50 ect-shadow-card'
+                  : 'ect-border-sand hover:ect-border-gold-300 hover:ect-bg-champagne/40'"
+              >
+                <input v-model="paymentTerm" type="radio" value="terms" class="ect-accent-charcoal ect-w-4 ect-h-4 ect-shrink-0 ect-mt-0.5" />
+                <span class="ect-flex-1 ect-min-w-0">
+                  <span class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-block">Payment terms · Net {{ paymentTermDays }}</span>
+                  <span class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-block">Pay by {{ formattedDueDate }}</span>
+                </span>
+              </label>
+            </div>
+            <p v-if="paymentTerm === 'terms'" class="ect-mt-3 ect-font-body ect-text-xs ect-text-charcoal/45">
+              Your account is approved for payment terms. The pieces ship now and the full {{ volumeDiscountTier ? formattedDiscountedTotal : formattedTotal }} is due by {{ formattedDueDate }}.
+            </p>
+          </section>
+
           <!-- Error alert -->
           <section v-if="submitError" class="ect-flex ect-items-start ect-gap-3 ect-p-4 ect-rounded-xl ect-bg-red-50 ect-border ect-border-red-200/60">
             <svg class="ect-w-5 ect-h-5 ect-text-red-500 ect-shrink-0 ect-mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -509,7 +588,9 @@ const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code
             <span>
               {{ isProcessing
                 ? (hasCustomizedItems ? 'Creating your custom request…' : 'Placing your order…')
-                : (hasCustomizedItems ? `Create Custom Request · ${formattedDiscountedTotal}` : `Place Order · ${formattedDiscountedTotal}`) }}
+                : (hasCustomizedItems
+                    ? `Create Custom Request · ${formattedDiscountedTotal}`
+                    : `${paymentTerm === 'terms' ? 'Place Order on Terms' : 'Place Order'} · ${formattedDiscountedTotal}`) }}
             </span>
           </button>
 
@@ -595,6 +676,9 @@ const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code
               <span class="ect-font-display ect-text-2xl ect-text-charcoal">{{ volumeDiscountTier ? formattedDiscountedTotal : formattedTotal }}</span>
             </article>
             <p class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-text-right">GST included in price</p>
+            <p v-if="paymentTerm === 'terms'" class="ect-font-body ect-text-xs ect-text-gold-700 ect-text-right ect-mt-1">
+              On payment terms · due {{ formattedDueDate }}
+            </p>
           </section>
 
           <!-- Hallmark & assurance -->

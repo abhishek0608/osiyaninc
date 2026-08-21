@@ -12,8 +12,6 @@ export interface ServiceRequestRow {
 
 export type ServiceRequestStatus = 'new' | 'reviewing' | 'quoted'
 
-export const SERVICE_REQUEST_STATUSES: ServiceRequestStatus[] = ['new', 'reviewing', 'quoted']
-
 export interface ServiceRequest {
   reference: string
   serviceId: string
@@ -98,66 +96,4 @@ export async function uploadServiceFile(file: File, kind: 'image' | 'cad'): Prom
   })
   if (!putRes.ok) throw new Error('Could not upload your file. Please try again.')
   return publicUrl
-}
-
-// --- Internal workspace (require an internal userId) ------------------------
-
-export async function fetchServiceRequests(userId: string): Promise<ServiceRequest[]> {
-  const params = new URLSearchParams({ resource: 'services', userId })
-  const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res, 'Could not load service requests.'))
-  }
-  const data = (await res.json()) as { requests: ServiceRequest[] }
-  return Array.isArray(data.requests) ? data.requests : []
-}
-
-export async function fetchServiceRequest(
-  userId: string,
-  reference: string,
-): Promise<ServiceRequest | null> {
-  const params = new URLSearchParams({ resource: 'services', userId, reference })
-  const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
-  if (res.status === 404) return null
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res, 'Could not load the service request.'))
-  }
-  const data = (await res.json()) as { request: ServiceRequest }
-  return data.request
-}
-
-export async function updateServiceRequestStatus(
-  userId: string,
-  reference: string,
-  status: ServiceRequestStatus,
-): Promise<ServiceRequest> {
-  const params = new URLSearchParams({ resource: 'services', userId })
-  const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reference, status }),
-  })
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res, 'Could not update the status.'))
-  }
-  const data = (await res.json()) as { request: ServiceRequest }
-  return data.request
-}
-
-// Manual entry from the workspace (phone / showroom bookings).
-export async function createInternalServiceRequest(
-  userId: string,
-  input: CreateServiceRequestInput,
-): Promise<ServiceRequest> {
-  const params = new URLSearchParams({ resource: 'services', userId })
-  const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(toCreateBody(input)),
-  })
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res, 'Could not create the service request.'))
-  }
-  const data = (await res.json()) as { request: ServiceRequest }
-  return data.request
 }

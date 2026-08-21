@@ -15,6 +15,7 @@ import {
 import {
   MemoError,
   createMemo,
+  extendMemo,
   getMemoOutstandingPaise,
   getMemoCustomer,
   formatMemoMoney,
@@ -89,6 +90,9 @@ function toUserPayload(customer) {
     canMemo: Boolean(customer.canMemo),
     memoLimitPaise: customer.memoLimitPaise ?? null,
     memoDays: customer.memoDays ?? 30,
+    canPayTerms: Boolean(customer.canPayTerms),
+    termsLimitPaise: customer.termsLimitPaise ?? null,
+    termsDays: customer.termsDays ?? 30,
   }
 }
 
@@ -675,6 +679,8 @@ async function handleGetMemos(res, customerId) {
     outstandingPaise,
     formattedOutstanding: formatMemoMoney(outstandingPaise),
     availablePaise: limitPaise == null ? null : Math.max(limitPaise - outstandingPaise, 0),
+    formattedAvailable:
+      limitPaise == null ? null : formatMemoMoney(Math.max(limitPaise - outstandingPaise, 0)),
     memos: memos.map((memo) => toMemoPayload(memo)),
   })
 }
@@ -746,6 +752,22 @@ async function handlePostMemo(res, customerId, body) {
   return res.status(201).json({ memo: toMemoPayload(memo), cartId: cart.id, items: [] })
 }
 
+// Extending is the customer's own action, so the rules (final window, one
+// extension, still open) live in extendMemo — this only proves whose memo it is.
+async function handlePostMemoExtend(res, customerId, body) {
+  if (!customerId) return res.status(400).json({ message: 'userId is required.' })
+  const memoId = String(body?.memoId || '').trim()
+  if (!memoId) return res.status(400).json({ message: 'memoId is required.' })
+
+  let memo
+  try {
+    memo = await extendMemo({ memoId, customerId, actorId: customerId, bySelf: true })
+  } catch (err) {
+    return memoErrorResponse(res, err)
+  }
+  return res.status(200).json({ memo: toMemoPayload(memo) })
+}
+
 function normalizeMemoShipTo(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   const allowed = ['name', 'email', 'phone', 'address', 'city', 'state', 'country', 'pincode']
@@ -784,6 +806,7 @@ export default async function handler(req, res) {
       if (mode === 'cart') return await handlePostCart(res, userId, body)
       if (mode === 'wishlist') return await handlePostWishlist(res, userId, body)
       if (mode === 'memo') return await handlePostMemo(res, userId, body)
+      if (mode === 'memo-extend') return await handlePostMemoExtend(res, userId, body)
       if (mode === 'service-request') return await handlePostServiceRequest(res, body)
       if (mode === 'service-upload') return await handlePostServiceUpload(res, body)
       return res.status(400).json({ message: 'Invalid mode for POST.' })

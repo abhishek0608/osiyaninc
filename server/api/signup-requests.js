@@ -12,6 +12,18 @@ import { prisma } from './db.js'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// Sign-ups take a US address only. ZIP is 5 digits with an optional +4, and the
+// state must be a USPS code — the same list the form offers (src/data/us-states.ts).
+const US_ZIP_PATTERN = /^\d{5}(-\d{4})?$/
+const US_STATE_CODES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL',
+  'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME',
+  'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH',
+  'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI',
+  'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI',
+  'WY', 'AS', 'GU', 'MP', 'PR', 'VI',
+])
+
 export const SIGNUP_REQUEST_STATUSES = ['PENDING', 'APPROVED', 'REJECTED']
 
 // Same salt:hash scrypt scheme as api/account.js, so the hash captured at
@@ -64,9 +76,10 @@ function validateSignupInput(body) {
     addressLine1: trimmed(body?.addressLine1, 160),
     addressLine2: trimmed(body?.addressLine2, 160),
     city: trimmed(body?.city, 80),
-    state: trimmed(body?.state, 80),
+    state: trimmed(body?.state, 80).toUpperCase(),
     postalCode: trimmed(body?.postalCode, 20),
-    country: trimmed(body?.country, 60) || 'IN',
+    // The address is US-only, so the country is fixed rather than accepted.
+    country: 'US',
   }
 
   if (!fields.firstName) return { error: 'First name is required.' }
@@ -77,8 +90,12 @@ function validateSignupInput(body) {
   if (!fields.taxId) return { error: 'Tax ID is required.' }
   if (!fields.addressLine1) return { error: 'Address is required.' }
   if (!fields.city) return { error: 'City is required.' }
-  if (!fields.state) return { error: 'State is required.' }
-  if (!fields.postalCode) return { error: 'Postal code is required.' }
+  if (!US_STATE_CODES.has(fields.state)) {
+    return { error: 'A US state is required (for example CA or NY).' }
+  }
+  if (!US_ZIP_PATTERN.test(fields.postalCode)) {
+    return { error: 'A valid US ZIP code is required (12345 or 12345-6789).' }
+  }
 
   return { fields }
 }
@@ -305,8 +322,9 @@ function fullAddress(request) {
   return [
     request.addressLine1,
     request.addressLine2,
+    // US format: "City, ST ZIP", then the country spelled out.
     `${request.city}, ${request.state} ${request.postalCode}`,
-    request.country,
+    request.country === 'US' ? 'United States' : request.country,
   ]
     .filter(Boolean)
     .join('\n')

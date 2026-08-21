@@ -3,8 +3,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import InternalNewOrderModal from '../components/InternalNewOrderModal.vue'
-import InternalNewQuoteModal from '../components/InternalNewQuoteModal.vue'
-import InternalNewServiceModal from '../components/InternalNewServiceModal.vue'
 import InternalNewUserModal from '../components/InternalNewUserModal.vue'
 import UiSelect from '../components/UiSelect.vue'
 import { API_BASE } from '../config-api'
@@ -13,8 +11,6 @@ import { invalidateHomepageSlides } from '../composables/useHomepageSlides'
 import { invalidateSiteConfig, DEFAULT_LOGO_SRC } from '../composables/useSiteConfig'
 import { useInternalWorkspaceTab } from '../composables/useInternalWorkspaceTab'
 import { useOrders } from '../composables/useOrders'
-import { useQuotes } from '../composables/useQuotes'
-import { fetchServiceRequests, type ServiceRequest } from '../composables/useServiceRequests'
 import {
   fetchSignupRequests,
   reviewSignupRequest,
@@ -79,10 +75,8 @@ interface HomepageSlideRecord {
 const router = useRouter()
 const { user, isInternalUser, isAdminUser } = useAuth()
 const { orders: localOrders } = useOrders()
-const { quotes } = useQuotes()
 const { activeTabId } = useInternalWorkspaceTab()
 const error = ref('')
-const serviceRequests = ref<ServiceRequest[]>([])
 const homepageSlides = ref<HomepageSlideRecord[]>([])
 const homepageGrid = ref<HTMLElement | null>(null)
 const homepageLoading = ref(false)
@@ -422,8 +416,6 @@ function signupStatusClass(status: SignupRequestStatus) {
 
 // --- "New …" creation modals, one per tab ---
 const newOrderOpen = ref(false)
-const newQuoteOpen = ref(false)
-const newServiceOpen = ref(false)
 const newUserOpen = ref(false)
 
 function onOrderCreated() {
@@ -436,58 +428,6 @@ function onUserCreated() {
   newUserOpen.value = false
   void loadUsers(true)
 }
-
-// Quotes are reactive through useQuotes, so closing the modal is enough.
-function onQuoteCreated() {
-  newQuoteOpen.value = false
-}
-
-function onServiceCreated() {
-  newServiceOpen.value = false
-  void loadServiceRequests()
-}
-
-// Service requests are server-backed (ServiceRequest table); the list is small
-// enough that a client-side filter still covers search.
-const serviceRequestsLoading = ref(false)
-const serviceRequestsError = ref('')
-async function loadServiceRequests() {
-  const userId = user.value?.id
-  if (!userId) return
-  serviceRequestsLoading.value = true
-  serviceRequestsError.value = ''
-  try {
-    serviceRequests.value = await fetchServiceRequests(userId)
-  } catch (e) {
-    serviceRequestsError.value = e instanceof Error ? e.message : 'Could not load service requests.'
-  } finally {
-    serviceRequestsLoading.value = false
-  }
-}
-
-// --- Quotes tab: this list lives in this browser's storage, so a simple
-// client-side filter covers everything ---
-const quoteSearch = ref('')
-const filteredQuotes = computed(() => {
-  const q = quoteSearch.value.trim().toLowerCase()
-  if (!q) return quotes.value
-  return quotes.value.filter((quote) =>
-    [quote.id, quote.customerName, quote.customerEmail, quote.status].some((v) =>
-      String(v || '').toLowerCase().includes(q)
-    )
-  )
-})
-
-const serviceSearch = ref('')
-const filteredServiceRequests = computed(() => {
-  const q = serviceSearch.value.trim().toLowerCase()
-  if (!q) return serviceRequests.value
-  return serviceRequests.value.filter((r) =>
-    [r.reference, r.serviceTitle, r.serviceNo, r.customerName, r.customerEmail, r.status].some(
-      (v) => String(v || '').toLowerCase().includes(q)
-    )
-  )
-})
 
 // --- Products tab: searchable + paginated list (independent of the dashboard
 // payload so the table is no longer capped at the first 50 records) ---
@@ -1494,7 +1434,6 @@ onMounted(() => {
     router.replace('/')
     return
   }
-  void loadServiceRequests()
   void loadOrders(true)
   void loadUsers(true)
   void loadSignupRequests(true)
@@ -1701,130 +1640,6 @@ onBeforeUnmount(() => {
               {{ memoLoadingMore ? 'Loading…' : 'Load more' }}
             </button>
           </div>
-        </div>
-
-        <div v-else-if="activeTabId === 'quotes'" class="ect-overflow-x-auto">
-          <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-2 ect-border-b ect-border-sand ect-bg-cream ect-px-4 ect-py-3">
-            <div class="ect-relative ect-w-full sm:ect-w-72">
-              <svg class="ect-absolute ect-left-3 ect-top-1/2 -ect-translate-y-1/2 ect-w-4 ect-h-4 ect-text-charcoal/35" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/></svg>
-              <input
-                v-model="quoteSearch"
-                type="search"
-                placeholder="Search quotes…"
-                class="ect-w-full ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-pl-9 ect-pr-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-border-gold-400 focus:ect-outline-none"
-              />
-            </div>
-            <button
-              type="button"
-              class="sm:ect-ml-auto ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
-              @click="newQuoteOpen = true"
-            >
-              New quote
-            </button>
-          </div>
-          <InternalNewQuoteModal v-if="newQuoteOpen" @close="newQuoteOpen = false" @created="onQuoteCreated" />
-          <table class="ect-w-full ect-min-w-[860px] ect-border-collapse">
-            <thead class="ect-bg-cream">
-              <tr>
-                <th v-for="h in ['Quote', 'Customer', 'Items', 'Total', 'Status', 'Created']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="quote in filteredQuotes"
-                :key="quote.id"
-                class="ect-cursor-pointer ect-border-t ect-border-sand hover:ect-bg-cream"
-                tabindex="0"
-                @click="router.push({ name: 'internal-quote', params: { id: quote.id } })"
-                @keydown.enter="router.push({ name: 'internal-quote', params: { id: quote.id } })"
-              >
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-font-semibold">
-                  <RouterLink :to="{ name: 'internal-quote', params: { id: quote.id } }" class="ect-text-charcoal hover:ect-text-gold-700 hover:ect-underline" @click.stop>{{ quote.id }}</RouterLink>
-                </td>
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">
-                  {{ quote.customerName }}
-                  <span class="ect-block ect-text-xs ect-text-charcoal/40">{{ quote.customerEmail }}</span>
-                </td>
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">{{ quote.itemCount }}</td>
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-font-semibold">{{ quote.formattedTotal }}</td>
-                <td class="ect-px-4 ect-py-3">
-                  <span class="ect-rounded-full ect-px-2.5 ect-py-1 ect-font-body ect-text-xs ect-font-semibold ect-capitalize"
-                    :class="{
-                      'ect-bg-amber-100 ect-text-amber-700': quote.status === 'pending',
-                      'ect-bg-blue-100 ect-text-blue-700': quote.status === 'reviewing',
-                      'ect-bg-purple-100 ect-text-purple-700': quote.status === 'quoted',
-                      'ect-bg-emerald-100 ect-text-emerald-700': quote.status === 'accepted',
-                    }"
-                  >{{ quote.status }}</span>
-                </td>
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/55">{{ formatDate(quote.createdAt) }}</td>
-              </tr>
-              <tr v-if="!filteredQuotes.length" class="ect-border-t ect-border-sand">
-                <td colspan="6" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">{{ quoteSearch.trim() ? 'No quotes match your search.' : 'No quotes yet.' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div v-else-if="activeTabId === 'services'" class="ect-overflow-x-auto">
-          <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-2 ect-border-b ect-border-sand ect-bg-cream ect-px-4 ect-py-3">
-            <div class="ect-relative ect-w-full sm:ect-w-72">
-              <svg class="ect-absolute ect-left-3 ect-top-1/2 -ect-translate-y-1/2 ect-w-4 ect-h-4 ect-text-charcoal/35" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/></svg>
-              <input
-                v-model="serviceSearch"
-                type="search"
-                placeholder="Search service requests…"
-                class="ect-w-full ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-pl-9 ect-pr-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-border-gold-400 focus:ect-outline-none"
-              />
-            </div>
-            <button
-              type="button"
-              class="sm:ect-ml-auto ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
-              @click="newServiceOpen = true"
-            >
-              New service request
-            </button>
-          </div>
-          <InternalNewServiceModal v-if="newServiceOpen" @close="newServiceOpen = false" @created="onServiceCreated" />
-          <table class="ect-w-full ect-min-w-[760px] ect-border-collapse">
-            <thead class="ect-bg-cream">
-              <tr>
-                <th v-for="h in ['Reference', 'Service', 'Customer', 'Status', 'Created']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="request in filteredServiceRequests" :key="request.reference" class="ect-border-t ect-border-sand">
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-font-semibold">
-                  <RouterLink :to="{ name: 'internal-service', params: { reference: request.reference } }" class="ect-text-charcoal hover:ect-text-gold-700 hover:ect-underline">
-                    {{ request.reference }}
-                  </RouterLink>
-                </td>
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">
-                  <RouterLink :to="{ name: 'internal-service', params: { reference: request.reference } }" class="ect-text-charcoal hover:ect-text-gold-700 hover:ect-underline">
-                    {{ request.serviceTitle || 'Service request' }}
-                  </RouterLink>
-                  <span v-if="request.serviceNo" class="ect-block ect-text-xs ect-text-charcoal/40">{{ request.serviceNo }}</span>
-                </td>
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">
-                  {{ request.customerName }}
-                  <span class="ect-block ect-text-xs ect-text-charcoal/40">{{ request.customerEmail }}</span>
-                </td>
-                <td class="ect-px-4 ect-py-3">
-                  <span class="ect-rounded-full ect-bg-sand ect-px-2.5 ect-py-1 ect-font-body ect-text-xs ect-font-semibold ect-text-gold-700 ect-capitalize">{{ request.status }}</span>
-                </td>
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/55">{{ formatDate(request.createdAt) }}</td>
-              </tr>
-              <tr v-if="serviceRequestsLoading && !serviceRequests.length" class="ect-border-t ect-border-sand">
-                <td colspan="5" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">Loading service requests…</td>
-              </tr>
-              <tr v-else-if="serviceRequestsError" class="ect-border-t ect-border-sand">
-                <td colspan="5" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-red-600">{{ serviceRequestsError }}</td>
-              </tr>
-              <tr v-else-if="!filteredServiceRequests.length" class="ect-border-t ect-border-sand">
-                <td colspan="5" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">{{ serviceSearch.trim() ? 'No service requests match your search.' : 'No service requests yet.' }}</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
 
         <div v-else-if="activeTabId === 'users'" class="ect-overflow-x-auto">

@@ -25,6 +25,9 @@ interface InternalUser {
   canMemo: boolean
   memoLimitPaise: number | null
   memoDays: number
+  canPayTerms: boolean
+  termsLimitPaise: number | null
+  termsDays: number
   channel: string
   orderCount: number
   createdAt: string
@@ -95,8 +98,11 @@ async function updateRole(changes: {
   canMemo?: boolean
   memoLimitPaise?: number | null
   memoDays?: number
+  canPayTerms?: boolean
+  termsLimitPaise?: number | null
+  termsDays?: number
 }) {
-  if (!isAdminUser.value || !user.value?.id || !targetUser.value || savingRole.value) return
+  if (!isAdminUser.value || !user.value?.id || !targetUser.value || savingRole.value) return false
   savingRole.value = true
   roleError.value = ''
   try {
@@ -115,33 +121,149 @@ async function updateRole(changes: {
     await loadDashboard()
     // If we edited our own record, refresh the stored session too.
     if (isSelf.value) await refreshCurrentUser().catch(() => {})
+    return true
   } catch (e) {
     roleError.value = e instanceof Error ? e.message : 'Unable to update user role.'
+    return false
   } finally {
     savingRole.value = false
   }
 }
 
 // --- Memo (consignment) settings -----------------------------------------
+// Ticking the box only reveals the fields — nothing is saved until Save, so
+// granting memo access and setting its limit go to the server as one call
+// rather than leaving a user briefly memo-enabled with no limit set.
 // The limit is held in paise/cents on the record but edited in whole dollars,
 // which is how staff think about "how much can be out with this customer".
-const memoLimitInput = ref('')
-const memoDaysInput = ref('')
-const memoSettingsDirty = ref(false)
+const memoEnabled = ref(false)
+// Vue casts v-model on <input type="number"> to a number as soon as the field
+// holds a parseable value, so these hold a string OR a number and every read
+// has to go through draftText().
+const memoLimitInput = ref<string | number>('')
+const memoDaysInput = ref<string | number>('')
+const memoDraftUserId = ref('')
 
+function draftText(value: string | number) {
+  return String(value ?? '').trim()
+}
+
+function savedMemoLimit(target: InternalUser | null) {
+  return target?.memoLimitPaise == null ? '' : String(Math.round(target.memoLimitPaise / 100))
+}
+
+function savedMemoDays(target: InternalUser | null) {
+  return String(target?.memoDays ?? 30)
+}
+
+function resetMemoDraft(target: InternalUser | null) {
+  memoEnabled.value = Boolean(target?.canMemo)
+  memoLimitInput.value = savedMemoLimit(target)
+  memoDaysInput.value = savedMemoDays(target)
+}
+
+const memoDirty = computed(() => {
+  const target = targetUser.value
+  if (!target) return false
+  if (memoEnabled.value !== target.canMemo) return true
+  // Limit and days only matter while memo access is on.
+  if (!memoEnabled.value) return false
+  return (
+    draftText(memoLimitInput.value) !== savedMemoLimit(target) ||
+    draftText(memoDaysInput.value) !== savedMemoDays(target)
+  )
+})
+
+// --- Payment-terms (buy now, pay later) settings --------------------------
+// Same shape as memo above: ticking the box only reveals the fields, and the
+// grant plus its credit limit and period go to the server as one save.
+const termsEnabled = ref(false)
+const termsLimitInput = ref<string | number>('')
+const termsDaysInput = ref<string | number>('')
+
+function savedTermsLimit(target: InternalUser | null) {
+  return target?.termsLimitPaise == null ? '' : String(Math.round(target.termsLimitPaise / 100))
+}
+
+function savedTermsDays(target: InternalUser | null) {
+  return String(target?.termsDays ?? 30)
+}
+
+function resetTermsDraft(target: InternalUser | null) {
+  termsEnabled.value = Boolean(target?.canPayTerms)
+  termsLimitInput.value = savedTermsLimit(target)
+  termsDaysInput.value = savedTermsDays(target)
+}
+
+const termsDirty = computed(() => {
+  const target = targetUser.value
+  if (!target) return false
+  if (termsEnabled.value !== target.canPayTerms) return true
+  if (!termsEnabled.value) return false
+  return (
+    draftText(termsLimitInput.value) !== savedTermsLimit(target) ||
+    draftText(termsDaysInput.value) !== savedTermsDays(target)
+  )
+})
+
+async function saveTermsSettings() {
+  if (!termsDirty.value || savingRole.value) return
+  roleError.value = ''
+
+  if (!termsEnabled.value) {
+    if (await updateRole({ canPayTerms: false })) resetTermsDraft(targetUser.value)
+    return
+  }
+
+  const limitRaw = draftText(termsLimitInput.value)
+  const days = Number(draftText(termsDaysInput.value))
+  if (limitRaw !== '' && (!Number.isFinite(Number(limitRaw)) || Number(limitRaw) < 0)) {
+    roleError.value = 'Credit limit must be a positive amount, or blank for no limit.'
+    return
+  }
+  if (!Number.isFinite(days) || days < 1 || days > 365) {
+    roleError.value = 'Payment term must be between 1 and 365 days.'
+    return
+  }
+
+  const saved = await updateRole({
+    canPayTerms: true,
+    termsLimitPaise: limitRaw === '' ? null : Math.round(Number(limitRaw) * 100),
+    termsDays: Math.floor(days),
+  })
+  if (saved) resetTermsDraft(targetUser.value)
+}
+
+function cancelTermsSettings() {
+  roleError.value = ''
+  resetTermsDraft(targetUser.value)
+}
+
+// Seed the draft once per user; after that only an explicit save or cancel
+// moves it, so a dashboard reload can't wipe what is being typed.
 watch(
   targetUser,
   (next) => {
-    if (!next || memoSettingsDirty.value) return
-    memoLimitInput.value = next.memoLimitPaise == null ? '' : String(Math.round(next.memoLimitPaise / 100))
-    memoDaysInput.value = String(next.memoDays ?? 30)
+    if (!next || next.id === memoDraftUserId.value) return
+    memoDraftUserId.value = next.id
+    resetMemoDraft(next)
+    resetTermsDraft(next)
   },
   { immediate: true },
 )
 
 async function saveMemoSettings() {
-  const limitRaw = memoLimitInput.value.trim()
-  const days = Number(memoDaysInput.value)
+  if (!memoDirty.value || savingRole.value) return
+  roleError.value = ''
+
+  // Revoking needs no limit — send the flag alone.
+  if (!memoEnabled.value) {
+    if (await updateRole({ canMemo: false })) resetMemoDraft(targetUser.value)
+    return
+  }
+
+  const limitRaw = draftText(memoLimitInput.value)
+  const days = Number(draftText(memoDaysInput.value))
   if (limitRaw !== '' && (!Number.isFinite(Number(limitRaw)) || Number(limitRaw) < 0)) {
     roleError.value = 'Memo limit must be a positive amount, or blank for no limit.'
     return
@@ -150,12 +272,20 @@ async function saveMemoSettings() {
     roleError.value = 'Memo period must be between 1 and 365 days.'
     return
   }
-  await updateRole({
+
+  const saved = await updateRole({
+    canMemo: true,
     memoLimitPaise: limitRaw === '' ? null : Math.round(Number(limitRaw) * 100),
     memoDays: Math.floor(days),
   })
-  memoSettingsDirty.value = false
+  if (saved) resetMemoDraft(targetUser.value)
 }
+
+function cancelMemoSettings() {
+  roleError.value = ''
+  resetMemoDraft(targetUser.value)
+}
+
 
 onMounted(() => {
   if (!isInternalUser.value) {
@@ -283,11 +413,10 @@ onMounted(() => {
             <div class="ect-mt-5 ect-pt-4 ect-border-t ect-border-rose-200/40">
               <label class="ect-flex ect-items-start ect-gap-3 ect-cursor-pointer">
                 <input
+                  v-model="memoEnabled"
                   type="checkbox"
-                  :checked="targetUser.canMemo"
                   :disabled="savingRole"
                   class="ect-mt-0.5 ect-h-4 ect-w-4 ect-rounded ect-border-charcoal/25 ect-text-charcoal focus:ect-ring-gold-400"
-                  @change="updateRole({ canMemo: !targetUser.canMemo })"
                 />
                 <span>
                   <span class="ect-block ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Memo user</span>
@@ -297,7 +426,7 @@ onMounted(() => {
                 </span>
               </label>
 
-              <div v-if="targetUser.canMemo" class="ect-mt-4 ect-flex ect-flex-wrap ect-items-end ect-gap-3">
+              <div v-if="memoEnabled" class="ect-mt-4 ect-flex ect-flex-wrap ect-items-end ect-gap-3">
                 <label class="ect-block">
                   <span class="ect-block ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35 ect-mb-1">Memo limit ($)</span>
                   <input
@@ -306,7 +435,6 @@ onMounted(() => {
                     min="0"
                     placeholder="No limit"
                     class="ect-w-36 ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
-                    @input="memoSettingsDirty = true"
                   />
                 </label>
                 <label class="ect-block">
@@ -317,21 +445,95 @@ onMounted(() => {
                     min="1"
                     max="365"
                     class="ect-w-28 ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
-                    @input="memoSettingsDirty = true"
                   />
                 </label>
+              </div>
+              <p v-if="memoEnabled" class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-2">
+                Blank limit means no cap. The limit is checked against everything already out when a memo is raised.
+              </p>
+
+              <div v-if="memoDirty" class="ect-mt-4 ect-flex ect-flex-wrap ect-items-center ect-gap-2.5">
                 <button
                   type="button"
                   :disabled="savingRole"
                   class="ect-rounded-full ect-border ect-border-charcoal ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-white hover:ect-opacity-90 ect-transition disabled:ect-opacity-50"
                   @click="saveMemoSettings"
                 >
-                  {{ savingRole ? 'Saving…' : 'Save memo settings' }}
+                  {{ savingRole ? 'Saving…' : memoEnabled ? 'Save memo access' : 'Revoke memo access' }}
+                </button>
+                <button
+                  type="button"
+                  :disabled="savingRole"
+                  class="ect-rounded-full ect-px-3 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/45 hover:ect-text-charcoal ect-transition disabled:ect-opacity-50"
+                  @click="cancelMemoSettings"
+                >
+                  Cancel
                 </button>
               </div>
-              <p v-if="targetUser.canMemo" class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-2">
-                Blank limit means no cap. The limit is checked against everything already out when a memo is raised.
+            </div>
+
+            <!-- Payment terms: the sale is final but the money comes in
+                 later, so it is an admin-only grant with a credit limit. -->
+            <div class="ect-mt-5 ect-pt-4 ect-border-t ect-border-rose-200/40">
+              <label class="ect-flex ect-items-start ect-gap-3 ect-cursor-pointer">
+                <input
+                  v-model="termsEnabled"
+                  type="checkbox"
+                  :disabled="savingRole"
+                  class="ect-mt-0.5 ect-h-4 ect-w-4 ect-rounded ect-border-charcoal/25 ect-text-charcoal focus:ect-ring-gold-400"
+                />
+                <span>
+                  <span class="ect-block ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Payment terms</span>
+                  <span class="ect-block ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-0.5">
+                    Can choose to pay later at checkout instead of paying immediately. The pieces are sold and ship now; the invoice falls due after the term.
+                  </span>
+                </span>
+              </label>
+
+              <div v-if="termsEnabled" class="ect-mt-4 ect-flex ect-flex-wrap ect-items-end ect-gap-3">
+                <label class="ect-block">
+                  <span class="ect-block ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35 ect-mb-1">Credit limit ($)</span>
+                  <input
+                    v-model="termsLimitInput"
+                    type="number"
+                    min="0"
+                    placeholder="No limit"
+                    class="ect-w-36 ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
+                  />
+                </label>
+                <label class="ect-block">
+                  <span class="ect-block ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35 ect-mb-1">Days to pay</span>
+                  <input
+                    v-model="termsDaysInput"
+                    type="number"
+                    min="1"
+                    max="365"
+                    class="ect-w-28 ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
+                  />
+                </label>
+              </div>
+              <p v-if="termsEnabled" class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-2">
+                Days to pay sets the Net term the customer sees at checkout. Blank limit means no cap.
               </p>
+
+              <div v-if="termsDirty" class="ect-mt-4 ect-flex ect-flex-wrap ect-items-center ect-gap-2.5">
+                <button
+                  type="button"
+                  :disabled="savingRole"
+                  class="ect-rounded-full ect-border ect-border-charcoal ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-white hover:ect-opacity-90 ect-transition disabled:ect-opacity-50"
+                  @click="saveTermsSettings"
+                >
+                  {{ savingRole ? 'Saving…' : termsEnabled ? 'Save payment terms' : 'Revoke payment terms' }}
+                </button>
+                <button
+                  type="button"
+                  :disabled="savingRole"
+                  class="ect-rounded-full ect-px-3 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/45 hover:ect-text-charcoal ect-transition disabled:ect-opacity-50"
+                  @click="cancelTermsSettings"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
 
             <p v-if="roleError" class="ect-font-body ect-text-sm ect-text-red-600 ect-mt-3">{{ roleError }}</p>

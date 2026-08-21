@@ -19,6 +19,10 @@ interface User {
   canMemo?: boolean
   memoLimitPaise?: number | null
   memoDays?: number
+  // Payment-terms permission — lets this customer buy now and pay within termsDays.
+  canPayTerms?: boolean
+  termsLimitPaise?: number | null
+  termsDays?: number
 }
 
 interface StoredSession {
@@ -139,6 +143,8 @@ export function useAuth() {
   const isInternalUser = computed(() => Boolean(state.user?.isInternal || state.user?.isAdmin))
   const isAdminUser = computed(() => Boolean(state.user?.isAdmin))
   const canMemoUser = computed(() => Boolean(state.user?.canMemo))
+  const canPayTermsUser = computed(() => Boolean(state.user?.canPayTerms))
+  const paymentTermDays = computed(() => Number(state.user?.termsDays) || 30)
   const user = computed(() => state.user)
   const sessionExpiresSoon = computed(() => state.expiresSoon)
 
@@ -233,5 +239,5 @@ export function useAuth() {
     clearSession()
   }
 
-  return { user, isLoggedIn, isInternalUser, isAdminUser, canMemoUser, sessionExpiresSoon, login, signin, signup, requestPasswordReset, resetPassword, changePassword, refreshCurrentUser, logout, setUser }
+  return { user, isLoggedIn, isInternalUser, isAdminUser, canMemoUser, canPayTermsUser, paymentTermDays, sessionExpiresSoon, login, signin, signup, requestPasswordReset, resetPassword, changePassword, refreshCurrentUser, logout, setUser }
 }

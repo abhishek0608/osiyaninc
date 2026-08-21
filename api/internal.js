@@ -41,6 +41,7 @@ import {
   MEMO_STATUSES,
   cancelMemo,
   convertMemoToOrder,
+  extendMemo,
   formatMemoMoney,
   getMemoOutstandingPaise,
   returnMemoItems,
@@ -134,6 +135,9 @@ async function buildDashboardPayload() {
         canMemo: true,
         memoLimitPaise: true,
         memoDays: true,
+        canPayTerms: true,
+        termsLimitPaise: true,
+        termsDays: true,
         channel: true,
         createdById: true,
         updatedById: true,
@@ -207,9 +211,11 @@ async function buildDashboardPayload() {
       isInternal: user.isInternal,
       isAdmin: user.isAdmin,
       canMemo: user.canMemo,
-      canMemo: user.canMemo,
       memoLimitPaise: user.memoLimitPaise,
       memoDays: user.memoDays,
+      canPayTerms: user.canPayTerms,
+      termsLimitPaise: user.termsLimitPaise,
+      termsDays: user.termsDays,
       channel: user.channel,
       orderCount: user._count.orders,
       // A user with no recorded creator self-registered through the storefront.
@@ -244,7 +250,17 @@ async function handleUpdateUserRole(res, requesterId, body) {
 
   const target = await prisma.user.findUnique({
     where: { id: targetUserId },
-    select: { id: true, isInternal: true, isAdmin: true, canMemo: true, memoLimitPaise: true, memoDays: true },
+    select: {
+      id: true,
+      isInternal: true,
+      isAdmin: true,
+      canMemo: true,
+      memoLimitPaise: true,
+      memoDays: true,
+      canPayTerms: true,
+      termsLimitPaise: true,
+      termsDays: true,
+    },
   })
   if (!target) return res.status(404).json({ message: 'User not found.' })
 
@@ -286,6 +302,36 @@ async function handleUpdateUserRole(res, requesterId, body) {
     nextMemoDays = parsed
   }
 
+  // Payment terms (buy now, pay later) — the goods are sold outright but the
+  // money comes in later, so like memo only a full admin grants it, with a cap
+  // on how much a customer may have riding on terms at once.
+  const nextCanPayTerms = typeof body?.canPayTerms === 'boolean' ? body.canPayTerms : target.canPayTerms
+
+  let nextTermsLimit = target.termsLimitPaise
+  if ('termsLimitPaise' in (body || {})) {
+    const raw = body.termsLimitPaise
+    if (raw === null || raw === '') {
+      nextTermsLimit = null // uncapped
+    } else {
+      const parsed = Math.round(Number(raw))
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return res
+          .status(400)
+          .json({ message: 'Credit limit must be a positive amount, or blank for no limit.' })
+      }
+      nextTermsLimit = parsed
+    }
+  }
+
+  let nextTermsDays = target.termsDays
+  if ('termsDays' in (body || {})) {
+    const parsed = Math.floor(Number(body.termsDays))
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 365) {
+      return res.status(400).json({ message: 'Payment term must be between 1 and 365 days.' })
+    }
+    nextTermsDays = parsed
+  }
+
   // Revoking memo while pieces are still out would strand them with no way to
   // reconcile, so the open memos have to be closed first.
   if (target.canMemo && !nextCanMemo) {
@@ -307,9 +353,22 @@ async function handleUpdateUserRole(res, requesterId, body) {
       canMemo: nextCanMemo,
       memoLimitPaise: nextMemoLimit,
       memoDays: nextMemoDays,
+      canPayTerms: nextCanPayTerms,
+      termsLimitPaise: nextTermsLimit,
+      termsDays: nextTermsDays,
       updatedById: admin.id,
     },
-    select: { id: true, isInternal: true, isAdmin: true, canMemo: true, memoLimitPaise: true, memoDays: true },
+    select: {
+      id: true,
+      isInternal: true,
+      isAdmin: true,
+      canMemo: true,
+      memoLimitPaise: true,
+      memoDays: true,
+      canPayTerms: true,
+      termsLimitPaise: true,
+      termsDays: true,
+    },
   })
   return res.status(200).json({ user: updated })
 }
@@ -700,6 +759,12 @@ async function handleMemoResource(req, res, body) {
       }
       if (action === 'cancel') {
         const memo = await cancelMemo({ memoId, actorId: internalUser.id })
+        return res.status(200).json({ memo: toMemoPayload(memo) })
+      }
+      // Staff are not held to the customer's final-window rule: this is the way
+      // an overdue or already-extended memo gets more time.
+      if (action === 'extend') {
+        const memo = await extendMemo({ memoId, days: body?.days, actorId: internalUser.id })
         return res.status(200).json({ memo: toMemoPayload(memo) })
       }
       return res.status(400).json({ message: 'Unknown memo action.' })

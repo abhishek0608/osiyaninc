@@ -9,6 +9,13 @@ import { prisma } from './db.js'
 export const OPEN_MEMO_STATUSES = ['ISSUED', 'PARTIAL']
 export const MEMO_STATUSES = ['ISSUED', 'PARTIAL', 'CONVERTED', 'RETURNED', 'CANCELLED']
 
+// Self-service extension: the customer may push the due date out themselves,
+// but only once and only as the period runs out. Asking on day one would just
+// be a longer memo, and asking after it lapses is a conversation with us, not a
+// button — so staff extend those from the internal memo screen instead.
+export const MEMO_EXTEND_WINDOW_DAYS = 3
+export const MEMO_MAX_SELF_EXTENSIONS = 1
+
 export class MemoError extends Error {
   constructor(code, message, status = 400) {
     super(message)
@@ -48,6 +55,26 @@ export function deriveMemoItemStatus(item) {
 export function isMemoOverdue(memo) {
   if (!OPEN_MEMO_STATUSES.includes(memo?.status)) return false
   return new Date(memo.dueDate).getTime() < Date.now()
+}
+
+/** Whole days left before the memo is due; negative once it is overdue. */
+export function memoDaysUntilDue(memo, now = new Date()) {
+  if (!memo?.dueDate) return 0
+  return Math.ceil((new Date(memo.dueDate).getTime() - now.getTime()) / 86400000)
+}
+
+/**
+ * Whether the customer may extend this memo themselves. Deliberately narrow:
+ * the memo has to still be open, inside the final window, not already overdue,
+ * and not already extended.
+ */
+export function canCustomerExtendMemo(memo, now = new Date()) {
+  if (!memo || !OPEN_MEMO_STATUSES.includes(memo.status)) return false
+  if (Number(memo.extensionCount || 0) >= MEMO_MAX_SELF_EXTENSIONS) return false
+  // Compared against the exact due timestamp, not the rounded day count, so a
+  // memo that already reads "Overdue" never still offers the button.
+  if (new Date(memo.dueDate).getTime() < now.getTime()) return false
+  return memoDaysUntilDue(memo, now) <= MEMO_EXTEND_WINDOW_DAYS
 }
 
 export function formatMemoMoney(paise, currency = 'USD') {
@@ -363,6 +390,70 @@ export async function convertMemoToOrder({ memoId, lines = null, actorId = null 
   })
 }
 
+/**
+ * Push a memo's due date out. The new date is measured from the current due
+ * date (not from today), so extending early never shortens the period the
+ * customer already has.
+ *
+ * `bySelf` applies the customer rules — final-window only, one extension. Staff
+ * pass `bySelf: false` and may extend any open memo, by any sane number of days.
+ */
+export async function extendMemo({ memoId, days = null, actorId = null, bySelf = false, customerId = null }) {
+  const memo = await loadOpenMemo(memoId)
+  if (customerId && memo.customerId !== customerId) {
+    throw new MemoError('MEMO_NOT_FOUND', 'Memo not found.', 404)
+  }
+
+  if (bySelf) {
+    if (Number(memo.extensionCount || 0) >= MEMO_MAX_SELF_EXTENSIONS) {
+      throw new MemoError(
+        'MEMO_ALREADY_EXTENDED',
+        'This memo has already been extended once. Contact us to keep the pieces longer.',
+        409,
+      )
+    }
+    const daysLeft = memoDaysUntilDue(memo)
+    if (new Date(memo.dueDate).getTime() < Date.now()) {
+      throw new MemoError(
+        'MEMO_OVERDUE',
+        'This memo is past its due date, so it can no longer be extended here. Contact us and we will sort it out.',
+        409,
+      )
+    }
+    if (daysLeft > MEMO_EXTEND_WINDOW_DAYS) {
+      throw new MemoError(
+        'MEMO_EXTEND_TOO_EARLY',
+        `A memo can be extended in its last ${MEMO_EXTEND_WINDOW_DAYS} days. This one still has ${daysLeft} ${
+          daysLeft === 1 ? 'day' : 'days'
+        } to run.`,
+        409,
+      )
+    }
+  }
+
+  // Customers get the same period their account is set up for; staff can name
+  // their own number of days.
+  let extraDays = Math.floor(Number(days) || 0)
+  if (bySelf || extraDays <= 0) {
+    const customer = await getMemoCustomer(memo.customerId)
+    extraDays = Number(customer?.memoDays) > 0 ? Number(customer.memoDays) : 30
+  }
+  if (extraDays <= 0 || extraDays > 365) {
+    throw new MemoError('MEMO_EXTEND_DAYS', 'Extend a memo by between 1 and 365 days.')
+  }
+
+  return prisma.memo.update({
+    where: { id: memo.id },
+    data: {
+      dueDate: memoDueDate(extraDays, memo.dueDate),
+      extensionCount: { increment: 1 },
+      lastExtendedAt: new Date(),
+      updatedById: actorId || undefined,
+    },
+    include: { items: { orderBy: { createdAt: 'asc' } } },
+  })
+}
+
 export async function cancelMemo({ memoId, actorId = null }) {
   const memo = await loadOpenMemo(memoId)
   return prisma.memo.update({
@@ -383,6 +474,11 @@ export function toMemoPayload(memo, extra = {}) {
     issuedAt: memo.issuedAt,
     dueDate: memo.dueDate,
     closedAt: memo.closedAt,
+    daysUntilDue: memoDaysUntilDue(memo),
+    extensionCount: memo.extensionCount || 0,
+    lastExtendedAt: memo.lastExtendedAt || null,
+    canExtend: canCustomerExtendMemo(memo),
+    extendWindowDays: MEMO_EXTEND_WINDOW_DAYS,
     currency: memo.currency,
     subtotalPaise: memo.subtotalPaise,
     formattedSubtotal: formatMemoMoney(memo.subtotalPaise, memo.currency),

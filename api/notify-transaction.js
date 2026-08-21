@@ -142,6 +142,19 @@ export default async function handler(req, res) {
       const formattedTotal = esc(body.formattedTotal)
       const items = Array.isArray(body.items) ? body.items : []
 
+      // Payment terms: the sale is done but the money is due later, so both the
+      // team and the customer get the due date spelled out on the order email.
+      const onTerms = body.paymentTerm === 'terms'
+      const paymentDueDate = esc(body.paymentDueDate)
+      const paymentTermDays = esc(String(body.paymentTermDays ?? ''))
+      const paymentLabel = onTerms
+        ? `Payment terms${paymentTermDays ? ` · Net ${paymentTermDays}` : ''}${paymentDueDate ? ` · due ${paymentDueDate}` : ''}`
+        : 'Paid immediately'
+      const paymentLine = `<br><strong>Payment:</strong> ${paymentLabel}`
+      const paymentTextLine = onTerms
+        ? `Payment: terms${body.paymentTermDays ? ` (Net ${body.paymentTermDays})` : ''}${body.paymentDueDate ? `, due ${body.paymentDueDate}` : ''}`
+        : 'Payment: immediate'
+
       const itemTable = renderDataTable(
         ['Item', 'Qty', 'Price'],
         items.map((item) => [
@@ -164,12 +177,12 @@ export default async function handler(req, res) {
             <p style="margin:0;font:400 14px/1.7 Arial,sans-serif;color:#2f2725;">${address}<br>${city}, ${state} ${pincode}<br>${country}</p>
           </div>
           <div style="margin:0 0 18px;padding:16px 18px;border-radius:18px;background:#fbf5f3;">
-            <p style="margin:0;font:400 14px/1.7 Arial,sans-serif;color:#2f2725;"><strong>Total:</strong> ${formattedTotal}</p>
+            <p style="margin:0;font:400 14px/1.7 Arial,sans-serif;color:#2f2725;"><strong>Total:</strong> ${formattedTotal}${paymentLine}</p>
           </div>
           ${itemTable}
         `,
       })
-      const internalText = `New order ${orderId}\nTotal: ${formattedTotal}\nCustomer: ${customerName} | ${customerEmail} | ${customerPhone}\nShipping: ${body.address}, ${body.city}, ${body.state} ${body.pincode}, ${body.country}`
+      const internalText = `New order ${orderId}\nTotal: ${formattedTotal}\n${paymentTextLine}\nCustomer: ${customerName} | ${customerEmail} | ${customerPhone}\nShipping: ${body.address}, ${body.city}, ${body.state} ${body.pincode}, ${body.country}`
 
       const customerHtml = renderEmailShell({
         eyebrow: 'Order Confirmed',
@@ -177,13 +190,13 @@ export default async function handler(req, res) {
         intro: `Thank you for shopping with Kiana. We've received your order for ${formattedTotal} and our team will begin processing it shortly.`,
         bodyHtml: `
           <div style="margin:0 0 18px;padding:16px 18px;border-radius:18px;background:#fbf5f3;">
-            <p style="margin:0;font:400 14px/1.7 Arial,sans-serif;color:#2f2725;"><strong>Order Number:</strong> ${orderId}<br><strong>Total:</strong> ${formattedTotal}</p>
+            <p style="margin:0;font:400 14px/1.7 Arial,sans-serif;color:#2f2725;"><strong>Order Number:</strong> ${orderId}<br><strong>Total:</strong> ${formattedTotal}${paymentLine}</p>
           </div>
           ${itemTable}
         `,
         footer: 'If you did not place this order, you can safely ignore this message.',
       })
-      const customerText = `Hi ${body.customerName || ''},\n\nWe received your order ${body.orderId || ''} for ${body.formattedTotal || ''}. We'll process it shortly.\n`
+      const customerText = `Hi ${body.customerName || ''},\n\nWe received your order ${body.orderId || ''} for ${body.formattedTotal || ''}. We'll process it shortly.\n${paymentTextLine}\n`
 
       const tasks = []
       if (notifyRecipients.length) {

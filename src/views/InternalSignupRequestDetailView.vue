@@ -4,6 +4,8 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import UiSelect from '../components/UiSelect.vue'
 import { useAuth } from '../composables/useAuth'
+import { countryDisplayName } from '../composables/useSavedAddresses'
+import { usStateName } from '../data/us-states'
 import {
   fetchSignupRequest,
   reviewSignupRequest,
@@ -63,9 +65,12 @@ const addressLines = computed(() => {
     value.addressLine1,
     value.addressLine2,
     `${value.city}, ${value.state} ${value.postalCode}`,
-    value.country,
+    countryDisplayName(value.country),
   ].filter(Boolean)
 })
+
+// The row stores the USPS code; spell it out so the reviewer is not decoding it.
+const stateName = computed(() => (request.value ? usStateName(request.value.state) : ''))
 
 async function decide(action: 'approve' | 'reject') {
   const target = request.value
@@ -186,6 +191,7 @@ onMounted(async () => {
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Address</dt>
               <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-mt-1">
                 <span v-for="line in addressLines" :key="line" class="ect-block">{{ line }}</span>
+                <span class="ect-block ect-text-xs ect-text-charcoal/40 ect-mt-1">{{ stateName }}</span>
               </dd>
             </div>
           </dl>

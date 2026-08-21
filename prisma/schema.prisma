@@ -270,6 +270,12 @@ model User {
   canMemo          Boolean        @default(false)
   memoLimitPaise   Int? // null = uncapped
   memoDays         Int            @default(30)
+  // Payment-terms (buy now, pay later) permission: the sale is final but the
+  // money comes in later, so like memo this is granted per customer by an
+  // admin, with a cap on the value that can be outstanding on terms.
+  canPayTerms      Boolean        @default(false)
+  termsLimitPaise  Int? // null = uncapped
+  termsDays        Int            @default(30)
   channel          SalesChannel   @default(B2C)
   createdById      String?
   updatedById      String?
@@ -510,7 +516,7 @@ model SignupRequest {
   city           String
   state          String
   postalCode     String
-  country        String              @default("IN")
+  country        String              @default("US")
   passwordHash   String
   reviewNote     String?
   reviewedById   String?
@@ -550,6 +556,11 @@ model Memo {
   issuedAt      DateTime   @default(now())
   dueDate       DateTime
   closedAt      DateTime?
+  // Due dates move: a customer nearing the end of the period can push it out
+  // themselves, and staff can extend any open memo. Both are recorded here so a
+  // memo that has already been stretched is obvious.
+  extensionCount Int       @default(0)
+  lastExtendedAt DateTime?
   // Prices are locked when the goods go out, not when the memo converts.
   subtotalPaise Int
   currency      String     @default("USD")

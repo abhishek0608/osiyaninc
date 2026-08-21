@@ -6,7 +6,15 @@ export interface UiSelectOption {
   label: string
 }
 
-const props = defineProps<{ modelValue: string; options: UiSelectOption[] }>()
+// `placeholder` and `ariaLabel` are for selects that start with no value — the
+// sign-up state picker is the first of those; every other caller passes a value
+// that is always set, and both props are optional so those are unaffected.
+const props = defineProps<{
+  modelValue: string
+  options: UiSelectOption[]
+  placeholder?: string
+  ariaLabel?: string
+}>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
 const open = ref(false)
@@ -66,10 +74,11 @@ function onKeydown(e: KeyboardEvent) {
       @click="open = !open"
       @keydown="onKeydown"
       :aria-expanded="open"
+      :aria-label="ariaLabel"
       aria-haspopup="listbox"
       class="ect-w-full ect-flex ect-items-center ect-justify-between ect-gap-2 ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-border-charcoal/20 ect-bg-white ect-font-body ect-text-sm ect-text-charcoal ect-text-left focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400/40 focus:ect-border-gold-400 ect-transition-all"
     >
-      <span class="ect-truncate">{{ selectedLabel }}</span>
+      <span class="ect-truncate" :class="selectedLabel ? '' : 'ect-text-charcoal/35'">{{ selectedLabel || placeholder }}</span>
       <svg class="ect-w-4 ect-h-4 ect-shrink-0 ect-text-charcoal/40 ect-transition-transform" :class="open ? 'ect-rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
     </button>
     <span v-if="open" @click="open = false" class="ect-fixed ect-inset-0 ect-z-10"></span>

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import UiSelect from '../components/UiSelect.vue'
 import { useAuth } from '../composables/useAuth'
+import { US_STATES } from '../data/us-states'
 
 const route = useRoute()
 const { signup } = useAuth()
@@ -21,9 +23,12 @@ const form = reactive({
   city: '',
   state: '',
   postalCode: '',
-  country: 'India',
   password: '',
 })
+
+// Addresses are US-only: the country is fixed rather than asked for (the server
+// stores 'US' whatever a caller sends), and the state comes from the USPS list.
+const US_STATE_OPTIONS = US_STATES
 
 const isLoading = ref(false)
 const error = ref('')
@@ -47,6 +52,11 @@ const sectionClass =
 // approved — so the form is replaced by a confirmation panel instead of a redirect.
 async function handleSubmit() {
   error.value = ''
+  // A UiSelect is not a native form control, so `required` cannot cover it.
+  if (!form.state) {
+    error.value = 'Please choose a state.'
+    return
+  }
   isLoading.value = true
   try {
     const { request, message } = await signup({
@@ -61,7 +71,6 @@ async function handleSubmit() {
       city: form.city,
       state: form.state,
       postalCode: form.postalCode,
-      country: form.country,
       password: form.password,
     })
     submittedReference.value = request.reference
@@ -130,7 +139,7 @@ async function handleSubmit() {
                 </label>
                 <label class="ect-block">
                   <span :class="labelClass">Phone</span>
-                  <input v-model="form.phone" type="tel" required autocomplete="tel" placeholder="+91 98765 43210" :class="fieldClass" />
+                  <input v-model="form.phone" type="tel" required autocomplete="tel" placeholder="+1 (555) 123-4567" :class="fieldClass" />
                 </label>
               </div>
             </fieldset>
@@ -140,11 +149,11 @@ async function handleSubmit() {
               <div class="ect-grid sm:ect-grid-cols-2 ect-gap-5">
                 <label class="ect-block">
                   <span :class="labelClass">Company name</span>
-                  <input v-model="form.companyName" type="text" required autocomplete="organization" placeholder="Doe Jewellers Pvt Ltd" :class="fieldClass" />
+                  <input v-model="form.companyName" type="text" required autocomplete="organization" placeholder="Doe Jewelers LLC" :class="fieldClass" />
                 </label>
                 <label class="ect-block">
                   <span :class="labelClass">Tax ID</span>
-                  <input v-model="form.taxId" type="text" required placeholder="GSTIN / VAT / EIN" :class="fieldClass" />
+                  <input v-model="form.taxId" type="text" required placeholder="EIN 12-3456789" :class="fieldClass" />
                 </label>
               </div>
             </fieldset>
@@ -152,30 +161,46 @@ async function handleSubmit() {
             <fieldset class="ect-space-y-5">
               <legend :class="sectionClass">Address</legend>
               <label class="ect-block">
-                <span :class="labelClass">Address line 1</span>
-                <input v-model="form.addressLine1" type="text" required autocomplete="address-line1" placeholder="Street address" :class="fieldClass" />
+                <span :class="labelClass">Street address</span>
+                <input v-model="form.addressLine1" type="text" required autocomplete="address-line1" placeholder="1234 Market Street" :class="fieldClass" />
               </label>
               <label class="ect-block">
-                <span :class="labelClass">Address line 2 <span class="ect-text-charcoal/35 ect-normal-case ect-tracking-normal ect-font-normal">(optional)</span></span>
-                <input v-model="form.addressLine2" type="text" autocomplete="address-line2" placeholder="Suite, floor, landmark" :class="fieldClass" />
+                <span :class="labelClass">Apt, suite, floor <span class="ect-text-charcoal/35 ect-normal-case ect-tracking-normal ect-font-normal">(optional)</span></span>
+                <input v-model="form.addressLine2" type="text" autocomplete="address-line2" placeholder="Suite 500" :class="fieldClass" />
               </label>
               <div class="ect-grid sm:ect-grid-cols-2 ect-gap-5">
                 <label class="ect-block">
                   <span :class="labelClass">City</span>
-                  <input v-model="form.city" type="text" required autocomplete="address-level2" placeholder="Jaipur" :class="fieldClass" />
+                  <input v-model="form.city" type="text" required autocomplete="address-level2" placeholder="San Francisco" :class="fieldClass" />
                 </label>
-                <label class="ect-block">
+                <div class="ect-block">
                   <span :class="labelClass">State</span>
-                  <input v-model="form.state" type="text" required autocomplete="address-level1" placeholder="Rajasthan" :class="fieldClass" />
-                </label>
+                  <UiSelect
+                    :model-value="form.state"
+                    :options="US_STATE_OPTIONS"
+                    placeholder="Choose a state"
+                    aria-label="State"
+                    @update:model-value="(v) => (form.state = v)"
+                  />
+                </div>
                 <label class="ect-block">
-                  <span :class="labelClass">Postal code</span>
-                  <input v-model="form.postalCode" type="text" required autocomplete="postal-code" placeholder="302001" :class="fieldClass" />
+                  <span :class="labelClass">ZIP code</span>
+                  <input
+                    v-model="form.postalCode"
+                    type="text"
+                    required
+                    inputmode="numeric"
+                    autocomplete="postal-code"
+                    pattern="\d{5}(-\d{4})?"
+                    title="5 digits, or ZIP+4 as 12345-6789"
+                    placeholder="94103"
+                    :class="fieldClass"
+                  />
                 </label>
-                <label class="ect-block">
+                <div class="ect-block">
                   <span :class="labelClass">Country</span>
-                  <input v-model="form.country" type="text" required autocomplete="country-name" placeholder="India" :class="fieldClass" />
-                </label>
+                  <p class="ect-w-full ect-px-4 ect-py-3.5 ect-bg-cream/60 ect-border ect-border-sand ect-rounded-xl ect-font-body ect-text-base ect-text-charcoal/55">United States</p>
+                </div>
               </div>
             </fieldset>
 

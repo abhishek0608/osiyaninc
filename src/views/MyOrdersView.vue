@@ -7,6 +7,14 @@ function formatDate(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+// Orders bought on payment terms are still owed, so the due date sits next to
+// the status rather than being buried in the confirmation email.
+function paymentLabel(order: { payment: { term: string; termDays?: number; dueDate?: string } }) {
+  if (order.payment.term !== 'terms') return ''
+  const net = order.payment.termDays ? `Net ${order.payment.termDays}` : 'Payment terms'
+  return order.payment.dueDate ? `${net} · due ${formatDate(order.payment.dueDate)}` : net
+}
 </script>
 
 <template>
@@ -51,6 +59,7 @@ function formatDate(iso: string) {
           </div>
           <section class="ect-px-5 sm:ect-px-6 ect-pb-5 sm:ect-pb-6 ect-pt-0">
             <span class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-2.5 ect-py-1 ect-rounded-full ect-bg-champagne ect-font-body ect-text-xs ect-font-medium ect-text-gold-800">{{ order.status }}</span>
+            <span v-if="paymentLabel(order)" class="ect-inline-flex ect-items-center ect-gap-1.5 ect-ml-2 ect-px-2.5 ect-py-1 ect-rounded-full ect-border ect-border-gold-300/70 ect-font-body ect-text-xs ect-font-medium ect-text-gold-800">{{ paymentLabel(order) }}</span>
           </section>
         </li>
       </ul>

@@ -18,7 +18,7 @@ const route = useRoute()
 const router = useRouter()
 const { totalItems } = useCart()
 const { count: wishlistCount } = useWishlist()
-const { user, isLoggedIn, isInternalUser, logout } = useAuth()
+const { user, isLoggedIn, isInternalUser, canMemoUser, logout } = useAuth()
 const { query, searchByImage, submitTextSearch } = useSearch()
 
 const headerEl = ref<HTMLElement | null>(null)
@@ -464,6 +464,7 @@ onBeforeUnmount(() => {
 
                 <nav class="account-navigation" aria-label="Account links">
                   <RouterLink to="/orders">My Orders</RouterLink>
+                  <RouterLink v-if="canMemoUser" to="/memos">My Memos</RouterLink>
                   <RouterLink to="/wishlist">Wishlist</RouterLink>
                   <RouterLink to="/account">Account Settings</RouterLink>
                 </nav>
@@ -598,6 +599,7 @@ onBeforeUnmount(() => {
           <RouterLink to="/wishlist">Wishlist</RouterLink>
           <template v-if="isLoggedIn">
             <RouterLink to="/orders">My Orders</RouterLink>
+            <RouterLink v-if="canMemoUser" to="/memos">My Memos</RouterLink>
             <RouterLink to="/account">Account Settings</RouterLink>
             <button type="button" class="drawer-signout" @click="signOut">Sign out</button>
           </template>
