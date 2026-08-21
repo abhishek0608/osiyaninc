@@ -14,6 +14,8 @@ const props = defineProps<{
   options: UiSelectOption[]
   placeholder?: string
   ariaLabel?: string
+  invalid?: boolean
+  describedBy?: string
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
@@ -75,8 +77,11 @@ function onKeydown(e: KeyboardEvent) {
       @keydown="onKeydown"
       :aria-expanded="open"
       :aria-label="ariaLabel"
+      :aria-invalid="invalid || undefined"
+      :aria-describedby="describedBy"
       aria-haspopup="listbox"
-      class="ect-w-full ect-flex ect-items-center ect-justify-between ect-gap-2 ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-border-charcoal/20 ect-bg-white ect-font-body ect-text-sm ect-text-charcoal ect-text-left focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400/40 focus:ect-border-gold-400 ect-transition-all"
+      class="ect-w-full ect-flex ect-items-center ect-justify-between ect-gap-2 ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-bg-white ect-font-body ect-text-sm ect-text-charcoal ect-text-left focus:ect-outline-none focus:ect-ring-2 ect-transition-all"
+      :class="invalid ? 'ect-border-red-400 focus:ect-border-red-400 focus:ect-ring-red-400/25' : 'ect-border-charcoal/20 focus:ect-border-gold-400 focus:ect-ring-gold-400/40'"
     >
       <span class="ect-truncate" :class="selectedLabel ? '' : 'ect-text-charcoal/35'">{{ selectedLabel || placeholder }}</span>
       <svg class="ect-w-4 ect-h-4 ect-shrink-0 ect-text-charcoal/40 ect-transition-transform" :class="open ? 'ect-rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>

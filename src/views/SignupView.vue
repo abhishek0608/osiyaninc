@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import UiSelect from '../components/UiSelect.vue'
 import { useAuth } from '../composables/useAuth'
@@ -33,6 +33,7 @@ const isLoading = ref(false)
 const error = ref('')
 const submittedReference = ref('')
 const submittedMessage = ref('')
+const formRef = ref<HTMLFormElement | null>(null)
 
 // One message per field, shown under that field. Mirrors the server's rules in
 // server/api/signup-requests.js so the applicant is not bounced by a round trip
@@ -42,36 +43,73 @@ const errors = reactive<Partial<Record<FormField, string>>>({})
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const US_ZIP_PATTERN = /^\d{5}(-\d{4})?$/
+const REQUIRED_FIELDS: FormField[] = [
+  'firstName',
+  'lastName',
+  'email',
+  'phone',
+  'addressLine1',
+  'city',
+  'state',
+  'postalCode',
+  'password',
+]
 
-function clearError(field: FormField) {
-  if (errors[field]) delete errors[field]
+function getFieldError(field: FormField) {
+  if (field === 'firstName' && !form.firstName.trim()) return 'Enter your first name.'
+  if (field === 'lastName' && !form.lastName.trim()) return 'Enter your last name.'
+  if (field === 'email') {
+    if (!form.email.trim()) return 'Enter your email address.'
+    if (!EMAIL_PATTERN.test(form.email.trim())) return 'Enter a valid email address.'
+  }
+  if (field === 'phone') {
+    if (!form.phone.trim()) return 'Enter your phone number.'
+    if (form.phone.replace(/\D/g, '').length < 7) return 'Enter a valid phone number.'
+  }
+  if (field === 'addressLine1' && !form.addressLine1.trim()) return 'Enter your street address.'
+  if (field === 'city' && !form.city.trim()) return 'Enter your city.'
+  if (field === 'state' && !form.state) return 'Choose a state.'
+  if (field === 'postalCode') {
+    if (!form.postalCode.trim()) return 'Enter your ZIP code.'
+    if (!US_ZIP_PATTERN.test(form.postalCode.trim())) return 'Use 12345 or 12345-6789.'
+  }
+  if (field === 'password') {
+    if (!form.password) return 'Choose a password.'
+    if (form.password.length < 8) return 'Use at least 8 characters.'
+  }
+  return ''
+}
+
+function validateField(field: FormField) {
+  const message = getFieldError(field)
+  if (message) errors[field] = message
+  else delete errors[field]
+}
+
+function revalidateErroredField(field: FormField) {
+  if (errors[field]) validateField(field)
+}
+
+function errorId(field: FormField) {
+  return `signup-${field}-error`
 }
 
 function validate() {
   ;(Object.keys(errors) as FormField[]).forEach((key) => delete errors[key])
-
-  if (!form.firstName.trim()) errors.firstName = 'Enter your first name.'
-  if (!form.lastName.trim()) errors.lastName = 'Enter your last name.'
-
-  if (!form.email.trim()) errors.email = 'Enter your email address.'
-  else if (!EMAIL_PATTERN.test(form.email.trim())) errors.email = 'Enter a valid email address.'
-
-  if (!form.phone.trim()) errors.phone = 'Enter your phone number.'
-  else if (form.phone.replace(/\D/g, '').length < 7) errors.phone = 'Enter a valid phone number.'
-
-  if (!form.addressLine1.trim()) errors.addressLine1 = 'Enter your street address.'
-  if (!form.city.trim()) errors.city = 'Enter your city.'
-  if (!form.state) errors.state = 'Choose a state.'
-
-  if (!form.postalCode.trim()) errors.postalCode = 'Enter your ZIP code.'
-  else if (!US_ZIP_PATTERN.test(form.postalCode.trim())) {
-    errors.postalCode = 'Use 12345 or 12345-6789.'
-  }
-
-  if (!form.password) errors.password = 'Choose a password.'
-  else if (form.password.length < 8) errors.password = 'Use at least 8 characters.'
-
+  REQUIRED_FIELDS.forEach(validateField)
   return !Object.keys(errors).length
+}
+
+async function revealFirstError() {
+  await nextTick()
+  const firstInvalidField = REQUIRED_FIELDS.find((field) => errors[field])
+  if (!firstInvalidField) return
+  const fieldHost = formRef.value?.querySelector<HTMLElement>(`[data-field="${firstInvalidField}"]`)
+  const control = fieldHost?.matches('input, button, select, textarea')
+    ? fieldHost
+    : fieldHost?.querySelector<HTMLElement>('input, button, select, textarea')
+  control?.focus({ preventScroll: true })
+  control?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 const returnTo = computed(() => {
@@ -101,7 +139,10 @@ function fieldClass(field: FormField) {
 // approved — so the form is replaced by a confirmation panel instead of a redirect.
 async function handleSubmit() {
   error.value = ''
-  if (!validate()) return
+  if (!validate()) {
+    await revealFirstError()
+    return
+  }
   isLoading.value = true
   try {
     const { request, message } = await signup({
@@ -168,7 +209,7 @@ async function handleSubmit() {
 
           <!-- novalidate: the inline messages below each field are the single
                source of validation feedback, rather than browser bubbles. -->
-          <form novalidate @submit.prevent="handleSubmit" class="ect-space-y-8">
+          <form ref="formRef" novalidate @submit.prevent="handleSubmit" class="ect-space-y-8">
             <p class="ect-font-body ect-text-xs ect-text-charcoal/40">
               <span class="ect-text-red-500">*</span> Required
             </p>
@@ -182,13 +223,16 @@ async function handleSubmit() {
                     v-model="form.firstName"
                     type="text"
                     required
+                    data-field="firstName"
                     autocomplete="given-name"
                     placeholder="Jane"
                     :class="fieldClass('firstName')"
                     :aria-invalid="!!errors.firstName"
-                    @input="clearError('firstName')"
+                    :aria-describedby="errors.firstName ? errorId('firstName') : undefined"
+                    @input="revalidateErroredField('firstName')"
+                    @blur="validateField('firstName')"
                   />
-                  <span v-if="errors.firstName" :class="errorClass">{{ errors.firstName }}</span>
+                  <span v-if="errors.firstName" :id="errorId('firstName')" role="alert" :class="errorClass">{{ errors.firstName }}</span>
                 </label>
                 <label class="ect-block">
                   <span :class="labelClass">Last name <span class="ect-text-red-500">*</span></span>
@@ -196,13 +240,16 @@ async function handleSubmit() {
                     v-model="form.lastName"
                     type="text"
                     required
+                    data-field="lastName"
                     autocomplete="family-name"
                     placeholder="Doe"
                     :class="fieldClass('lastName')"
                     :aria-invalid="!!errors.lastName"
-                    @input="clearError('lastName')"
+                    :aria-describedby="errors.lastName ? errorId('lastName') : undefined"
+                    @input="revalidateErroredField('lastName')"
+                    @blur="validateField('lastName')"
                   />
-                  <span v-if="errors.lastName" :class="errorClass">{{ errors.lastName }}</span>
+                  <span v-if="errors.lastName" :id="errorId('lastName')" role="alert" :class="errorClass">{{ errors.lastName }}</span>
                 </label>
                 <label class="ect-block">
                   <span :class="labelClass">Email <span class="ect-text-red-500">*</span></span>
@@ -210,13 +257,16 @@ async function handleSubmit() {
                     v-model="form.email"
                     type="email"
                     required
+                    data-field="email"
                     autocomplete="email"
                     placeholder="you@company.com"
                     :class="fieldClass('email')"
                     :aria-invalid="!!errors.email"
-                    @input="clearError('email')"
+                    :aria-describedby="errors.email ? errorId('email') : undefined"
+                    @input="revalidateErroredField('email')"
+                    @blur="validateField('email')"
                   />
-                  <span v-if="errors.email" :class="errorClass">{{ errors.email }}</span>
+                  <span v-if="errors.email" :id="errorId('email')" role="alert" :class="errorClass">{{ errors.email }}</span>
                 </label>
                 <label class="ect-block">
                   <span :class="labelClass">Phone <span class="ect-text-red-500">*</span></span>
@@ -224,13 +274,16 @@ async function handleSubmit() {
                     v-model="form.phone"
                     type="tel"
                     required
+                    data-field="phone"
                     autocomplete="tel"
                     placeholder="+1 (555) 123-4567"
                     :class="fieldClass('phone')"
                     :aria-invalid="!!errors.phone"
-                    @input="clearError('phone')"
+                    :aria-describedby="errors.phone ? errorId('phone') : undefined"
+                    @input="revalidateErroredField('phone')"
+                    @blur="validateField('phone')"
                   />
-                  <span v-if="errors.phone" :class="errorClass">{{ errors.phone }}</span>
+                  <span v-if="errors.phone" :id="errorId('phone')" role="alert" :class="errorClass">{{ errors.phone }}</span>
                 </label>
               </div>
             </fieldset>
@@ -268,13 +321,16 @@ async function handleSubmit() {
                   v-model="form.addressLine1"
                   type="text"
                   required
+                  data-field="addressLine1"
                   autocomplete="address-line1"
                   placeholder="1234 Market Street"
                   :class="fieldClass('addressLine1')"
                   :aria-invalid="!!errors.addressLine1"
-                  @input="clearError('addressLine1')"
+                  :aria-describedby="errors.addressLine1 ? errorId('addressLine1') : undefined"
+                  @input="revalidateErroredField('addressLine1')"
+                  @blur="validateField('addressLine1')"
                 />
-                <span v-if="errors.addressLine1" :class="errorClass">{{ errors.addressLine1 }}</span>
+                <span v-if="errors.addressLine1" :id="errorId('addressLine1')" role="alert" :class="errorClass">{{ errors.addressLine1 }}</span>
               </label>
               <label class="ect-block">
                 <span :class="labelClass">Apt, suite, floor <span :class="optionalClass">(optional)</span></span>
@@ -293,24 +349,30 @@ async function handleSubmit() {
                     v-model="form.city"
                     type="text"
                     required
+                    data-field="city"
                     autocomplete="address-level2"
                     placeholder="San Francisco"
                     :class="fieldClass('city')"
                     :aria-invalid="!!errors.city"
-                    @input="clearError('city')"
+                    :aria-describedby="errors.city ? errorId('city') : undefined"
+                    @input="revalidateErroredField('city')"
+                    @blur="validateField('city')"
                   />
-                  <span v-if="errors.city" :class="errorClass">{{ errors.city }}</span>
+                  <span v-if="errors.city" :id="errorId('city')" role="alert" :class="errorClass">{{ errors.city }}</span>
                 </label>
                 <div class="ect-block">
                   <span :class="labelClass">State <span class="ect-text-red-500">*</span></span>
                   <UiSelect
+                    data-field="state"
                     :model-value="form.state"
                     :options="US_STATE_OPTIONS"
                     placeholder="Choose a state"
                     aria-label="State"
-                    @update:model-value="(v) => { form.state = v; clearError('state') }"
+                    :invalid="!!errors.state"
+                    :described-by="errors.state ? errorId('state') : undefined"
+                    @update:model-value="(v) => { form.state = v; validateField('state') }"
                   />
-                  <span v-if="errors.state" :class="errorClass">{{ errors.state }}</span>
+                  <span v-if="errors.state" :id="errorId('state')" role="alert" :class="errorClass">{{ errors.state }}</span>
                 </div>
                 <label class="ect-block">
                   <span :class="labelClass">ZIP code <span class="ect-text-red-500">*</span></span>
@@ -318,14 +380,17 @@ async function handleSubmit() {
                     v-model="form.postalCode"
                     type="text"
                     required
+                    data-field="postalCode"
                     inputmode="numeric"
                     autocomplete="postal-code"
                     placeholder="94103"
                     :class="fieldClass('postalCode')"
                     :aria-invalid="!!errors.postalCode"
-                    @input="clearError('postalCode')"
+                    :aria-describedby="errors.postalCode ? errorId('postalCode') : undefined"
+                    @input="revalidateErroredField('postalCode')"
+                    @blur="validateField('postalCode')"
                   />
-                  <span v-if="errors.postalCode" :class="errorClass">{{ errors.postalCode }}</span>
+                  <span v-if="errors.postalCode" :id="errorId('postalCode')" role="alert" :class="errorClass">{{ errors.postalCode }}</span>
                 </label>
                 <div class="ect-block">
                   <span :class="labelClass">Country</span>
@@ -342,13 +407,16 @@ async function handleSubmit() {
                   v-model="form.password"
                   type="password"
                   required
+                  data-field="password"
                   autocomplete="new-password"
                   :class="fieldClass('password')"
                   :aria-invalid="!!errors.password"
-                  @input="clearError('password')"
+                  :aria-describedby="errors.password ? errorId('password') : 'signup-password-hint'"
+                  @input="revalidateErroredField('password')"
+                  @blur="validateField('password')"
                 />
-                <span v-if="errors.password" :class="errorClass">{{ errors.password }}</span>
-                <span v-else class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-1.5 ect-block">At least 8 characters. You will use it to sign in once your account is approved.</span>
+                <span v-if="errors.password" :id="errorId('password')" role="alert" :class="errorClass">{{ errors.password }}</span>
+                <span v-else id="signup-password-hint" class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-1.5 ect-block">At least 8 characters. You will use it to sign in once your account is approved.</span>
               </label>
             </fieldset>
 
