@@ -509,8 +509,8 @@ model SignupRequest {
   lastName       String
   email          String
   phone          String
-  companyName    String
-  taxId          String
+  companyName    String?
+  taxId          String?
   addressLine1   String
   addressLine2   String?
   city           String

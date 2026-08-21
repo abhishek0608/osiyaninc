@@ -1744,8 +1744,8 @@ onBeforeUnmount(() => {
                   <span class="ect-block ect-text-xs ect-text-charcoal/40">{{ row.email }}</span>
                 </td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">
-                  {{ row.companyName }}
-                  <span class="ect-block ect-text-xs ect-text-charcoal/40">Tax ID {{ row.taxId }}</span>
+                  <span :class="row.companyName ? '' : 'ect-text-charcoal/35'">{{ row.companyName || '—' }}</span>
+                  <span v-if="row.taxId" class="ect-block ect-text-xs ect-text-charcoal/40">Tax ID {{ row.taxId }}</span>
                 </td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">{{ row.phone }}</td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/70">

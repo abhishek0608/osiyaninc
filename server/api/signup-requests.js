@@ -43,8 +43,8 @@ export function toSignupRequestPayload(row) {
     name: [row.firstName, row.lastName].filter(Boolean).join(' ').trim(),
     email: row.email,
     phone: row.phone,
-    companyName: row.companyName,
-    taxId: row.taxId,
+    companyName: row.companyName || '',
+    taxId: row.taxId || '',
     addressLine1: row.addressLine1,
     addressLine2: row.addressLine2 || '',
     city: row.city,
@@ -63,16 +63,17 @@ function trimmed(value, max) {
   return String(value ?? '').trim().slice(0, max)
 }
 
-// Every field on this list is required for approval, so the storefront form
-// and any internal caller are held to the same validation.
+// Company name and tax ID are optional — blank ones are stored as null so they
+// never collide on CompanyAccount's unique tax-ID column. Everything else here
+// is required, and the storefront form applies the same rules before posting.
 function validateSignupInput(body) {
   const fields = {
     firstName: trimmed(body?.firstName, 60),
     lastName: trimmed(body?.lastName, 60),
     email: trimmed(body?.email, 254).toLowerCase(),
     phone: trimmed(body?.phone, 32),
-    companyName: trimmed(body?.companyName, 160),
-    taxId: trimmed(body?.taxId, 40),
+    companyName: trimmed(body?.companyName, 160) || null,
+    taxId: trimmed(body?.taxId, 40) || null,
     addressLine1: trimmed(body?.addressLine1, 160),
     addressLine2: trimmed(body?.addressLine2, 160),
     city: trimmed(body?.city, 80),
@@ -86,8 +87,6 @@ function validateSignupInput(body) {
   if (!fields.lastName) return { error: 'Last name is required.' }
   if (!EMAIL_PATTERN.test(fields.email)) return { error: 'A valid email address is required.' }
   if (fields.phone.replace(/\D/g, '').length < 7) return { error: 'A valid phone number is required.' }
-  if (!fields.companyName) return { error: 'Company name is required.' }
-  if (!fields.taxId) return { error: 'Tax ID is required.' }
   if (!fields.addressLine1) return { error: 'Address is required.' }
   if (!fields.city) return { error: 'City is required.' }
   if (!US_STATE_CODES.has(fields.state)) {
@@ -155,8 +154,8 @@ export async function createSignupRequestRecord({ body }) {
 //
 //   User           — name/email/phone plus the password hash captured at signup
 //   Address        — the address they entered, as their default shipping address
-//   CompanyAccount — company name + tax ID (matched on tax ID so several people
-//                    from one business land on the same account)
+//   CompanyAccount — company name + tax ID, when either was given (matched on
+//                    tax ID so several people from one business land on one account)
 //   CompanyUser    — links the two
 //
 // `channel` and `role` default to a plain B2C customer; the approving admin can
@@ -210,21 +209,27 @@ export async function approveSignupRequest({ reference, adminId, channel, role, 
         },
       })
 
-      // gstin is the tax-ID column on CompanyAccount and is unique, so an
-      // approved colleague from the same business reuses the existing account.
-      const company =
-        (await tx.companyAccount.findUnique({ where: { gstin: request.taxId } })) ||
-        (await tx.companyAccount.create({
-          data: {
-            legalName: request.companyName,
-            gstin: request.taxId,
-            channel: nextChannel,
-          },
-        }))
+      // Both are optional, so a company is filed only when the applicant gave
+      // one. gstin is CompanyAccount's tax-ID column and is unique, so an
+      // approved colleague from the same business reuses the existing account —
+      // matched on tax ID alone, never on a blank.
+      if (request.companyName || request.taxId) {
+        const company =
+          (request.taxId
+            ? await tx.companyAccount.findUnique({ where: { gstin: request.taxId } })
+            : null) ||
+          (await tx.companyAccount.create({
+            data: {
+              legalName: request.companyName || request.taxId,
+              gstin: request.taxId || undefined,
+              channel: nextChannel,
+            },
+          }))
 
-      await tx.companyUser.create({
-        data: { companyId: company.id, customerId: created.id, role: 'buyer' },
-      })
+        await tx.companyUser.create({
+          data: { companyId: company.id, customerId: created.id, role: 'buyer' },
+        })
+      }
 
       return tx.signupRequest.update({
         where: { id: request.id },

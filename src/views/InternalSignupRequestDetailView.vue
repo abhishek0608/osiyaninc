@@ -135,7 +135,9 @@ onMounted(async () => {
           <div class="ect-flex ect-flex-col ect-gap-3 sm:ect-flex-row sm:ect-items-end sm:ect-justify-between">
             <div>
               <h1 class="ect-font-display ect-text-3xl sm:ect-text-4xl ect-font-light ect-text-charcoal">{{ request.name }}</h1>
-              <p class="ect-font-body ect-text-sm ect-text-charcoal/55 ect-mt-1">{{ request.companyName }} · submitted {{ formatDate(request.createdAt) }}</p>
+              <p class="ect-font-body ect-text-sm ect-text-charcoal/55 ect-mt-1">
+                <template v-if="request.companyName">{{ request.companyName }} · </template>submitted {{ formatDate(request.createdAt) }}
+              </p>
             </div>
             <div class="ect-flex ect-items-center ect-gap-2 ect-self-start">
               <span class="ect-rounded-full ect-px-3 ect-py-1.5 ect-font-body ect-text-xs ect-font-semibold ect-capitalize" :class="statusClass">{{ request.status }}</span>
@@ -181,11 +183,11 @@ onMounted(async () => {
             </div>
             <div>
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Company name</dt>
-              <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-mt-1">{{ request.companyName }}</dd>
+              <dd class="ect-font-body ect-text-sm ect-mt-1" :class="request.companyName ? 'ect-text-charcoal' : 'ect-text-charcoal/35'">{{ request.companyName || 'Not provided' }}</dd>
             </div>
             <div>
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Tax ID</dt>
-              <dd class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mt-1">{{ request.taxId }}</dd>
+              <dd class="ect-font-body ect-text-sm ect-mt-1" :class="request.taxId ? 'ect-font-semibold ect-text-charcoal' : 'ect-text-charcoal/35'">{{ request.taxId || 'Not provided' }}</dd>
             </div>
             <div class="sm:ect-col-span-2">
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Address</dt>

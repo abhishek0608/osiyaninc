@@ -8,9 +8,8 @@ import { US_STATES } from '../data/us-states'
 const route = useRoute()
 const { signup } = useAuth()
 
-// Every field here is required for approval — a Full Admin reviews the tax ID,
-// company and address before the account is created, so the form collects them
-// up front rather than after sign-in.
+// Company name and tax ID are optional; everything else on this form is needed
+// before a Full Admin can approve the account.
 const form = reactive({
   firstName: '',
   lastName: '',
@@ -35,28 +34,74 @@ const error = ref('')
 const submittedReference = ref('')
 const submittedMessage = ref('')
 
+// One message per field, shown under that field. Mirrors the server's rules in
+// server/api/signup-requests.js so the applicant is not bounced by a round trip
+// for something we can catch here.
+type FormField = keyof typeof form
+const errors = reactive<Partial<Record<FormField, string>>>({})
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const US_ZIP_PATTERN = /^\d{5}(-\d{4})?$/
+
+function clearError(field: FormField) {
+  if (errors[field]) delete errors[field]
+}
+
+function validate() {
+  ;(Object.keys(errors) as FormField[]).forEach((key) => delete errors[key])
+
+  if (!form.firstName.trim()) errors.firstName = 'Enter your first name.'
+  if (!form.lastName.trim()) errors.lastName = 'Enter your last name.'
+
+  if (!form.email.trim()) errors.email = 'Enter your email address.'
+  else if (!EMAIL_PATTERN.test(form.email.trim())) errors.email = 'Enter a valid email address.'
+
+  if (!form.phone.trim()) errors.phone = 'Enter your phone number.'
+  else if (form.phone.replace(/\D/g, '').length < 7) errors.phone = 'Enter a valid phone number.'
+
+  if (!form.addressLine1.trim()) errors.addressLine1 = 'Enter your street address.'
+  if (!form.city.trim()) errors.city = 'Enter your city.'
+  if (!form.state) errors.state = 'Choose a state.'
+
+  if (!form.postalCode.trim()) errors.postalCode = 'Enter your ZIP code.'
+  else if (!US_ZIP_PATTERN.test(form.postalCode.trim())) {
+    errors.postalCode = 'Use 12345 or 12345-6789.'
+  }
+
+  if (!form.password) errors.password = 'Choose a password.'
+  else if (form.password.length < 8) errors.password = 'Use at least 8 characters.'
+
+  return !Object.keys(errors).length
+}
+
 const returnTo = computed(() => {
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
   return redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/'
 })
 const cameFromLockedCollection = computed(() => returnTo.value.startsWith('/collections'))
 
-const fieldClass =
-  'ect-w-full ect-px-4 ect-py-3.5 ect-bg-cream ect-border ect-border-sand ect-rounded-xl ect-font-body ect-text-base ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-outline-none focus:ect-border-gold-400 focus:ect-ring-2 focus:ect-ring-gold-400/25 focus:ect-bg-white ect-transition-all'
+// The border colour is swapped rather than layered, so a field never carries two
+// competing border utilities.
+const baseFieldClass =
+  'ect-w-full ect-px-4 ect-py-3.5 ect-bg-cream ect-border ect-rounded-xl ect-font-body ect-text-base ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-outline-none focus:ect-ring-2 focus:ect-bg-white ect-transition-all'
+const validFieldClass = 'ect-border-sand focus:ect-border-gold-400 focus:ect-ring-gold-400/25'
+const invalidFieldClass = 'ect-border-red-400 focus:ect-border-red-400 focus:ect-ring-red-400/25'
 const labelClass =
   'ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/70 ect-mb-1.5 ect-block'
+const errorClass = 'ect-font-body ect-text-xs ect-text-red-600 ect-mt-1.5 ect-block'
+const optionalClass = 'ect-text-charcoal/35 ect-normal-case ect-tracking-normal ect-font-normal'
 const sectionClass =
   'ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.16em] ect-text-gold-700'
+
+function fieldClass(field: FormField) {
+  return [baseFieldClass, errors[field] ? invalidFieldClass : validFieldClass]
+}
 
 // Submitting never signs anyone in — the account does not exist until it is
 // approved — so the form is replaced by a confirmation panel instead of a redirect.
 async function handleSubmit() {
   error.value = ''
-  // A UiSelect is not a native form control, so `required` cannot cover it.
-  if (!form.state) {
-    error.value = 'Please choose a state.'
-    return
-  }
+  if (!validate()) return
   isLoading.value = true
   try {
     const { request, message } = await signup({
@@ -121,25 +166,67 @@ async function handleSubmit() {
             </p>
           </header>
 
-          <form @submit.prevent="handleSubmit" class="ect-space-y-8">
+          <!-- novalidate: the inline messages below each field are the single
+               source of validation feedback, rather than browser bubbles. -->
+          <form novalidate @submit.prevent="handleSubmit" class="ect-space-y-8">
+            <p class="ect-font-body ect-text-xs ect-text-charcoal/40">
+              <span class="ect-text-red-500">*</span> Required
+            </p>
+
             <fieldset class="ect-space-y-5">
               <legend :class="sectionClass">Your details</legend>
               <div class="ect-grid sm:ect-grid-cols-2 ect-gap-5">
                 <label class="ect-block">
-                  <span :class="labelClass">First name</span>
-                  <input v-model="form.firstName" type="text" required autocomplete="given-name" placeholder="Jane" :class="fieldClass" />
+                  <span :class="labelClass">First name <span class="ect-text-red-500">*</span></span>
+                  <input
+                    v-model="form.firstName"
+                    type="text"
+                    autocomplete="given-name"
+                    placeholder="Jane"
+                    :class="fieldClass('firstName')"
+                    :aria-invalid="!!errors.firstName"
+                    @input="clearError('firstName')"
+                  />
+                  <span v-if="errors.firstName" :class="errorClass">{{ errors.firstName }}</span>
                 </label>
                 <label class="ect-block">
-                  <span :class="labelClass">Last name</span>
-                  <input v-model="form.lastName" type="text" required autocomplete="family-name" placeholder="Doe" :class="fieldClass" />
+                  <span :class="labelClass">Last name <span class="ect-text-red-500">*</span></span>
+                  <input
+                    v-model="form.lastName"
+                    type="text"
+                    autocomplete="family-name"
+                    placeholder="Doe"
+                    :class="fieldClass('lastName')"
+                    :aria-invalid="!!errors.lastName"
+                    @input="clearError('lastName')"
+                  />
+                  <span v-if="errors.lastName" :class="errorClass">{{ errors.lastName }}</span>
                 </label>
                 <label class="ect-block">
-                  <span :class="labelClass">Email</span>
-                  <input v-model="form.email" type="email" required autocomplete="email" placeholder="you@company.com" :class="fieldClass" />
+                  <span :class="labelClass">Email <span class="ect-text-red-500">*</span></span>
+                  <input
+                    v-model="form.email"
+                    type="email"
+                    autocomplete="email"
+                    placeholder="you@company.com"
+                    :class="fieldClass('email')"
+                    :aria-invalid="!!errors.email"
+                    @input="clearError('email')"
+                  />
+                  <span v-if="errors.email" :class="errorClass">{{ errors.email }}</span>
                 </label>
                 <label class="ect-block">
-                  <span :class="labelClass">Phone</span>
-                  <input v-model="form.phone" type="tel" required autocomplete="tel" placeholder="+1 (555) 123-4567" :class="fieldClass" />
+                  <span :class="labelClass">Phone <span class="ect-text-red-500">*</span></span>
+                  <input
+                    v-model="form.phone"
+                    type="tel"
+                    autocomplete="tel"
+                    placeholder="+1 (555) 123-4567"
+                    :class="fieldClass('phone')"
+                    :aria-invalid="!!errors.phone"
+                    @input="clearError('phone')"
+                  />
+                  <span v-if="errors.phone" :class="errorClass">{{ errors.phone }}</span>
                 </label>
               </div>
             </fieldset>
@@ -148,12 +235,23 @@ async function handleSubmit() {
               <legend :class="sectionClass">Business</legend>
               <div class="ect-grid sm:ect-grid-cols-2 ect-gap-5">
                 <label class="ect-block">
-                  <span :class="labelClass">Company name</span>
-                  <input v-model="form.companyName" type="text" required autocomplete="organization" placeholder="Doe Jewelers LLC" :class="fieldClass" />
+                  <span :class="labelClass">Company name <span :class="optionalClass">(optional)</span></span>
+                  <input
+                    v-model="form.companyName"
+                    type="text"
+                    autocomplete="organization"
+                    placeholder="Doe Jewelers LLC"
+                    :class="fieldClass('companyName')"
+                  />
                 </label>
                 <label class="ect-block">
-                  <span :class="labelClass">Tax ID</span>
-                  <input v-model="form.taxId" type="text" required placeholder="EIN 12-3456789" :class="fieldClass" />
+                  <span :class="labelClass">Tax ID <span :class="optionalClass">(optional)</span></span>
+                  <input
+                    v-model="form.taxId"
+                    type="text"
+                    placeholder="EIN 12-3456789"
+                    :class="fieldClass('taxId')"
+                  />
                 </label>
               </div>
             </fieldset>
@@ -161,41 +259,66 @@ async function handleSubmit() {
             <fieldset class="ect-space-y-5">
               <legend :class="sectionClass">Address</legend>
               <label class="ect-block">
-                <span :class="labelClass">Street address</span>
-                <input v-model="form.addressLine1" type="text" required autocomplete="address-line1" placeholder="1234 Market Street" :class="fieldClass" />
+                <span :class="labelClass">Street address <span class="ect-text-red-500">*</span></span>
+                <input
+                  v-model="form.addressLine1"
+                  type="text"
+                  autocomplete="address-line1"
+                  placeholder="1234 Market Street"
+                  :class="fieldClass('addressLine1')"
+                  :aria-invalid="!!errors.addressLine1"
+                  @input="clearError('addressLine1')"
+                />
+                <span v-if="errors.addressLine1" :class="errorClass">{{ errors.addressLine1 }}</span>
               </label>
               <label class="ect-block">
-                <span :class="labelClass">Apt, suite, floor <span class="ect-text-charcoal/35 ect-normal-case ect-tracking-normal ect-font-normal">(optional)</span></span>
-                <input v-model="form.addressLine2" type="text" autocomplete="address-line2" placeholder="Suite 500" :class="fieldClass" />
+                <span :class="labelClass">Apt, suite, floor <span :class="optionalClass">(optional)</span></span>
+                <input
+                  v-model="form.addressLine2"
+                  type="text"
+                  autocomplete="address-line2"
+                  placeholder="Suite 500"
+                  :class="fieldClass('addressLine2')"
+                />
               </label>
               <div class="ect-grid sm:ect-grid-cols-2 ect-gap-5">
                 <label class="ect-block">
-                  <span :class="labelClass">City</span>
-                  <input v-model="form.city" type="text" required autocomplete="address-level2" placeholder="San Francisco" :class="fieldClass" />
+                  <span :class="labelClass">City <span class="ect-text-red-500">*</span></span>
+                  <input
+                    v-model="form.city"
+                    type="text"
+                    autocomplete="address-level2"
+                    placeholder="San Francisco"
+                    :class="fieldClass('city')"
+                    :aria-invalid="!!errors.city"
+                    @input="clearError('city')"
+                  />
+                  <span v-if="errors.city" :class="errorClass">{{ errors.city }}</span>
                 </label>
                 <div class="ect-block">
-                  <span :class="labelClass">State</span>
+                  <span :class="labelClass">State <span class="ect-text-red-500">*</span></span>
                   <UiSelect
                     :model-value="form.state"
                     :options="US_STATE_OPTIONS"
                     placeholder="Choose a state"
                     aria-label="State"
-                    @update:model-value="(v) => (form.state = v)"
+                    @update:model-value="(v) => { form.state = v; clearError('state') }"
                   />
+                  <span v-if="errors.state" :class="errorClass">{{ errors.state }}</span>
                 </div>
                 <label class="ect-block">
-                  <span :class="labelClass">ZIP code</span>
+                  <span :class="labelClass">ZIP code <span class="ect-text-red-500">*</span></span>
                   <input
                     v-model="form.postalCode"
                     type="text"
-                    required
                     inputmode="numeric"
                     autocomplete="postal-code"
-                    pattern="\d{5}(-\d{4})?"
-                    title="5 digits, or ZIP+4 as 12345-6789"
                     placeholder="94103"
-                    :class="fieldClass"
+                    :class="fieldClass('postalCode')"
+                    :aria-invalid="!!errors.postalCode"
+                    @input="clearError('postalCode')"
                   />
+                  <span v-if="errors.postalCode" :class="errorClass">{{ errors.postalCode }}</span>
                 </label>
                 <div class="ect-block">
                   <span :class="labelClass">Country</span>
@@ -207,9 +330,17 @@ async function handleSubmit() {
             <fieldset class="ect-space-y-5">
               <legend :class="sectionClass">Password</legend>
               <label class="ect-block">
-                <span :class="labelClass">Choose a password</span>
-                <input v-model="form.password" type="password" required minlength="8" autocomplete="new-password" placeholder="••••••••" :class="fieldClass" />
-                <span class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-1.5 ect-block">At least 8 characters. You will use it to sign in once your account is approved.</span>
+                <span :class="labelClass">Choose a password <span class="ect-text-red-500">*</span></span>
+                <input
+                  v-model="form.password"
+                  type="password"
+                  autocomplete="new-password"
+                  :class="fieldClass('password')"
+                  :aria-invalid="!!errors.password"
+                  @input="clearError('password')"
+                />
+                <span v-if="errors.password" :class="errorClass">{{ errors.password }}</span>
+                <span v-else class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-1.5 ect-block">At least 8 characters. You will use it to sign in once your account is approved.</span>
               </label>
             </fieldset>
 
