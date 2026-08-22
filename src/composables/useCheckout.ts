@@ -32,6 +32,9 @@ export interface CheckoutOrder {
 export interface CheckoutIntent {
   term: PaymentTerm
   clientSecret?: string
+  // Set when the server found this cart already charged — a webhook that landed
+  // late, or never, reconciled on this request. There is nothing left to pay.
+  alreadyPaid?: boolean
   order: CheckoutOrder
   customizedCount: number
 }

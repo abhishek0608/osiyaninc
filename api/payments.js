@@ -89,9 +89,14 @@ function checkoutErrorResponse(res, err) {
 // ---------------------------------------------------------------------------
 
 /**
- * A previous attempt on this same cart, still payable. Reusing it keeps one
- * order per checkout session instead of stranding a PENDING order (and burning
- * an order number) on every reload of the payment step.
+ * A previous attempt on this same cart. Reusing it keeps one order per checkout
+ * session instead of stranding a PENDING order (and burning an order number) on
+ * every reload of the payment step.
+ *
+ * Returns one of:
+ *   { reuse: { payment, intent } } — still payable, hand the same secret back
+ *   { settled: order }            — the money already arrived or is in flight
+ *   null                          — nothing usable, open a fresh order
  */
 async function findReusablePayment(customerId, signature) {
   const payment = await prisma.payment.findFirst({
@@ -114,9 +119,27 @@ async function findReusablePayment(customerId, signature) {
     return null
   }
 
+  // The money is already in, or on its way. Retiring this order would record a
+  // paid charge as a failure; opening a second order for the same cart would
+  // bill the customer twice for goods they have already bought. Neither is
+  // acceptable, so settle what can be settled and hand the existing order back.
+  //
+  // This is also what makes a missed webhook self-healing: if the endpoint was
+  // misconfigured when the charge landed, the next checkout reconciles it.
+  if (intent.status === 'succeeded' || intent.status === 'processing') {
+    // 'processing' settles on its own later; only 'succeeded' is ours to record.
+    if (intent.status === 'succeeded') await markPaid(intent)
+    const order = await prisma.order.findUnique({
+      where: { id: payment.orderId },
+      include: { payments: { orderBy: { createdAt: 'desc' } } },
+    })
+    return { settled: order }
+  }
+
   const stillPayable = ['requires_payment_method', 'requires_confirmation', 'requires_action']
   if (!stillPayable.includes(intent.status) || intent.metadata?.cartSignature !== signature) {
-    // The cart moved on (or the intent is no longer usable). Retire both so a
+    // Genuinely stale: either still payable but priced for a cart that has since
+    // moved on, or in a terminal state that never took money. Retire both so a
     // stale amount can never be confirmed later.
     if (stillPayable.includes(intent.status)) {
       await stripe.paymentIntents.cancel(intent.id).catch(() => {})
@@ -126,7 +149,7 @@ async function findReusablePayment(customerId, signature) {
     return null
   }
 
-  return { payment, intent }
+  return { reuse: { payment, intent } }
 }
 
 async function handleIntent(res, body) {
@@ -161,12 +184,24 @@ async function handleIntent(res, body) {
   }
 
   const signature = cartSignature(pricing)
-  const reusable = await findReusablePayment(customer.id, signature)
-  if (reusable) {
+  const existing = await findReusablePayment(customer.id, signature)
+
+  // Already paid for (or awaiting a slow method). There is nothing left to
+  // charge, so send the order back rather than a client secret.
+  if (existing?.settled) {
     return res.status(200).json({
       term: 'immediate',
-      clientSecret: reusable.intent.client_secret,
-      order: orderPayload(reusable.payment.order),
+      alreadyPaid: true,
+      order: orderPayload(existing.settled),
+      customizedCount: pricing.customizedCount,
+    })
+  }
+
+  if (existing?.reuse) {
+    return res.status(200).json({
+      term: 'immediate',
+      clientSecret: existing.reuse.intent.client_secret,
+      order: orderPayload(existing.reuse.payment.order),
       customizedCount: pricing.customizedCount,
     })
   }

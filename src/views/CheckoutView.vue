@@ -344,6 +344,15 @@ async function beginPayment() {
     return
   }
 
+  // This cart was already charged on an earlier attempt whose webhook had not
+  // landed yet, and the server has just reconciled it. Skip straight to the
+  // confirmation rather than asking for a card a second time.
+  if (intent.alreadyPaid) {
+    paymentSettlement.value = intent.order.paymentStatus === 'SUCCESS' ? 'settled' : 'pending'
+    completeCheckout(intent.order.orderNo, intent.order.totalUsd)
+    return
+  }
+
   const stripe = intent.clientSecret ? await getStripeJs() : null
   if (!intent.clientSecret || !stripe) {
     throw new Error('Card payments are unavailable right now. Please contact us to complete your order.')
