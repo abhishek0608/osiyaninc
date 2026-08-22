@@ -24,6 +24,12 @@ export interface OrderPayment {
   // customer's allowance does not move an existing due date.
   termDays?: number
   dueDate?: string
+  // Whether the card actually settled. Only meaningful for 'immediate' orders:
+  // Stripe's webhook is what confirms a charge, and it can land after the
+  // customer reaches the confirmation page — or the method can be a slow one
+  // that stays 'processing' for days. 'pending' means the order is placed but
+  // the money is not confirmed yet, so nothing should call it paid.
+  settlement?: 'settled' | 'pending'
 }
 
 export interface Order {

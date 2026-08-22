@@ -38,8 +38,13 @@ const submitError = ref('')
 // Checkout runs in two stages when a card is involved: 'details' collects the
 // address, then 'paying' shows Stripe's Payment Element for the amount the
 // server priced. Terms orders and quote-only carts skip the second stage.
-const { createIntent, confirmPayment, waitForConfirmation } = useCheckout()
+const { createIntent, confirmPayment, waitForConfirmation, fetchOrderStatus } = useCheckout()
 const stage = ref<'details' | 'paying'>('details')
+// Stripe's webhook is the only thing that settles a card order, and it can land
+// after the customer reaches the confirmation page — or the method can be a slow
+// one that stays 'processing' for days. Defaults to 'pending' so a charge is
+// only ever called settled once the server has actually said so.
+const paymentSettlement = ref<'settled' | 'pending'>('pending')
 const serverOrder = ref<{ id: string; orderNo: string; totalUsd: number } | null>(null)
 const paymentElementHost = ref<HTMLElement | null>(null)
 let stripeElements: StripeElements | null = null
@@ -145,7 +150,7 @@ const formattedDueDate = computed(() =>
 )
 
 function buildPayment(): OrderPayment {
-  if (paymentTerm.value !== 'terms') return { term: 'immediate' }
+  if (paymentTerm.value !== 'terms') return { term: 'immediate', settlement: paymentSettlement.value }
   return {
     term: 'terms',
     termDays: paymentTermDays.value,
@@ -190,6 +195,7 @@ function finalizeStandardOrder(orderNo?: string, serverTotal?: number) {
     paymentTerm: payment.term,
     paymentDueDate: payment.term === 'terms' ? formattedDueDate.value : undefined,
     paymentTermDays: payment.termDays,
+    paymentSettlement: payment.settlement,
     customerName: form.value.name.trim(),
     customerEmail: form.value.email.trim(),
     customerPhone: form.value.phone.trim(),
@@ -266,6 +272,7 @@ function finalizeCheckout(orderNo?: string, serverTotal?: number) {
       paymentTerm: payment.term,
       paymentDueDate: payment.term === 'terms' ? formattedDueDate.value : undefined,
       paymentTermDays: payment.termDays,
+      paymentSettlement: payment.settlement,
       customerName: form.value.name.trim(),
       customerEmail: form.value.email.trim(),
       customerPhone: form.value.phone.trim(),
@@ -378,13 +385,38 @@ async function completePayment() {
   const returnUrl = `${window.location.origin}/order-confirmation`
   const paymentIntent = await confirmPayment(stripeElements, returnUrl)
 
-  // 'processing' is a slower method that settles later; the order is placed
-  // either way, and the webhook records the outcome.
-  if (paymentIntent && !['succeeded', 'processing'].includes(paymentIntent.status)) {
+  // No error and no intent means the browser has no evidence either way, so ask
+  // the server, which is the only authority on whether money moved. Showing a
+  // confirmation on this path would invent an order out of nothing.
+  if (!paymentIntent) {
+    const order = await fetchOrderStatus(serverOrder.value.id, user.value.id)
+    if (order?.paymentStatus !== 'SUCCESS') {
+      throw new Error(
+        'We could not confirm your payment. Your cart has been left as it is — please contact us before trying again so you are not charged twice.',
+      )
+    }
+    paymentSettlement.value = 'settled'
+    completeCheckout(serverOrder.value.orderNo, serverOrder.value.totalUsd)
+    return
+  }
+
+  if (!['succeeded', 'processing'].includes(paymentIntent.status)) {
     throw new Error('Your payment was not completed. Please try another card.')
   }
 
-  await waitForConfirmation(serverOrder.value.id, user.value.id)
+  if (paymentIntent.status === 'processing') {
+    // A slower method (bank debit, some wallets) that settles hours or days
+    // later. The order is placed, but nothing may call it paid yet — polling
+    // here would only burn four seconds to learn what we already know.
+    paymentSettlement.value = 'pending'
+  } else {
+    // 'succeeded' means the money is taken, so the order stands regardless of
+    // what the webhook does next — never block the customer here. If the
+    // webhook has not landed in time the order is simply not yet reconciled.
+    const settled = await waitForConfirmation(serverOrder.value.id, user.value.id)
+    paymentSettlement.value = settled ? 'settled' : 'pending'
+  }
+
   completeCheckout(serverOrder.value.orderNo, serverOrder.value.totalUsd)
 }
 

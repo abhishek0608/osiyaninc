@@ -34,6 +34,18 @@ const formattedDueDate = computed(() => {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
 })
+
+// A card order whose charge has not been confirmed settled yet — either the
+// webhook had not landed by the time this page opened, or the method is a slow
+// one still processing. The order is placed either way, but the page must not
+// imply the money is in. Orders from before settlement was tracked leave the
+// field undefined, which reads as settled and shows nothing.
+const unsettledOrder = computed(() => {
+  if (confirmationKind.value !== 'order') return null
+  const order = orders.value.find((o) => o.id === referenceNumber.value)
+  if (!order || order.payment.term !== 'immediate') return null
+  return order.payment.settlement === 'pending' ? order : null
+})
 </script>
 
 <template>
@@ -63,6 +75,17 @@ const formattedDueDate = computed(() => {
         <p class="ect-font-body ect-text-sm ect-text-charcoal/60">
           Nothing was charged now. {{ termsOrder.formattedTotal }} is due by
           <span class="ect-font-semibold ect-text-charcoal">{{ formattedDueDate }}</span>.
+        </p>
+      </section>
+
+      <section v-if="unsettledOrder" class="ect-bg-champagne/40 ect-border ect-border-gold-300/60 ect-rounded-sm ect-p-5 ect-mb-6 ect-text-left">
+        <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mb-1">
+          Payment confirmation pending
+        </p>
+        <p class="ect-font-body ect-text-sm ect-text-charcoal/60">
+          Your order is placed and nothing more is needed from you.
+          {{ unsettledOrder.formattedTotal }} is still being confirmed by your payment
+          provider — we’ll email you the moment it clears.
         </p>
       </section>
 

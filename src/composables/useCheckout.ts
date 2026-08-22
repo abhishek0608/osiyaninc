@@ -117,25 +117,48 @@ export function useCheckout() {
   }
 
   /**
+   * One authoritative read of an order's payment state. Only the server knows
+   * whether the webhook has settled the charge; the browser's own view of the
+   * PaymentIntent can be stale, or missing entirely.
+   */
+  async function fetchOrderStatus(orderId: string, userId: string): Promise<CheckoutOrder | null> {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/payments?mode=status&orderId=${encodeURIComponent(orderId)}&userId=${encodeURIComponent(userId)}`,
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return null
+      return (data?.order as CheckoutOrder) ?? null
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * The webhook is what actually confirms an order, and it can land a moment
    * after the customer's browser gets its answer. Poll briefly so the
    * confirmation page shows a settled order rather than a pending one.
+   *
+   * A null return means “not settled yet”, never “the payment failed” — a
+   * payment that actually failed surfaces as an error from confirmPayment.
    */
   async function waitForConfirmation(orderId: string, userId: string, attempts = 5) {
     for (let i = 0; i < attempts; i += 1) {
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/payments?mode=status&orderId=${encodeURIComponent(orderId)}&userId=${encodeURIComponent(userId)}`,
-        )
-        const data = await res.json().catch(() => ({}))
-        if (res.ok && data?.order?.paymentStatus === 'SUCCESS') return data.order as CheckoutOrder
-      } catch {
-        // A failed poll is not a failed payment — keep trying.
-      }
+      const order = await fetchOrderStatus(orderId, userId)
+      if (order?.paymentStatus === 'SUCCESS') return order
+      // A failed poll is not a failed payment — keep trying.
       await new Promise((resolve) => setTimeout(resolve, 800))
     }
     return null
   }
 
-  return { preparing, confirming, error, createIntent, confirmPayment, waitForConfirmation }
+  return {
+    preparing,
+    confirming,
+    error,
+    createIntent,
+    confirmPayment,
+    waitForConfirmation,
+    fetchOrderStatus,
+  }
 }

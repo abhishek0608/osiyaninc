@@ -10,6 +10,9 @@ export type OrderEmailPayload = {
   paymentTerm?: 'immediate' | 'terms'
   paymentDueDate?: string
   paymentTermDays?: number
+  // For an 'immediate' order, whether the charge is confirmed settled. Absent
+  // or 'pending' means the team must not treat the money as received yet.
+  paymentSettlement?: 'settled' | 'pending'
   customerName: string
   customerEmail: string
   customerPhone: string

@@ -147,13 +147,18 @@ export default async function handler(req, res) {
       const onTerms = body.paymentTerm === 'terms'
       const paymentDueDate = esc(body.paymentDueDate)
       const paymentTermDays = esc(String(body.paymentTermDays ?? ''))
+      // A card charge is only settled once Stripe's webhook says so, so an
+      // order can reach this email with the money still in flight. Saying
+      // "paid" then would have the team ship against an unconfirmed payment.
+      const awaitingSettlement = !onTerms && body.paymentSettlement === 'pending'
+      const immediateLabel = awaitingSettlement ? 'Card — awaiting confirmation' : 'Paid immediately'
       const paymentLabel = onTerms
         ? `Payment terms${paymentTermDays ? ` · Net ${paymentTermDays}` : ''}${paymentDueDate ? ` · due ${paymentDueDate}` : ''}`
-        : 'Paid immediately'
+        : immediateLabel
       const paymentLine = `<br><strong>Payment:</strong> ${paymentLabel}`
       const paymentTextLine = onTerms
         ? `Payment: terms${body.paymentTermDays ? ` (Net ${body.paymentTermDays})` : ''}${body.paymentDueDate ? `, due ${body.paymentDueDate}` : ''}`
-        : 'Payment: immediate'
+        : `Payment: immediate${awaitingSettlement ? ' (awaiting confirmation)' : ''}`
 
       const itemTable = renderDataTable(
         ['Item', 'Qty', 'Price'],
