@@ -22,6 +22,7 @@ export function countryDisplayName(code: string): string {
 export interface SavedAddressEntry {
   id: string
   label: string
+  isDefault?: boolean
   name: string
   email: string
   phone: string
@@ -66,8 +67,12 @@ function generateId(): string {
 
 export function useSavedAddresses() {
   const sorted = computed(() =>
-    [...addresses.value].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+    [...addresses.value].sort((a, b) => {
+      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
+      return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })
+    })
   )
+  const defaultAddress = computed(() => addresses.value.find((address) => address.isDefault))
 
   function getById(id: string): SavedAddressEntry | undefined {
     return addresses.value.find((a) => a.id === id)
@@ -76,6 +81,9 @@ export function useSavedAddresses() {
   function save(entry: Omit<SavedAddressEntry, 'id'> & { id?: string }): string {
     const id = entry.id ?? generateId()
     const full: SavedAddressEntry = { ...entry, id }
+    if (full.isDefault) {
+      addresses.value = addresses.value.map((address) => ({ ...address, isDefault: false }))
+    }
     const idx = addresses.value.findIndex((a) => a.id === id)
     if (idx >= 0) addresses.value[idx] = full
     else addresses.value.unshift(full)
@@ -88,5 +96,13 @@ export function useSavedAddresses() {
     persist()
   }
 
-  return { addresses: sorted, getById, save, remove }
+  function setDefault(id: string) {
+    addresses.value = addresses.value.map((address) => ({
+      ...address,
+      isDefault: address.id === id,
+    }))
+    persist()
+  }
+
+  return { addresses: sorted, defaultAddress, getById, save, remove, setDefault }
 }

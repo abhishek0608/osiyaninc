@@ -4,18 +4,20 @@ import type { ServiceOffering } from '../data/services-catalog'
 import { useSavedAddresses, COUNTRY_OPTIONS, countryDisplayName } from '../composables/useSavedAddresses'
 import UiSelect from './UiSelect.vue'
 import SavedAddressSelector from './SavedAddressSelector.vue'
+import SavedAddressSavePanel from './SavedAddressSavePanel.vue'
 import { notifyTransaction } from '../composables/notifyTransactionEmail'
 import { createServiceRequest, uploadServiceFile } from '../composables/useServiceRequests'
 
 const props = defineProps<{ open: boolean; service: ServiceOffering | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const { addresses: savedAddresses, getById, save: saveAddress } = useSavedAddresses()
+const { addresses: savedAddresses, defaultAddress, getById, save: saveAddress } = useSavedAddresses()
 const knownCountryCodes = new Set<string>(COUNTRY_OPTIONS.map((c) => c.code))
 const countrySelectOptions = COUNTRY_OPTIONS.map((c) => ({ value: c.code, label: c.name }))
 const selectedSavedId = ref('')
+const shouldSaveAddress = ref(true)
 const saveAsLabel = ref('')
-const saveAddressMessage = ref('')
+const makeDefaultAddress = ref(false)
 
 const bookingStep = ref(1)
 const bookingRef = ref('')
@@ -268,6 +270,7 @@ async function submitBooking() {
       cadFileUrl,
     })
 
+    persistBookingAddress()
     bookingRef.value = request.reference
     bookingStep.value = 4
     void notifyTransaction({
@@ -349,21 +352,7 @@ const reviewItems = computed(() => {
   return rows
 })
 
-watch(selectedSavedId, (id, prevId) => {
-  if (!id) {
-    if (prevId) {
-      form.name = ''
-      form.phone = ''
-      form.email = ''
-      form.address = ''
-      form.city = ''
-      form.state = ''
-      form.country = 'IN'
-      form.pincode = ''
-      saveAddressMessage.value = ''
-    }
-    return
-  }
+function applySavedAddress(id: string) {
   const a = getById(id)
   if (!a) return
   form.name = a.name
@@ -376,30 +365,30 @@ watch(selectedSavedId, (id, prevId) => {
   if (c === 'India') c = 'IN'
   form.country = knownCountryCodes.has(c) ? c : 'OTHER'
   form.pincode = a.pincode
+}
+
+watch(selectedSavedId, (id, prevId) => {
+  if (!id) {
+    if (prevId) {
+      form.name = ''
+      form.phone = ''
+      form.email = ''
+      form.address = ''
+      form.city = ''
+      form.state = ''
+      form.country = 'IN'
+      form.pincode = ''
+    }
+    return
+  }
+  applySavedAddress(id)
 })
 
-function saveBookingAddress() {
-  saveAddressMessage.value = ''
-  const label = saveAsLabel.value.trim()
-  if (!label) {
-    saveAddressMessage.value = 'Enter a short name (e.g. Home, Office) to save this address.'
-    return
-  }
-  if (
-    !form.address.trim() ||
-    !form.city.trim() ||
-    !form.state.trim() ||
-    !form.pincode.trim()
-  ) {
-    saveAddressMessage.value = 'Fill in street, city, state, postal code, and country first.'
-    return
-  }
-  if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) {
-    saveAddressMessage.value = 'Fill in contact details before saving.'
-    return
-  }
-  saveAddress({
-    label,
+function persistBookingAddress() {
+  if (!shouldSaveAddress.value || selectedSavedId.value) return
+  const id = saveAddress({
+    label: saveAsLabel.value.trim() || `${form.city.trim()} address`,
+    isDefault: makeDefaultAddress.value,
     name: form.name.trim(),
     email: form.email.trim(),
     phone: form.phone.trim(),
@@ -409,8 +398,7 @@ function saveBookingAddress() {
     country: form.country,
     pincode: form.pincode.trim(),
   })
-  saveAsLabel.value = ''
-  saveAddressMessage.value = 'Saved. Pick it from “Saved address” on your next visit.'
+  selectedSavedId.value = id
 }
 
 watch(
@@ -420,10 +408,12 @@ watch(
       bookingStep.value = 1
       bookingRef.value = ''
       formErrors.value = []
-      selectedSavedId.value = ''
+      shouldSaveAddress.value = true
       saveAsLabel.value = ''
-      saveAddressMessage.value = ''
+      makeDefaultAddress.value = false
       Object.assign(form, { ...INITIAL_FORM })
+      selectedSavedId.value = defaultAddress.value?.id ?? ''
+      if (selectedSavedId.value) applySavedAddress(selectedSavedId.value)
       inspirationPreview.value = null
       inspirationFile.value = null
       waxCadFile.value = null
@@ -912,7 +902,7 @@ const todayIso = new Date().toISOString().slice(0, 10)
                   <SavedAddressSelector
                     v-model="selectedSavedId"
                     :addresses="savedAddresses"
-                    label="Saved address"
+                    label="Service address"
                     helper-text="Selecting a saved address fills your contact details and service address."
                     class="sm:ect-col-span-2"
                   />
@@ -958,14 +948,13 @@ const todayIso = new Date().toISOString().slice(0, 10)
                     <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/60 ect-uppercase ect-tracking-[0.1em] ect-mb-1.5">Needed by <span class="ect-font-normal ect-text-charcoal/40 ect-normal-case">(optional — e.g. a wedding or gifting date)</span></span>
                     <input v-model="form.neededBy" type="date" :min="todayIso" class="ect-w-full sm:ect-w-56 ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-border-charcoal/20 ect-font-body ect-text-sm ect-text-charcoal focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400/30 focus:ect-border-gold-400 ect-transition-all" />
                   </label>
-                  <div class="ect-block sm:ect-col-span-2 ect-flex ect-flex-col sm:ect-flex-row sm:ect-items-end ect-gap-3">
-                    <label class="ect-flex-1 ect-min-w-0 ect-block">
-                      <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/60 ect-uppercase ect-tracking-[0.1em] ect-mb-1.5">Save as <span class="ect-font-normal ect-text-charcoal/40 ect-normal-case">(optional)</span></span>
-                      <input v-model="saveAsLabel" type="text" placeholder="e.g. Home, Office" class="ect-w-full ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-border-charcoal/20 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/30 focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400/30 focus:ect-border-gold-400 ect-transition-all" />
-                    </label>
-                    <button type="button" class="ect-w-full sm:ect-w-auto ect-shrink-0 ect-px-5 ect-py-2.5 ect-rounded-xl ect-border ect-border-gold-300 ect-font-body ect-text-sm ect-font-semibold ect-text-gold-800 hover:ect-bg-champagne/40 ect-transition-colors" @click="saveBookingAddress">Save address</button>
-                  </div>
-                  <p v-if="saveAddressMessage" class="ect-font-body ect-text-sm sm:ect-col-span-2" :class="saveAddressMessage.startsWith('Saved') ? 'ect-text-emerald-700' : 'ect-text-amber-800'">{{ saveAddressMessage }}</p>
+                  <SavedAddressSavePanel
+                    v-if="selectedSavedId === ''"
+                    v-model="shouldSaveAddress"
+                    v-model:label="saveAsLabel"
+                    v-model:make-default="makeDefaultAddress"
+                    class="sm:ect-col-span-2"
+                  />
                   <label class="ect-block sm:ect-col-span-2">
                     <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/60 ect-uppercase ect-tracking-[0.1em] ect-mb-1.5">Additional Notes <span class="ect-text-charcoal/30 ect-normal-case">(optional)</span></span>
                     <textarea v-model="form.additionalNotes" rows="2" placeholder="Any other information you'd like us to know…" class="ect-w-full ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-border-charcoal/20 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/30 focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400/30 ect-transition-all ect-resize-none" />
