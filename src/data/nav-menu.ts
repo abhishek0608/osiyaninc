@@ -390,8 +390,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'About', key: 'about', to: '/about' },
 ]
 
-/** Verbatim US copy from the design's utility strip. */
-export const UTILITY_MESSAGE = 'Complimentary insured shipping across the US'
 export const UTILITY_LINKS = [
   { label: 'Book an appointment', to: '/services' },
 ] as const

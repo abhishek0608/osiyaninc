@@ -9,6 +9,7 @@ import { useAuth } from '../composables/useAuth'
 import { API_BASE } from '../config-api'
 import { notifyTransaction } from '../composables/notifyTransactionEmail'
 import { US_STATES } from '../data/us-states'
+import SavedAddressSelector from '../components/SavedAddressSelector.vue'
 
 const router = useRouter()
 const {
@@ -415,45 +416,11 @@ const inputClass = 'ect-w-full ect-px-4 ect-py-3 ect-bg-white ect-border ect-bor
               <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/70">Contact Details</h2>
             </header>
             <section class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-4">
-              <div v-if="savedAddresses.length" role="radiogroup" aria-label="Saved shipping address" class="ect-block sm:ect-col-span-2">
-                <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Saved shipping address</span>
-                <div class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-2.5">
-                  <label
-                    v-for="a in savedAddresses"
-                    :key="a.id"
-                    class="ect-flex ect-items-start ect-gap-3 ect-p-3.5 ect-rounded-xl ect-cursor-pointer ect-border ect-transition-all ect-duration-200"
-                    :class="selectedSavedId === a.id
-                      ? 'ect-border-gold-400 ect-bg-champagne/50 ect-shadow-card'
-                      : 'ect-border-sand hover:ect-border-gold-300 hover:ect-bg-champagne/40'"
-                  >
-                    <input v-model="selectedSavedId" type="radio" :value="a.id" class="ect-accent-charcoal ect-w-4 ect-h-4 ect-shrink-0 ect-mt-0.5" />
-                    <span class="ect-flex-1 ect-min-w-0">
-                      <span class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-block ect-truncate">{{ a.label }}</span>
-                      <span class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-block ect-truncate">{{ a.address }}</span>
-                      <span class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-block ect-truncate">{{ a.city }}, {{ a.state }} {{ a.pincode }} · {{ countryDisplayName(a.country) }}</span>
-                    </span>
-                    <span v-if="selectedSavedId === a.id" class="ect-w-5 ect-h-5 ect-rounded-full ect-bg-champagne/500 ect-flex ect-items-center ect-justify-center ect-shrink-0">
-                      <svg class="ect-w-3 ect-h-3 ect-text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                    </span>
-                  </label>
-                  <label
-                    class="ect-flex ect-items-start ect-gap-3 ect-p-3.5 ect-rounded-xl ect-cursor-pointer ect-border ect-transition-all ect-duration-200"
-                    :class="selectedSavedId === ''
-                      ? 'ect-border-gold-400 ect-bg-champagne/50 ect-shadow-card'
-                      : 'ect-border-sand hover:ect-border-gold-300 hover:ect-bg-champagne/40'"
-                  >
-                    <input v-model="selectedSavedId" type="radio" value="" class="ect-accent-charcoal ect-w-4 ect-h-4 ect-shrink-0 ect-mt-0.5" />
-                    <span class="ect-flex-1 ect-min-w-0">
-                      <span class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-block">Use a new address</span>
-                      <span class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-block">Enter details manually below</span>
-                    </span>
-                    <span v-if="selectedSavedId === ''" class="ect-w-5 ect-h-5 ect-rounded-full ect-bg-champagne/500 ect-flex ect-items-center ect-justify-center ect-shrink-0">
-                      <svg class="ect-w-3 ect-h-3 ect-text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                    </span>
-                  </label>
-                </div>
-                <span class="ect-mt-1.5 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">Selecting a saved address fills your contact details and shipping address.</span>
-              </div>
+              <SavedAddressSelector
+                v-model="selectedSavedId"
+                :addresses="savedAddresses"
+                class="sm:ect-col-span-2"
+              />
               <label class="ect-block">
                 <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Full Name *</span>
                 <input v-model="form.name" type="text" required autocomplete="name" placeholder="Olivia Smith" :class="inputClass" />

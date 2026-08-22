@@ -5,11 +5,11 @@ import { useCart } from '../composables/useCart'
 import { useWishlist } from '../composables/useWishlist'
 import { useAuth } from '../composables/useAuth'
 import { useSearch } from '../composables/useSearch'
+import { API_BASE } from '../config-api'
 import {
   LOCALE_LABEL,
   NAV_ITEMS,
   UTILITY_LINKS,
-  UTILITY_MESSAGE,
   type NavGroup,
   type NavItem,
 } from '../data/nav-menu'
@@ -26,6 +26,8 @@ const spacerEl = ref<HTMLElement | null>(null)
 const menuOpen = ref(false)
 const accountMenuOpen = ref(false)
 const accountMenuRoot = ref<HTMLElement | null>(null)
+const notificationOpen = ref(false)
+const notificationRoot = ref<HTMLElement | null>(null)
 const searchExpanded = ref(false)
 const desktopSearchInput = ref<HTMLInputElement | null>(null)
 const mobileSearchInput = ref<HTMLInputElement | null>(null)
@@ -33,7 +35,7 @@ const imageFileInput = ref<HTMLInputElement | null>(null)
 
 /** Which category's submenu is open, keyed by NavItem.key. */
 const openCategory = ref<string | null>(null)
-/** Scroll-derived: past ~120px the utility strip collapses and the bar shrinks. */
+/** Scroll-derived: past ~120px the main bar shrinks. */
 const isCondensed = ref(false)
 /** Mobile drawer: which category accordion is expanded. */
 const drawerCategory = ref<string | null>(null)
@@ -45,9 +47,60 @@ const wishlistBadge = computed(() => (wishlistCount.value > 9 ? '9+' : String(wi
 // rather than showing a "0".
 const cartBadge = computed(() => (totalItems.value > 99 ? '99+' : String(totalItems.value)))
 
+interface InternalNotificationOrder {
+  id: string
+  orderNo: string
+  customer: string
+  total: string
+  itemCount: number
+}
+
+interface InternalNotificationItem {
+  id: string
+  type: 'Order'
+  title: string
+  meta: string
+  to: { name: 'internal-order'; params: { id: string } }
+}
+
+const internalNotifications = ref<InternalNotificationItem[]>([])
+const notificationCount = computed(() => internalNotifications.value.length)
+const notificationBadge = computed(() =>
+  notificationCount.value > 9 ? '9+' : String(notificationCount.value),
+)
+
+async function loadInternalNotifications() {
+  const userId = user.value?.id
+  if (!userId || !isInternalUser.value || !isInternalPath.value) {
+    internalNotifications.value = []
+    return
+  }
+
+  try {
+    const params = new URLSearchParams({ resource: 'orders-list', userId, skip: '0' })
+    const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
+    const data = (await res.json().catch(() => ({}))) as {
+      message?: string
+      orders?: InternalNotificationOrder[]
+    }
+    if (!res.ok) throw new Error(data.message || 'Unable to load notifications.')
+
+    internalNotifications.value = (Array.isArray(data.orders) ? data.orders : [])
+      .slice(0, 6)
+      .map((order) => ({
+        id: `order-${order.id}`,
+        type: 'Order',
+        title: order.orderNo,
+        meta: `${order.customer} · ${order.itemCount} ${order.itemCount === 1 ? 'item' : 'items'} · ${order.total}`,
+        to: { name: 'internal-order', params: { id: order.id } },
+      }))
+  } catch {
+    // Notifications are best-effort; keep the last successfully loaded list.
+  }
+}
+
 const navItems: NavItem[] = NAV_ITEMS
 const utilityLinks = UTILITY_LINKS
-const utilityMessage = UTILITY_MESSAGE
 const localeLabel = LOCALE_LABEL
 
 const openItem = computed(() => navItems.find((item) => item.key === openCategory.value) ?? null)
@@ -172,9 +225,11 @@ function publishRestHeight() {
 watch(() => route.fullPath, () => {
   menuOpen.value = false
   accountMenuOpen.value = false
+  notificationOpen.value = false
   searchExpanded.value = false
   drawerCategory.value = null
   closeSubmenu()
+  void loadInternalNotifications()
 })
 
 // Match the shared Kiana search state: back/forward navigation and searches
@@ -195,18 +250,26 @@ watch(menuOpen, (open) => {
 })
 
 watch(isLoggedIn, (loggedIn) => {
-  if (!loggedIn) accountMenuOpen.value = false
+  if (!loggedIn) {
+    accountMenuOpen.value = false
+    notificationOpen.value = false
+    internalNotifications.value = []
+  }
 })
 
 function closeAccountMenuOnOutsideClick(event: PointerEvent) {
   if (accountMenuRoot.value && !accountMenuRoot.value.contains(event.target as Node)) {
     accountMenuOpen.value = false
   }
+  if (notificationRoot.value && !notificationRoot.value.contains(event.target as Node)) {
+    notificationOpen.value = false
+  }
 }
 
 function closeMenusOnEscape(event: KeyboardEvent) {
   if (event.key !== 'Escape') return
   accountMenuOpen.value = false
+  notificationOpen.value = false
   menuOpen.value = false
   searchExpanded.value = false
   closeSubmenu()
@@ -215,6 +278,7 @@ function closeMenusOnEscape(event: KeyboardEvent) {
 async function openSearch() {
   menuOpen.value = false
   accountMenuOpen.value = false
+  notificationOpen.value = false
   closeSubmenu()
   searchExpanded.value = true
   await nextTick()
@@ -260,11 +324,25 @@ async function onImageFileChange(event: Event) {
 }
 
 function toggleInternalView() {
+  accountMenuOpen.value = false
+  notificationOpen.value = false
   void router.push(isInternalPath.value ? '/' : '/internal')
+}
+
+function toggleAccountMenu() {
+  notificationOpen.value = false
+  accountMenuOpen.value = !accountMenuOpen.value
+}
+
+function toggleNotifications() {
+  accountMenuOpen.value = false
+  notificationOpen.value = !notificationOpen.value
+  if (notificationOpen.value) void loadInternalNotifications()
 }
 
 function signOut() {
   accountMenuOpen.value = false
+  notificationOpen.value = false
   logout()
   void router.push('/')
 }
@@ -274,6 +352,7 @@ onMounted(() => {
   document.addEventListener('keydown', closeMenusOnEscape)
   window.addEventListener('scroll', onScroll, { passive: true })
   onScroll()
+  void loadInternalNotifications()
   publishRestHeight()
   if (spacerEl.value && typeof ResizeObserver !== 'undefined') {
     heightObserver = new ResizeObserver(publishRestHeight)
@@ -307,22 +386,11 @@ onBeforeUnmount(() => {
     :class="{ 'is-condensed': isCondensed }"
     @focusout="onHeaderFocusOut"
   >
-    <!-- Row 1 — utility strip. Absorbs shipping, appointments and locale so the
-         main row can give categories and search room. -->
-    <div class="utility-strip">
-      <div class="utility-inner">
-        <p class="utility-message">{{ utilityMessage }}</p>
-        <div class="utility-links">
-          <RouterLink v-for="link in utilityLinks" :key="link.to" :to="link.to">{{ link.label }}</RouterLink>
-          <span class="utility-locale">{{ localeLabel }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Row 2 — main bar -->
+    <!-- Main navigation bar -->
     <div class="main-bar">
       <div class="main-inner">
         <button
+          v-if="!isInternalPath"
           class="menu-toggle"
           :class="{ 'is-open': menuOpen }"
           type="button"
@@ -343,7 +411,7 @@ onBeforeUnmount(() => {
           </span>
         </RouterLink>
 
-        <nav class="primary-nav" aria-label="Site" @mouseleave="requestClose">
+        <nav v-if="!isInternalPath" class="primary-nav" aria-label="Site" @mouseleave="requestClose">
           <div
             v-for="item in navItems"
             :key="item.key"
@@ -366,8 +434,9 @@ onBeforeUnmount(() => {
             </RouterLink>
           </div>
         </nav>
+        <p v-else class="internal-nav-label">Internal</p>
 
-        <nav class="header-actions" aria-label="Customer actions">
+        <nav class="header-actions" :aria-label="isInternalPath ? 'Internal actions' : 'Customer actions'">
           <!-- Below the breakpoint the inline field is replaced by this toggle,
                which opens the full-width search panel under the bar. -->
           <button
@@ -408,7 +477,53 @@ onBeforeUnmount(() => {
           </form>
 
           <div class="action-icons">
+            <div
+              v-if="isInternalUser && isInternalPath"
+              ref="notificationRoot"
+              class="notification-root"
+            >
+              <button
+                type="button"
+                class="action-link notification-trigger"
+                aria-label="Internal notifications"
+                :aria-expanded="notificationOpen"
+                aria-controls="internal-notification-dropdown"
+                @click="toggleNotifications"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022 23.848 23.848 0 0 0 5.455 1.31m5.714 0a3 3 0 1 1-5.714 0" />
+                </svg>
+                <span v-if="notificationCount > 0" class="count-badge" aria-hidden="true">
+                  {{ notificationBadge }}
+                </span>
+              </button>
+
+              <div
+                v-if="notificationOpen"
+                id="internal-notification-dropdown"
+                class="notification-dropdown"
+                aria-label="Internal notifications"
+              >
+                <div class="notification-heading">Notifications</div>
+                <div v-if="internalNotifications.length" class="notification-list">
+                  <RouterLink
+                    v-for="item in internalNotifications"
+                    :key="item.id"
+                    :to="item.to"
+                    class="notification-item"
+                    @click="notificationOpen = false"
+                  >
+                    <span class="notification-type">{{ item.type }}</span>
+                    <span class="notification-title">{{ item.title }}</span>
+                    <span class="notification-meta">{{ item.meta }}</span>
+                  </RouterLink>
+                </div>
+                <p v-else class="notification-empty">No order notifications yet.</p>
+              </div>
+            </div>
+
             <RouterLink
+              v-if="!isInternalPath"
               to="/wishlist"
               class="action-link wishlist-link"
               :aria-label="`Wishlist with ${wishlistCount} items`"
@@ -418,7 +533,7 @@ onBeforeUnmount(() => {
               <span v-if="wishlistCount > 0" class="count-badge" aria-hidden="true">{{ wishlistBadge }}</span>
             </RouterLink>
 
-            <RouterLink to="/cart" class="bag-pill" :aria-label="`Bag with ${totalItems} items`" title="Bag">
+            <RouterLink v-if="!isInternalPath" to="/cart" class="bag-pill" :aria-label="`Bag with ${totalItems} items`" title="Bag">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.75 9.75V6a3.75 3.75 0 1 0-7.5 0v3.75m-2.737-2.243-1.263 12a1.125 1.125 0 0 0 1.12 1.243h13.26a1.125 1.125 0 0 0 1.12-1.243l-1.263-12a1.125 1.125 0 0 0-1.119-1.007H6.632c-.576 0-1.059.435-1.119 1.007Z" /></svg>
               <span v-if="totalItems > 0" class="bag-count" aria-hidden="true">{{ cartBadge }}</span>
             </RouterLink>
@@ -434,7 +549,7 @@ onBeforeUnmount(() => {
                 :aria-expanded="accountMenuOpen"
                 aria-controls="account-dropdown"
                 :aria-label="`Open account menu for ${user?.name || 'user'}`"
-                @click="accountMenuOpen = !accountMenuOpen"
+                @click="toggleAccountMenu"
               >
                 <span class="account-avatar" aria-hidden="true">{{ userInitial }}</span>
                 <svg class="account-chevron" :class="{ 'is-open': accountMenuOpen }" viewBox="0 0 12 8" aria-hidden="true">
@@ -540,7 +655,7 @@ onBeforeUnmount(() => {
 
     <!-- Mobile drawer: the same taxonomy as the desktop mega menu, stacked into
          per-category accordions. -->
-    <nav v-if="menuOpen" id="osiyan-mobile-nav" class="mobile-drawer" aria-label="Mobile site navigation">
+    <nav v-if="menuOpen && !isInternalPath" id="osiyan-mobile-nav" class="mobile-drawer" aria-label="Mobile site navigation">
       <div class="drawer-scroll">
         <ul class="drawer-categories">
           <li v-for="item in navItems" :key="item.key" class="drawer-category">
@@ -594,7 +709,6 @@ onBeforeUnmount(() => {
         </ul>
 
         <div class="drawer-utility">
-          <p class="drawer-utility-message">{{ utilityMessage }}</p>
           <RouterLink v-for="link in utilityLinks" :key="link.to" :to="link.to">{{ link.label }}</RouterLink>
           <RouterLink to="/wishlist">Wishlist</RouterLink>
           <template v-if="isLoggedIn">
@@ -617,12 +731,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Resting row heights. The bar reads them through --utility-height/--main-height
-   (which the condensed state overrides) while the spacer reads them directly, so
-   the two can never drift apart. */
+/* Resting row height. The bar reads it through --main-height (which the condensed
+   state overrides) while the spacer reads it directly, so the two cannot drift. */
 .osiyan-header,
 .osiyan-header-spacer {
-  --utility-rest: 38px;
   --main-rest: 88px;
 }
 
@@ -632,7 +744,7 @@ onBeforeUnmount(() => {
    scroll position back down past the threshold — the bar then expands, the page
    drops back, and the two fight frame after frame as visible flicker. */
 .osiyan-header-spacer {
-  height: calc(var(--utility-rest) + var(--main-rest) + 1px);
+  height: calc(var(--main-rest) + 1px);
 }
 
 /* Design tokens — Osiyan nav redesign, direction 1a. */
@@ -650,7 +762,6 @@ onBeforeUnmount(() => {
   --border-soft: #f2eef0;
   --border-field: #dcd6d9;
   --surface-pill: #f6f2f7;
-  --utility-height: var(--utility-rest);
   --main-height: var(--main-rest);
   --gutter: clamp(20px, 2.8vw, 40px);
   --logo-scale: 0.7391;
@@ -664,40 +775,14 @@ onBeforeUnmount(() => {
   font-family: var(--font-display);
 }
 
-/* Condensed: the utility strip folds away and the bar drops to 60px. */
+/* Condensed: the bar drops to 60px. */
 .osiyan-header.is-condensed {
-  --utility-height: 0px;
   --main-height: 60px;
   --logo-scale: 0.5217;
   box-shadow: 0 10px 26px -20px rgba(44, 28, 51, 0.34);
 }
 
-/* --- Row 1: utility strip --- */
-.utility-strip {
-  height: var(--utility-height);
-  overflow: hidden;
-  background: var(--plum);
-  color: var(--on-plum);
-  transition: height 0.2s ease;
-}
-.utility-inner {
-  width: min(100%, 1440px);
-  height: var(--utility-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0 auto;
-  padding: 0 var(--gutter);
-  font-size: 12.5px;
-  letter-spacing: 0.04em;
-}
-.utility-message { margin: 0; opacity: 0.85; }
-.utility-links { display: flex; align-items: center; gap: 26px; }
-.utility-links a, .utility-locale { color: var(--on-plum); text-decoration: none; opacity: 0.85; transition: opacity 0.15s ease; }
-.utility-links a:hover, .utility-links a:focus-visible { opacity: 1; }
-.utility-links a:focus-visible { outline: 2px solid var(--on-plum); outline-offset: 3px; border-radius: 2px; }
-
-/* --- Row 2: main bar --- */
+/* --- Main bar --- */
 .main-bar { background: #fff; border-bottom: 1px solid var(--border); }
 .main-inner {
   width: min(100%, 1440px);
@@ -726,6 +811,13 @@ onBeforeUnmount(() => {
 /* 2.65vw hits the design's 38px at the 1440 reference width and tightens from
    there, so the seven items clear the logo and utilities down to the breakpoint. */
 .primary-nav { display: flex; align-items: center; gap: clamp(16px, 2.65vw, 38px); white-space: nowrap; }
+.internal-nav-label {
+  margin: 0;
+  color: var(--plum-ink);
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
 .nav-item { display: flex; }
 .nav-link {
   display: inline-flex;
@@ -825,6 +917,86 @@ onBeforeUnmount(() => {
   font-weight: 500;
   line-height: 1;
   box-shadow: 0 0 0 2px #fff;
+}
+
+/* Internal bell — mirrors the reference site's notification treatment while
+   using this portal's server-backed order list. */
+.notification-root { position: relative; display: flex; }
+.notification-trigger {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.notification-dropdown {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 16px);
+  right: 0;
+  width: 320px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(44, 28, 51, 0.14);
+  color: var(--text);
+  text-align: left;
+  white-space: normal;
+}
+.notification-heading {
+  border-bottom: 1px solid var(--border);
+  padding: 14px 18px;
+  color: var(--plum-ink);
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1.2;
+}
+.notification-list { max-height: 320px; overflow-y: auto; }
+.notification-item {
+  display: block;
+  border-bottom: 1px solid var(--border-soft);
+  padding: 13px 18px;
+  color: var(--text);
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.notification-item:last-child { border-bottom: 0; }
+.notification-item:hover, .notification-item:focus-visible { background: #faf8fa; outline: none; }
+.notification-type {
+  display: block;
+  color: var(--gold-text);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.notification-title {
+  display: block;
+  margin-top: 3px;
+  color: var(--plum-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.notification-meta {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notification-empty {
+  margin: 0;
+  padding: 24px 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
 }
 /* Bag pill — the count lives inside it, and disappears entirely at zero. */
 .bag-pill {
@@ -973,16 +1145,14 @@ onBeforeUnmount(() => {
 /* The 7 categories, search field and icon cluster need ~1150px before they stop
    colliding, so tablets get the drawer too. */
 @media (max-width: 1150px) {
-  .osiyan-header, .osiyan-header-spacer { --main-rest: 64px; --utility-rest: 34px; }
+  .osiyan-header, .osiyan-header-spacer { --main-rest: 64px; }
   .osiyan-header { --logo-scale: 0.6522; }
-  .osiyan-header.is-condensed { --main-height: 56px; --utility-height: 0px; --logo-scale: 0.5652; }
-
-  .utility-inner { justify-content: center; font-size: 11.5px; }
-  .utility-links { display: none; }
+  .osiyan-header.is-condensed { --main-height: 56px; --logo-scale: 0.5652; }
 
   /* Hamburger left, logo centred, search + bag right. */
   .main-inner { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; }
   .primary-nav { display: none; }
+  .internal-nav-label { grid-column: 1; justify-self: start; }
   .submenu-panel { display: none; }
   .osiyan-logo-link { grid-column: 2; justify-self: center; }
 
@@ -1001,7 +1171,8 @@ onBeforeUnmount(() => {
   .action-icons { gap: 14px; }
   .wishlist-link, .account-link, .account-menu-root { display: none; }
   .bag-pill { padding: 6px 11px; gap: 6px; }
-  .account-dropdown { position: fixed; top: calc(var(--utility-height) + var(--main-height) + 6px); left: 14px; right: 14px; width: auto; }
+  .account-dropdown { position: fixed; top: calc(var(--main-height) + 6px); left: 14px; right: 14px; width: auto; }
+  .notification-dropdown { position: fixed; top: calc(var(--main-height) + 6px); left: 14px; right: 14px; width: auto; }
 
   .mobile-search-panel {
     position: absolute;
@@ -1029,7 +1200,7 @@ onBeforeUnmount(() => {
     top: 100%;
     left: 0;
     right: 0;
-    height: calc(100svh - var(--utility-height) - var(--main-height));
+    height: calc(100svh - var(--main-height));
     display: block;
     background: #fff;
     border-top: 1px solid var(--border);
@@ -1077,7 +1248,6 @@ onBeforeUnmount(() => {
   .drawer-feature img { width: 100%; height: 120px; display: block; object-fit: cover; background: var(--border-soft); }
 
   .drawer-utility { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 26px 0 0; }
-  .drawer-utility-message { margin: 0; color: var(--muted); font-size: 12.5px; letter-spacing: 0.04em; }
   .drawer-utility a { color: var(--text); text-decoration: none; font-size: 15px; letter-spacing: 0.04em; }
   .drawer-signout { border: 0; padding: 0; background: transparent; color: #b3453f; font: inherit; font-size: 15px; letter-spacing: 0.04em; cursor: pointer; }
   .drawer-locale { margin: 4px 0 0; color: var(--muted-light); font-size: 12.5px; letter-spacing: 0.04em; }
@@ -1091,6 +1261,6 @@ onBeforeUnmount(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .submenu-enter-active, .submenu-leave-active { transition: none; }
-  .main-inner, .utility-strip, .logo-crop, .logo-crop img, .nav-link { transition: none; }
+  .main-inner, .logo-crop, .logo-crop img, .nav-link { transition: none; }
 }
 </style>

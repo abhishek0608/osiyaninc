@@ -3,6 +3,7 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { ServiceOffering } from '../data/services-catalog'
 import { useSavedAddresses, COUNTRY_OPTIONS, countryDisplayName } from '../composables/useSavedAddresses'
 import UiSelect from './UiSelect.vue'
+import SavedAddressSelector from './SavedAddressSelector.vue'
 import { notifyTransaction } from '../composables/notifyTransactionEmail'
 import { createServiceRequest, uploadServiceFile } from '../composables/useServiceRequests'
 
@@ -12,13 +13,6 @@ const emit = defineEmits<{ close: [] }>()
 const { addresses: savedAddresses, getById, save: saveAddress } = useSavedAddresses()
 const knownCountryCodes = new Set<string>(COUNTRY_OPTIONS.map((c) => c.code))
 const countrySelectOptions = COUNTRY_OPTIONS.map((c) => ({ value: c.code, label: c.name }))
-const savedAddressOptions = computed(() => [
-  { value: '', label: 'Enter manually' },
-  ...savedAddresses.value.map((a) => ({
-    value: a.id,
-    label: `${a.label} — ${a.city}, ${countryDisplayName(a.country)}`,
-  })),
-])
 const selectedSavedId = ref('')
 const saveAsLabel = ref('')
 const saveAddressMessage = ref('')
@@ -915,10 +909,13 @@ const todayIso = new Date().toISOString().slice(0, 10)
               <!-- ── STEP 2: Contact & address ─────────────────────────────── -->
               <div v-else-if="bookingStep === 2" class="ect-space-y-4">
                 <div class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-4">
-                  <div v-if="savedAddresses.length" class="ect-block sm:ect-col-span-2">
-                    <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/60 ect-uppercase ect-tracking-[0.1em] ect-mb-1.5">Saved address</span>
-                    <UiSelect v-model="selectedSavedId" :options="savedAddressOptions" />
-                  </div>
+                  <SavedAddressSelector
+                    v-model="selectedSavedId"
+                    :addresses="savedAddresses"
+                    label="Saved address"
+                    helper-text="Selecting a saved address fills your contact details and service address."
+                    class="sm:ect-col-span-2"
+                  />
                   <label class="ect-block">
                     <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/60 ect-uppercase ect-tracking-[0.1em] ect-mb-1.5">Full Name <span class="ect-text-gold-600">*</span></span>
                     <input v-model="form.name" type="text" placeholder="Priya Sharma" class="ect-w-full ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-border-charcoal/20 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/30 focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400/30 focus:ect-border-gold-400 ect-transition-all" />
