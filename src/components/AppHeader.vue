@@ -434,7 +434,13 @@ onBeforeUnmount(() => {
             </RouterLink>
           </div>
         </nav>
-        <p v-else class="internal-nav-label">Internal</p>
+        <RouterLink
+          v-else
+          :to="{ path: '/internal', query: { tab: 'orders' } }"
+          class="internal-nav-label"
+        >
+          Internal workspace
+        </RouterLink>
 
         <nav class="header-actions" :aria-label="isInternalPath ? 'Internal actions' : 'Customer actions'">
           <!-- Below the breakpoint the inline field is replaced by this toggle,
@@ -812,12 +818,16 @@ onBeforeUnmount(() => {
    there, so the seven items clear the logo and utilities down to the breakpoint. */
 .primary-nav { display: flex; align-items: center; gap: clamp(16px, 2.65vw, 38px); white-space: nowrap; }
 .internal-nav-label {
-  margin: 0;
-  color: var(--plum-ink);
-  font-size: 15px;
+  color: var(--gold-text);
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.12em;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: color 0.15s ease;
 }
+.internal-nav-label:hover { color: var(--gold); }
 .nav-item { display: flex; }
 .nav-link {
   display: inline-flex;
@@ -1152,7 +1162,7 @@ onBeforeUnmount(() => {
   /* Hamburger left, logo centred, search + bag right. */
   .main-inner { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; }
   .primary-nav { display: none; }
-  .internal-nav-label { grid-column: 1; justify-self: start; }
+  .internal-nav-label { display: none; }
   .submenu-panel { display: none; }
   .osiyan-logo-link { grid-column: 2; justify-self: center; }
 
