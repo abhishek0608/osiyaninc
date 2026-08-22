@@ -4,10 +4,11 @@ import { useRouter } from 'vue-router'
 import { useCart, isCustomizedCartItem } from '../composables/useCart'
 import { useOrders, type OrderPayment, type PaymentTerm } from '../composables/useOrders'
 import { useQuotes } from '../composables/useQuotes'
-import { useSavedAddresses, COUNTRY_OPTIONS, countryDisplayName } from '../composables/useSavedAddresses'
+import { useSavedAddresses, countryDisplayName } from '../composables/useSavedAddresses'
 import { useAuth } from '../composables/useAuth'
 import { API_BASE } from '../config-api'
 import { notifyTransaction } from '../composables/notifyTransactionEmail'
+import { US_STATES } from '../data/us-states'
 
 const router = useRouter()
 const {
@@ -23,7 +24,7 @@ const {
 } = useCart()
 const { addOrder } = useOrders()
 const { addQuote } = useQuotes()
-const { addresses: savedAddresses, getById, save: saveAddress } = useSavedAddresses()
+const { addresses: allSavedAddresses, getById, save: saveAddress } = useSavedAddresses()
 const { user, canMemoUser, canPayTermsUser, paymentTermDays } = useAuth()
 const isProcessing = ref(false)
 const isMemoProcessing = ref(false)
@@ -36,7 +37,7 @@ const form = ref({
   address: '',
   city: '',
   state: '',
-  country: 'IN',
+  country: 'US',
   pincode: '',
 })
 
@@ -45,7 +46,20 @@ const saveAsLabel = ref('')
 const saveAddressMessage = ref('')
 
 
-const knownCountryCodes = new Set<string>(COUNTRY_OPTIONS.map((c) => c.code))
+const US_ZIP_PATTERN = /^\d{5}(?:-\d{4})?$/
+const savedAddresses = computed(() =>
+  allSavedAddresses.value.filter((address) => {
+    const country = address.country.trim().toUpperCase()
+    return country === 'US' || country === 'UNITED STATES'
+  }),
+)
+
+function normalizeUsState(value: string): string {
+  const normalized = value.trim().toUpperCase()
+  return US_STATES.find(
+    (state) => state.value === normalized || state.label.toUpperCase() === normalized,
+  )?.value ?? ''
+}
 
 watch(selectedSavedId, (id, prevId) => {
   if (!id) {
@@ -56,7 +70,7 @@ watch(selectedSavedId, (id, prevId) => {
       form.value.address = ''
       form.value.city = ''
       form.value.state = ''
-      form.value.country = 'IN'
+      form.value.country = 'US'
       form.value.pincode = ''
       saveAddressMessage.value = ''
     }
@@ -69,10 +83,8 @@ watch(selectedSavedId, (id, prevId) => {
   form.value.phone = a.phone
   form.value.address = a.address
   form.value.city = a.city
-  form.value.state = a.state
-  let c = a.country.trim()
-  if (c === 'India') c = 'IN'
-  form.value.country = knownCountryCodes.has(c) ? c : 'OTHER'
+  form.value.state = normalizeUsState(a.state)
+  form.value.country = 'US'
   form.value.pincode = a.pincode
 })
 
@@ -89,7 +101,11 @@ function saveCurrentAddress() {
     !form.value.state.trim() ||
     !form.value.pincode.trim()
   ) {
-    saveAddressMessage.value = 'Fill in street, city, state, postal code, and country first.'
+    saveAddressMessage.value = 'Fill in street, city, state, and ZIP code first.'
+    return
+  }
+  if (!US_ZIP_PATTERN.test(form.value.pincode.trim())) {
+    saveAddressMessage.value = 'Enter a valid ZIP code, such as 10001 or 10001-1234.'
     return
   }
   if (!form.value.name.trim() || !form.value.email.trim() || !form.value.phone.trim()) {
@@ -335,8 +351,6 @@ async function handleMemo() {
 
 const inputClass = 'ect-w-full ect-px-4 ect-py-3 ect-bg-white ect-border ect-border-sand ect-rounded-xl ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/30 focus:ect-outline-none focus:ect-border-gold-400 focus:ect-ring-2 focus:ect-ring-gold-400/25 ect-transition-all'
 
-const pinPlaceholder = computed(() => (form.value.country === 'IN' ? '400001' : 'Postal / ZIP code'))
-const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code' : 'Postal code'))
 </script>
 
 <template>
@@ -442,15 +456,15 @@ const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code
               </div>
               <label class="ect-block">
                 <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Full Name *</span>
-                <input v-model="form.name" type="text" required placeholder="Priya Sharma" :class="inputClass" />
+                <input v-model="form.name" type="text" required autocomplete="name" placeholder="Olivia Smith" :class="inputClass" />
               </label>
               <label class="ect-block">
                 <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Email Address *</span>
-                <input v-model="form.email" type="email" required placeholder="priya@example.com" :class="inputClass" />
+                <input v-model="form.email" type="email" required autocomplete="email" placeholder="olivia@example.com" :class="inputClass" />
               </label>
               <label class="ect-block sm:ect-col-span-2">
-                <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Mobile Number *</span>
-                <input v-model="form.phone" type="tel" required placeholder="+91 98765 43210" :class="inputClass" />
+                <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Phone Number *</span>
+                <input v-model="form.phone" type="tel" required autocomplete="tel" placeholder="(212) 555-0147" :class="inputClass" />
               </label>
             </section>
           </section>
@@ -468,31 +482,34 @@ const pinTitle = computed(() => (form.value.country === 'IN' ? '6-digit PIN code
             <section class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-4">
               <label class="ect-block sm:ect-col-span-2">
                 <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Street Address *</span>
-                <input v-model="form.address" type="text" required placeholder="Flat / House no., Street, Area" :class="inputClass" />
+                <input v-model="form.address" type="text" required autocomplete="street-address" placeholder="123 Main St, Apt 4B" :class="inputClass" />
               </label>
               <label class="ect-block">
                 <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">City *</span>
-                <input v-model="form.city" type="text" required placeholder="Mumbai" :class="inputClass" />
+                <input v-model="form.city" type="text" required autocomplete="address-level2" placeholder="New York" :class="inputClass" />
               </label>
               <label class="ect-block">
-                <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">State / Province *</span>
-                <input v-model="form.state" type="text" required placeholder="Maharashtra" :class="inputClass" />
-              </label>
-              <label class="ect-block">
-                <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Country *</span>
-                <select v-model="form.country" required :class="inputClass">
-                  <option v-for="c in COUNTRY_OPTIONS" :key="c.code" :value="c.code">{{ c.name }}</option>
+                <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">State *</span>
+                <select v-model="form.state" required autocomplete="address-level1" :class="inputClass">
+                  <option value="" disabled>Select a state</option>
+                  <option v-for="state in US_STATES" :key="state.value" :value="state.value">{{ state.label }}</option>
                 </select>
               </label>
               <label class="ect-block">
-                <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Postal code *</span>
+                <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Country</span>
+                <p class="ect-w-full ect-px-4 ect-py-3 ect-bg-cream/60 ect-border ect-border-sand ect-rounded-xl ect-font-body ect-text-sm ect-text-charcoal/60">United States</p>
+              </label>
+              <label class="ect-block">
+                <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">ZIP Code *</span>
                 <input
                   v-model="form.pincode"
                   type="text"
                   required
-                  :pattern="form.country === 'IN' ? '[0-9]{6}' : undefined"
-                  :placeholder="pinPlaceholder"
-                  :title="pinTitle"
+                  inputmode="numeric"
+                  autocomplete="postal-code"
+                  pattern="[0-9]{5}(-[0-9]{4})?"
+                  placeholder="10001"
+                  title="Use a 5-digit ZIP code or ZIP+4 (for example, 10001-1234)"
                   :class="inputClass"
                 />
               </label>

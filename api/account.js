@@ -342,13 +342,18 @@ async function handleSignup(res, body) {
 // generic "user not found", so applicants are not left guessing.
 async function describePendingSignup(email) {
   const request = await prisma.signupRequest.findFirst({
-    where: { email, status: { in: ['PENDING', 'REJECTED'] } },
+    // New requests are normalized to lowercase, but use an insensitive match
+    // so requests created before that normalization are recognized too.
+    where: {
+      email: { equals: email, mode: 'insensitive' },
+      status: { in: ['PENDING', 'REJECTED'] },
+    },
     orderBy: { createdAt: 'desc' },
     select: { reference: true, status: true },
   })
   if (!request) return null
   if (request.status === 'PENDING') {
-    return `Your sign-up request (${request.reference}) is awaiting approval. We will email you once it is approved.`
+    return `Your account is awaiting approval. We will email you as soon as it is approved. (Request ${request.reference})`
   }
   return `Your sign-up request (${request.reference}) was not approved. Please contact us if you think this was a mistake.`
 }
