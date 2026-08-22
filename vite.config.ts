@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 
 type VercelRequest = IncomingMessage & {
   body?: unknown
+  rawBody?: string
   query?: Record<string, string>
 }
 
@@ -44,6 +45,9 @@ function installLocalApiMiddleware(
         for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
         const rawBody = Buffer.concat(chunks).toString('utf8')
         const contentType = String(req.headers['content-type'] || '')
+        // Gateway webhooks sign the exact bytes they sent, so the untouched
+        // body has to survive parsing for the signature check to pass locally.
+        req.rawBody = rawBody
         req.body = contentType.includes('application/json') && rawBody ? JSON.parse(rawBody) : rawBody
       }
 

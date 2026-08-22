@@ -76,7 +76,15 @@ const orders = reactive<Order[]>(loadStoredOrders())
 export function useOrders() {
   const list = computed(() => [...orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
 
-  function addOrder(cartItems: CartItem[], total: number, payment: OrderPayment = { term: 'immediate' }) {
+  // `id` is supplied when the server has already allocated the real order
+  // number (storefront checkout). The local counter is only a fallback for
+  // flows that never reach the server.
+  function addOrder(
+    cartItems: CartItem[],
+    total: number,
+    payment: OrderPayment = { term: 'immediate' },
+    id?: string,
+  ) {
     const items: OrderItem[] = cartItems.map(({ product, qty, customization }) => ({
       slug: product.slug,
       title: product.title,
@@ -88,7 +96,7 @@ export function useOrders() {
     }))
     const itemCount = items.reduce((s, i) => s + i.qty, 0)
     const order: Order = {
-      id: generateId(),
+      id: id || generateId(),
       createdAt: new Date().toISOString(),
       items,
       total,

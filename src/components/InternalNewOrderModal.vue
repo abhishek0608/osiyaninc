@@ -52,12 +52,15 @@ const subtotalPaise = computed(() =>
   lines.value.reduce((sum, line) => sum + (line.pricePaise || 0) * line.qty, 0),
 )
 
+// ProductVariant.listPricePaise (surfaced here as pricePaise) holds WHOLE US
+// DOLLARS despite the name, so there is nothing to divide — dividing by 100
+// showed every subtotal at a hundredth of its real value.
 function formatPaise(paise: number) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 0,
-  }).format(paise / 100)
+  }).format(paise)
 }
 
 function onCustomerInput() {

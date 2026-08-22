@@ -1,6 +1,7 @@
 import { randomBytes, scryptSync } from 'node:crypto'
 import { prisma } from '../server/api/db.js'
 import { applyCors, handlePreflight } from '../server/api/cors.js'
+import { creditLimitToUsd, formatUsd } from '../server/api/money.js'
 import { resolveActorMap, actorName } from '../server/api/audit.js'
 import { invalidateCatalogProductsCache } from '../server/api/products-source.js'
 import { generateProductAiDescription } from '../server/api/product-ai.js'
@@ -103,13 +104,11 @@ async function assertAdminUser(userId) {
 // Dashboard (no resource param)
 // ---------------------------------------------------------------------------
 
-function formatMoney(paise, currency = 'USD') {
-  const value = Number(paise || 0) / 100
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value)
+// Order.totalPaise and ProductVariant.listPricePaise hold WHOLE US DOLLARS
+// despite the naming (see money.js), so there is nothing to divide. This used
+// to divide by 100 and showed every internal total at a hundredth of its value.
+function formatMoney(usd, currency = 'USD') {
+  return formatUsd(usd, currency)
 }
 
 async function buildDashboardPayload() {
@@ -730,7 +729,9 @@ async function handleMemoResource(req, res, body) {
           customerEmail: memo.customer?.email || '',
           customerOutstandingPaise: outstandingPaise,
           customerFormattedOutstanding: formatMemoMoney(outstandingPaise, memo.currency),
-          customerLimitPaise: memo.customer?.memoLimitPaise ?? null,
+          // Stored in cents, unlike customerOutstandingPaise above, which is in
+          // whole dollars. Convert so the screen compares like with like.
+          customerLimitPaise: creditLimitToUsd(memo.customer?.memoLimitPaise),
           order: memo.order || null,
           createdBy: actorName(actorMap, memo.createdById) || memoCustomerName(memo.customer),
           modifiedBy: actorName(actorMap, memo.updatedById),

@@ -386,6 +386,14 @@ model Order {
   shippingPaise     Int             @default(0)
   totalPaise        Int
   currency          String          @default("USD")
+  // Ship-to is a snapshot, matching Memo: storefront checkout addresses are not
+  // rows in Address (those belong to signed-in customers' address books).
+  shipTo            Json?
+  // Set only when the customer settled on payment terms instead of paying at
+  // checkout. Snapshotted at order time so a later change to the account's
+  // allowance cannot move an existing due date.
+  termsDays         Int?
+  termsDueDate      DateTime?
   notes             String?
   createdById       String?
   updatedById       String?
@@ -426,6 +434,11 @@ model Payment {
   paidAt      DateTime?
   createdAt   DateTime      @default(now())
   order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Webhooks arrive keyed by the gateway's id, and the same event can be
+  // delivered more than once, so the lookup that makes handling idempotent has
+  // to be indexed.
+  @@index([provider, providerRef])
 }
 
 model Shipment {

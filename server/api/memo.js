@@ -1,4 +1,5 @@
 import { prisma } from './db.js'
+import { creditLimitToUsd, formatUsd } from './money.js'
 
 // Memo = goods on consignment. The pieces leave with the customer but stay ours
 // until they either buy them (convert) or send them back (return). No payment is
@@ -77,13 +78,15 @@ export function canCustomerExtendMemo(memo, now = new Date()) {
   return memoDaysUntilDue(memo, now) <= MEMO_EXTEND_WINDOW_DAYS
 }
 
-export function formatMemoMoney(paise, currency = 'USD') {
-  const value = Number(paise || 0) / 100
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value)
+/**
+ * Format a memo amount. Despite the `*Paise` column names, MemoItem.pricePaise
+ * and Memo.subtotalPaise hold WHOLE US DOLLARS — see money.js. This used to
+ * divide by 100, which rendered every memo value at a hundredth of its worth;
+ * a credit limit (which really is stored in cents) must be converted with
+ * creditLimitToUsd before it reaches this function.
+ */
+export function formatMemoMoney(usd, currency = 'USD') {
+  return formatUsd(usd, currency)
 }
 
 /** Total value a customer currently holds on memo, across every open memo. */
@@ -192,14 +195,18 @@ export async function createMemo({ customerId, lines, shipTo = null, notes = '',
 
   // The limit is checked against everything already out, server-side — the UI
   // check is a courtesy, this one is the rule.
-  if (customer.memoLimitPaise != null) {
+  // memoLimitPaise is stored in CENTS by the internal admin screen, while the
+  // value out is in whole dollars, so the limit is converted before comparing.
+  // Comparing them raw made every limit behave as if it were 100x larger.
+  const limitUsd = creditLimitToUsd(customer.memoLimitPaise)
+  if (limitUsd != null) {
     const outstanding = await getMemoOutstandingPaise(customer.id)
-    if (outstanding + subtotalPaise > customer.memoLimitPaise) {
-      const available = Math.max(customer.memoLimitPaise - outstanding, 0)
+    if (outstanding + subtotalPaise > limitUsd) {
+      const available = Math.max(limitUsd - outstanding, 0)
       throw new MemoError(
         'MEMO_LIMIT_EXCEEDED',
         `Memo limit reached. ${formatMemoMoney(outstanding, currency)} is already out against a ${formatMemoMoney(
-          customer.memoLimitPaise,
+          limitUsd,
           currency,
         )} limit, leaving ${formatMemoMoney(available, currency)} available.`,
       )

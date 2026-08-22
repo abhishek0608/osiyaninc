@@ -2,6 +2,7 @@ import { prisma } from '../server/api/db.js'
 import { toApiProduct } from '../server/api/product-presenter.js'
 import { getCatalogProducts } from '../server/api/products-source.js'
 import { applyCors, handlePreflight } from '../server/api/cors.js'
+import { creditLimitToUsd } from '../server/api/money.js'
 import { createPresignedServiceUpload, isUploadConfigured } from '../server/api/s3-upload.js'
 import {
   createServiceRequestRecord,
@@ -674,7 +675,11 @@ async function handleGetMemos(res, customerId) {
     orderBy: { issuedAt: 'desc' },
   })
   const outstandingPaise = await getMemoOutstandingPaise(customerId)
-  const limitPaise = customer.memoLimitPaise ?? null
+  // memoLimitPaise is stored in cents; everything else in this payload is in
+  // whole dollars, so the limit is converted once here and the whole response
+  // speaks a single unit.
+  const limitPaise = creditLimitToUsd(customer.memoLimitPaise)
+  const availablePaise = limitPaise == null ? null : Math.max(limitPaise - outstandingPaise, 0)
 
   return res.status(200).json({
     canMemo: Boolean(customer.canMemo),
@@ -683,9 +688,8 @@ async function handleGetMemos(res, customerId) {
     formattedLimit: limitPaise == null ? null : formatMemoMoney(limitPaise),
     outstandingPaise,
     formattedOutstanding: formatMemoMoney(outstandingPaise),
-    availablePaise: limitPaise == null ? null : Math.max(limitPaise - outstandingPaise, 0),
-    formattedAvailable:
-      limitPaise == null ? null : formatMemoMoney(Math.max(limitPaise - outstandingPaise, 0)),
+    availablePaise,
+    formattedAvailable: availablePaise == null ? null : formatMemoMoney(availablePaise),
     memos: memos.map((memo) => toMemoPayload(memo)),
   })
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import type { StripeElements, StripePaymentElement } from '@stripe/stripe-js'
 import { useCart, isCustomizedCartItem } from '../composables/useCart'
 import { useOrders, type OrderPayment, type PaymentTerm } from '../composables/useOrders'
 import { useQuotes } from '../composables/useQuotes'
@@ -8,12 +9,15 @@ import { useSavedAddresses, countryDisplayName } from '../composables/useSavedAd
 import { useAuth } from '../composables/useAuth'
 import { API_BASE } from '../config-api'
 import { notifyTransaction } from '../composables/notifyTransactionEmail'
+import { useCheckout, getStripeJs } from '../composables/useCheckout'
 import { US_STATES } from '../data/us-states'
 import SavedAddressSelector from '../components/SavedAddressSelector.vue'
+import SavedAddressSavePanel from '../components/SavedAddressSavePanel.vue'
 
 const router = useRouter()
 const {
   items,
+  cartId,
   formattedTotal,
   totalPrice,
   volumeDiscountTier,
@@ -31,6 +35,16 @@ const isProcessing = ref(false)
 const isMemoProcessing = ref(false)
 const submitError = ref('')
 
+// Checkout runs in two stages when a card is involved: 'details' collects the
+// address, then 'paying' shows Stripe's Payment Element for the amount the
+// server priced. Terms orders and quote-only carts skip the second stage.
+const { createIntent, confirmPayment, waitForConfirmation } = useCheckout()
+const stage = ref<'details' | 'paying'>('details')
+const serverOrder = ref<{ id: string; orderNo: string; totalUsd: number } | null>(null)
+const paymentElementHost = ref<HTMLElement | null>(null)
+let stripeElements: StripeElements | null = null
+let paymentElement: StripePaymentElement | null = null
+
 const form = ref({
   name: '',
   email: '',
@@ -43,17 +57,23 @@ const form = ref({
 })
 
 const selectedSavedId = ref('')
+const shouldSaveAddress = ref(true)
 const saveAsLabel = ref('')
-const saveAddressMessage = ref('')
+const makeDefaultAddress = ref(false)
 
 
-const US_ZIP_PATTERN = /^\d{5}(?:-\d{4})?$/
 const savedAddresses = computed(() =>
   allSavedAddresses.value.filter((address) => {
     const country = address.country.trim().toUpperCase()
     return country === 'US' || country === 'UNITED STATES'
   }),
 )
+
+watch(savedAddresses, (addresses) => {
+  if (selectedSavedId.value) return
+  const preferred = addresses.find((address) => address.isDefault)
+  if (preferred) selectedSavedId.value = preferred.id
+}, { immediate: true })
 
 function normalizeUsState(value: string): string {
   const normalized = value.trim().toUpperCase()
@@ -73,7 +93,6 @@ watch(selectedSavedId, (id, prevId) => {
       form.value.state = ''
       form.value.country = 'US'
       form.value.pincode = ''
-      saveAddressMessage.value = ''
     }
     return
   }
@@ -87,34 +106,13 @@ watch(selectedSavedId, (id, prevId) => {
   form.value.state = normalizeUsState(a.state)
   form.value.country = 'US'
   form.value.pincode = a.pincode
-})
+}, { immediate: true })
 
-function saveCurrentAddress() {
-  saveAddressMessage.value = ''
-  const label = saveAsLabel.value.trim()
-  if (!label) {
-    saveAddressMessage.value = 'Enter a short name (e.g. Home, Office) to save this address.'
-    return
-  }
-  if (
-    !form.value.address.trim() ||
-    !form.value.city.trim() ||
-    !form.value.state.trim() ||
-    !form.value.pincode.trim()
-  ) {
-    saveAddressMessage.value = 'Fill in street, city, state, and ZIP code first.'
-    return
-  }
-  if (!US_ZIP_PATTERN.test(form.value.pincode.trim())) {
-    saveAddressMessage.value = 'Enter a valid ZIP code, such as 10001 or 10001-1234.'
-    return
-  }
-  if (!form.value.name.trim() || !form.value.email.trim() || !form.value.phone.trim()) {
-    saveAddressMessage.value = 'Fill in contact details before saving.'
-    return
-  }
-  saveAddress({
-    label,
+function persistCurrentAddress() {
+  if (!shouldSaveAddress.value || selectedSavedId.value) return
+  const id = saveAddress({
+    label: saveAsLabel.value.trim() || `${form.value.city.trim()} address`,
+    isDefault: makeDefaultAddress.value,
     name: form.value.name.trim(),
     email: form.value.email.trim(),
     phone: form.value.phone.trim(),
@@ -124,8 +122,7 @@ function saveCurrentAddress() {
     country: form.value.country,
     pincode: form.value.pincode.trim(),
   })
-  saveAsLabel.value = ''
-  saveAddressMessage.value = 'Saved. Choose it from Saved shipping address in Contact details anytime.'
+  selectedSavedId.value = id
 }
 
 // How this order gets settled. 'terms' (buy now, pay in termsDays) is only an
@@ -181,10 +178,12 @@ function buildCustomizationMap(customization: Record<string, unknown> | null | u
   return Object.keys(map).length ? map : null
 }
 
-function finalizeStandardOrder() {
+function finalizeStandardOrder(orderNo?: string, serverTotal?: number) {
   const snapshot = [...items]
   const payment = buildPayment()
-  const order = addOrder(snapshot, discountedTotal.value, payment)
+  // The server re-prices the cart, so its total is the one that was charged —
+  // recording the client's figure could show a number nobody was billed.
+  const order = addOrder(snapshot, serverTotal ?? discountedTotal.value, payment, orderNo)
   void notifyTransaction({
     kind: 'order',
     orderId: order.id,
@@ -199,7 +198,7 @@ function finalizeStandardOrder() {
     state: form.value.state.trim(),
     country: countryDisplayName(form.value.country),
     pincode: form.value.pincode.trim(),
-    formattedTotal: formattedDiscountedTotal.value,
+    formattedTotal: order.formattedTotal,
     items: snapshot.map((i) => ({
       title: i.product.title,
       qty: i.qty,
@@ -243,8 +242,8 @@ function finalizeQuote() {
   return { query: { quoteId: quote.id, kind: 'quote' as const } }
 }
 
-function finalizeCheckout() {
-  if (!hasCustomizedItems.value) return finalizeStandardOrder()
+function finalizeCheckout(orderNo?: string, serverTotal?: number) {
+  if (!hasCustomizedItems.value) return finalizeStandardOrder(orderNo, serverTotal)
 
   const nonCustomized = items.filter(
     (item) => !isCustomizedCartItem(item),
@@ -260,7 +259,7 @@ function finalizeCheckout() {
     // priced (non-customized) portion of a mixed order.
     const nonCustomTotal = nonCustomGross - Math.round((nonCustomGross * discountPercent.value) / 100)
     const payment = buildPayment()
-    const order = addOrder(snapshot, nonCustomTotal, payment)
+    const order = addOrder(snapshot, serverTotal ?? nonCustomTotal, payment, orderNo)
     void notifyTransaction({
       kind: 'order',
       orderId: order.id,
@@ -275,7 +274,7 @@ function finalizeCheckout() {
       state: form.value.state.trim(),
       country: countryDisplayName(form.value.country),
       pincode: form.value.pincode.trim(),
-      formattedTotal: '$' + nonCustomTotal.toLocaleString('en-US'),
+      formattedTotal: order.formattedTotal,
       items: snapshot.map((i) => ({
         title: i.product.title,
         qty: i.qty,
@@ -291,20 +290,155 @@ function finalizeCheckout() {
     : quoteResult
 }
 
-function handleSubmit() {
+// A cart of nothing but customized pieces has no sellable total, so it goes
+// through the quote flow and never touches the payment gateway.
+const hasPricedItems = computed(() => items.some((item) => !isCustomizedCartItem(item)))
+
+function completeCheckout(orderNo?: string, serverTotal?: number) {
+  persistCurrentAddress()
+  const destination = finalizeCheckout(orderNo, serverTotal)
+  clearCart()
+  router.push({ path: '/order-confirmation', query: destination.query })
+}
+
+/**
+ * Stage one: ask the server to price the cart and open an order. The amount
+ * charged is whatever the server says it is — the totals rendered on this page
+ * are for display and are never sent as the price.
+ */
+async function beginPayment() {
+  if (!user.value?.id) {
+    submitError.value = 'Please sign in to place an order.'
+    return
+  }
+
+  const intent = await createIntent({
+    userId: user.value.id,
+    cartId: cartId.value || '',
+    shipTo: {
+      name: form.value.name.trim(),
+      email: form.value.email.trim(),
+      phone: form.value.phone.trim(),
+      address: form.value.address.trim(),
+      city: form.value.city.trim(),
+      state: form.value.state.trim(),
+      country: countryDisplayName(form.value.country),
+      pincode: form.value.pincode.trim(),
+    },
+    paymentTerm: paymentTerm.value,
+  })
+
+  serverOrder.value = { id: intent.order.id, orderNo: intent.order.orderNo, totalUsd: intent.order.totalUsd }
+
+  // A terms order is already placed — nothing is charged, so there is no
+  // second stage to run.
+  if (intent.term === 'terms') {
+    completeCheckout(intent.order.orderNo, intent.order.totalUsd)
+    return
+  }
+
+  const stripe = intent.clientSecret ? await getStripeJs() : null
+  if (!intent.clientSecret || !stripe) {
+    throw new Error('Card payments are unavailable right now. Please contact us to complete your order.')
+  }
+
+  // The host is rendered with v-show, so it is in the DOM in both stages;
+  // nextTick only guards against the very first render not having flushed.
+  await nextTick()
+  if (!paymentElementHost.value) throw new Error('Could not open the payment form. Please try again.')
+
+  // Re-entering this step (after "Edit details") must replace the previous
+  // element rather than mount a second one into the same host.
+  paymentElement?.destroy()
+  stripeElements = stripe.elements({
+    clientSecret: intent.clientSecret,
+    appearance: {
+      theme: 'flat',
+      variables: {
+        colorPrimary: '#1c1c1c',
+        colorBackground: '#ffffff',
+        colorText: '#1c1c1c',
+        borderRadius: '12px',
+      },
+    },
+  })
+  paymentElement = stripeElements.create('payment', { layout: 'tabs' })
+  paymentElement.mount(paymentElementHost.value)
+  // Only switch stages once the card form is actually up, so a failure above
+  // leaves the customer on the details step instead of an empty payment step.
+  stage.value = 'paying'
+}
+
+/** Stage two: confirm the card, then wait for the webhook to settle the order. */
+async function completePayment() {
+  if (!stripeElements || !serverOrder.value || !user.value?.id) {
+    throw new Error('Your payment session expired. Please start again.')
+  }
+
+  const returnUrl = `${window.location.origin}/order-confirmation`
+  const paymentIntent = await confirmPayment(stripeElements, returnUrl)
+
+  // 'processing' is a slower method that settles later; the order is placed
+  // either way, and the webhook records the outcome.
+  if (paymentIntent && !['succeeded', 'processing'].includes(paymentIntent.status)) {
+    throw new Error('Your payment was not completed. Please try another card.')
+  }
+
+  await waitForConfirmation(serverOrder.value.id, user.value.id)
+  completeCheckout(serverOrder.value.orderNo, serverOrder.value.totalUsd)
+}
+
+async function handleSubmit() {
+  if (isProcessing.value) return
   submitError.value = ''
   isProcessing.value = true
   try {
-    setTimeout(() => {
-      const destination = finalizeCheckout()
-      clearCart()
-      router.push({ path: '/order-confirmation', query: destination.query })
-    }, 1200)
+    if (!hasPricedItems.value) {
+      // Quote-only cart: no order and nothing to charge.
+      completeCheckout()
+      return
+    }
+    if (stage.value === 'details') {
+      await beginPayment()
+    } else {
+      await completePayment()
+    }
   } catch (e) {
     submitError.value = e instanceof Error ? e.message : 'Something went wrong. Please try again.'
+  } finally {
     isProcessing.value = false
   }
 }
+
+// Going back to fix the address re-prices the cart on the next attempt, and the
+// server reuses or retires the in-flight payment intent accordingly.
+function backToDetails() {
+  stage.value = 'details'
+  paymentElement?.destroy()
+  paymentElement = null
+  stripeElements = null
+  submitError.value = ''
+}
+
+onBeforeUnmount(() => {
+  paymentElement?.destroy()
+  paymentElement = null
+  stripeElements = null
+})
+
+const submitLabel = computed(() => {
+  if (isProcessing.value) {
+    if (hasCustomizedItems.value && !hasPricedItems.value) return 'Creating your custom request…'
+    if (stage.value === 'paying') return 'Confirming your payment…'
+    return 'Placing your order…'
+  }
+  if (hasCustomizedItems.value && !hasPricedItems.value) {
+    return `Create Custom Request · ${formattedDiscountedTotal.value}`
+  }
+  if (stage.value === 'paying') return `Pay ${formattedDiscountedTotal.value}`
+  if (paymentTerm.value === 'terms') return `Place Order on Terms · ${formattedDiscountedTotal.value}`
+  return `Continue to Payment · ${formattedDiscountedTotal.value}`
+})
 
 
 // Memo checkout: the pieces go out on consignment instead of being sold. No
@@ -339,6 +473,7 @@ async function handleMemo() {
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data?.message || 'Unable to raise this memo.')
+    persistCurrentAddress()
     // The server already emptied the cart; resync so the header count follows.
     await clearCart().catch(() => {})
     // A memo lands on its own confirmation page — no payment, no order number.
@@ -480,16 +615,13 @@ const inputClass = 'ect-w-full ect-px-4 ect-py-3 ect-bg-white ect-border ect-bor
                   :class="inputClass"
                 />
               </label>
-              <div class="ect-block sm:ect-col-span-2 ect-flex ect-flex-col sm:ect-flex-row sm:ect-items-end ect-gap-3">
-                <label class="ect-flex-1 ect-w-full ect-block">
-                  <span class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/60 ect-mb-1.5 ect-block">Save as <span class="ect-font-normal ect-text-charcoal/40">(optional)</span></span>
-                  <input v-model="saveAsLabel" type="text" placeholder="e.g. Home, Office" :class="inputClass" />
-                </label>
-                <button type="button" class="ect-w-full sm:ect-w-auto ect-shrink-0 ect-px-5 ect-py-3 ect-rounded-xl ect-border ect-border-charcoal/30 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal hover:ect-bg-cream ect-transition-colors" @click="saveCurrentAddress">
-                  Save address
-                </button>
-              </div>
-              <p v-if="saveAddressMessage" class="ect-font-body ect-text-sm sm:ect-col-span-2" :class="saveAddressMessage.startsWith('Saved') ? 'ect-text-emerald-700' : 'ect-text-amber-800'">{{ saveAddressMessage }}</p>
+              <SavedAddressSavePanel
+                v-if="selectedSavedId === ''"
+                v-model="shouldSaveAddress"
+                v-model:label="saveAsLabel"
+                v-model:make-default="makeDefaultAddress"
+                class="sm:ect-col-span-2"
+              />
             </section>
           </section>
 
@@ -533,6 +665,27 @@ const inputClass = 'ect-w-full ect-px-4 ect-py-3 ect-bg-white ect-border ect-bor
             <p v-if="paymentTerm === 'terms'" class="ect-mt-3 ect-font-body ect-text-xs ect-text-charcoal/45">
               Your account is approved for payment terms. The pieces ship now and the full {{ volumeDiscountTier ? formattedDiscountedTotal : formattedTotal }} is due by {{ formattedDueDate }}.
             </p>
+
+            <!-- Stripe's Payment Element. It only appears once the server has
+                 priced the cart and opened an order, so the amount shown on the
+                 card form is the one the server will charge. -->
+            <div v-show="stage === 'paying'" class="ect-mt-5 ect-pt-5 ect-border-t ect-border-sand">
+              <div class="ect-flex ect-items-center ect-justify-between ect-mb-4">
+                <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">
+                  Card details
+                  <span v-if="serverOrder" class="ect-font-normal ect-text-charcoal/45"> · {{ serverOrder.orderNo }}</span>
+                </p>
+                <button
+                  type="button"
+                  :disabled="isProcessing"
+                  class="ect-font-body ect-text-xs ect-text-gold-700 hover:ect-text-gold-800 ect-underline ect-underline-offset-2 disabled:ect-opacity-50"
+                  @click="backToDetails"
+                >
+                  Edit details
+                </button>
+              </div>
+              <div ref="paymentElementHost" />
+            </div>
           </section>
 
           <!-- Error alert -->
@@ -569,13 +722,7 @@ const inputClass = 'ect-w-full ect-px-4 ect-py-3 ect-bg-white ect-border ect-bor
             <svg v-else class="ect-w-5 ect-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>
-              {{ isProcessing
-                ? (hasCustomizedItems ? 'Creating your custom request…' : 'Placing your order…')
-                : (hasCustomizedItems
-                    ? `Create Custom Request · ${formattedDiscountedTotal}`
-                    : `${paymentTerm === 'terms' ? 'Place Order on Terms' : 'Place Order'} · ${formattedDiscountedTotal}`) }}
-            </span>
+            <span>{{ submitLabel }}</span>
           </button>
 
           <!-- Memo checkout: only for accounts an admin has approved for it. -->
