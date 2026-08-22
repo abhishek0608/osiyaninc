@@ -697,27 +697,38 @@ const inputClass = 'ect-w-full ect-px-4 ect-py-3 ect-bg-white ect-border ect-bor
             <p v-if="paymentTerm === 'terms'" class="ect-mt-3 ect-font-body ect-text-xs ect-text-charcoal/45">
               Your account is approved for payment terms. The pieces ship now and the full {{ volumeDiscountTier ? formattedDiscountedTotal : formattedTotal }} is due by {{ formattedDueDate }}.
             </p>
+          </section>
 
-            <!-- Stripe's Payment Element. It only appears once the server has
-                 priced the cart and opened an order, so the amount shown on the
-                 card form is the one the server will charge. -->
-            <div v-show="stage === 'paying'" class="ect-mt-5 ect-pt-5 ect-border-t ect-border-sand">
-              <div class="ect-flex ect-items-center ect-justify-between ect-mb-4">
-                <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">
-                  Card details
-                  <span v-if="serverOrder" class="ect-font-normal ect-text-charcoal/45"> · {{ serverOrder.orderNo }}</span>
-                </p>
-                <button
-                  type="button"
-                  :disabled="isProcessing"
-                  class="ect-font-body ect-text-xs ect-text-gold-700 hover:ect-text-gold-800 ect-underline ect-underline-offset-2 disabled:ect-opacity-50"
-                  @click="backToDetails"
-                >
-                  Edit details
-                </button>
-              </div>
-              <div ref="paymentElementHost" />
+          <!-- Stripe's Payment Element. It only appears once the server has
+               priced the cart and opened an order, so the amount shown on the
+               card form is the one the server will charge.
+
+               Deliberately NOT inside the payment-terms card above: every card
+               order needs this form, and that card is only rendered for accounts
+               an admin approved for terms. Nesting it there left everyone else —
+               and any mixed cart — with no way to enter a card at all.
+
+               v-show rather than v-if because beginPayment mounts into this host
+               before flipping the stage, so the element has to already exist. -->
+          <section
+            v-show="stage === 'paying'"
+            class="ect-bg-white ect-rounded-2xl ect-p-5 sm:ect-p-6 ect-border ect-border-sand ect-shadow-card"
+          >
+            <div class="ect-flex ect-items-center ect-justify-between ect-mb-4">
+              <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">
+                Card details
+                <span v-if="serverOrder" class="ect-font-normal ect-text-charcoal/45"> · {{ serverOrder.orderNo }}</span>
+              </p>
+              <button
+                type="button"
+                :disabled="isProcessing"
+                class="ect-font-body ect-text-xs ect-text-gold-700 hover:ect-text-gold-800 ect-underline ect-underline-offset-2 disabled:ect-opacity-50"
+                @click="backToDetails"
+              >
+                Edit details
+              </button>
             </div>
+            <div ref="paymentElementHost" />
           </section>
 
           <!-- Error alert -->
