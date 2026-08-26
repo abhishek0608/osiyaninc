@@ -6,6 +6,7 @@ import StarRating from '../components/StarRating.vue'
 import VolumeDiscountInfo from '../components/VolumeDiscountInfo.vue'
 import CertifiedBadge from '../components/CertifiedBadge.vue'
 import ImageWatermark from '../components/ImageWatermark.vue'
+import { useAuth } from '../composables/useAuth'
 import { useCart, type ProductCustomization } from '../composables/useCart'
 import { useWishlist } from '../composables/useWishlist'
 import { useProductsApi } from '../composables/useProductsApi'
@@ -29,6 +30,7 @@ function goBack() {
 }
 const { addToCart } = useCart()
 const { isWishlisted, toggle: toggleWishlist } = useWishlist()
+const { isLoggedIn } = useAuth()
 const { products, ensureProductsLoaded, loading } = useProductsApi()
 const { ensureSiteConfigLoaded } = useSiteConfig()
 
@@ -583,10 +585,18 @@ async function handleAddToCart() {
           </div>
 
           <p
+            v-if="isLoggedIn"
             class="ect-font-display ect-text-2xl sm:ect-text-3xl ect-font-light ect-text-charcoal ect-tabular-nums ect-mb-5"
           >
             {{ priceLabel }}
           </p>
+          <RouterLink
+            v-else
+            to="/login"
+            class="ect-inline-block ect-font-body ect-text-base ect-font-medium ect-text-gold-700 hover:ect-text-gold-800 ect-transition-colors ect-mb-5"
+          >
+            Sign in to view price
+          </RouterLink>
 
           <div v-if="productBadges.length" class="ect-flex ect-flex-wrap ect-gap-2 ect-mb-5">
             <span
