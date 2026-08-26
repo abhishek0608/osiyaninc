@@ -27,6 +27,7 @@ const router = createRouter({
     { path: '/wishlist', name: 'wishlist', component: () => import('../views/WishlistView.vue'), meta: { title: 'Wishlist', noindex: true } },
     { path: '/orders', name: 'orders', component: () => import('../views/MyOrdersView.vue'), meta: { title: 'My Orders', noindex: true } },
     { path: '/memos', name: 'memos', component: () => import('../views/MyMemosView.vue'), meta: { title: 'My Memos', noindex: true } },
+    { path: '/memos/:id', name: 'memo-detail', component: () => import('../views/MemoDetailView.vue'), meta: { title: 'Memo', noindex: true } },
     { path: '/checkout', name: 'checkout', component: () => import('../views/CheckoutView.vue'), meta: { title: 'Checkout', noindex: true } },
     { path: '/order-confirmation', name: 'order-confirmation', component: () => import('../views/OrderConfirmationView.vue'), meta: { title: 'Order Confirmation', noindex: true } },
     { path: '/memo-confirmation', name: 'memo-confirmation', component: () => import('../views/MemoConfirmationView.vue'), meta: { title: 'Memo Raised', noindex: true } },

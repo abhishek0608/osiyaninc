@@ -20,6 +20,7 @@ export interface MemoItem {
   convertedQty: number
   outQty: number
   status: MemoItemStatus
+  pricePaise: number
   formattedPrice: string
 }
 
@@ -37,6 +38,7 @@ export interface Memo {
   /** Server's verdict on the self-service extension; the UI mirrors it, never decides it. */
   canExtend: boolean
   extendWindowDays: number
+  currency: string
   formattedSubtotal: string
   outstandingPaise: number
   formattedOutstanding: string

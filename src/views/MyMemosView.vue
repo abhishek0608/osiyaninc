@@ -130,7 +130,10 @@ function itemLine(item: Memo['items'][number]) {
         <!-- Memo list -->
         <ul v-else class="ect-list-none ect-m-0 ect-p-0 ect-flex ect-flex-col ect-gap-4">
           <li v-for="memo in memos" :key="memo.id" class="ect-bg-white/90 ect-backdrop-blur-sm ect-rounded-2xl ect-border ect-border-sand ect-shadow-sm ect-overflow-hidden">
-            <div class="ect-flex ect-flex-wrap ect-gap-4 ect-p-5 sm:ect-p-6 ect-items-start">
+            <RouterLink
+              :to="`/memos/${memo.id}`"
+              class="ect-flex ect-flex-wrap ect-gap-4 ect-p-5 sm:ect-p-6 ect-items-start hover:ect-bg-champagne/30 ect-transition-colors"
+            >
               <span class="ect-flex-1 ect-min-w-0">
                 <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mb-0.5">{{ memo.memoNo }}</p>
                 <p class="ect-font-body ect-text-sm ect-text-charcoal/60">
@@ -151,7 +154,10 @@ function itemLine(item: Memo['items'][number]) {
                 <span class="ect-font-display ect-text-lg ect-font-medium ect-text-charcoal ect-block">{{ memo.formattedOutstanding }}</span>
                 <span class="ect-font-body ect-text-xs ect-text-charcoal/45">of {{ memo.formattedSubtotal }} issued</span>
               </span>
-            </div>
+              <svg class="ect-w-4 ect-h-4 ect-text-charcoal/30 ect-shrink-0 ect-self-center" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </RouterLink>
 
             <ul class="ect-list-none ect-m-0 ect-px-5 sm:ect-px-6 ect-pb-1 ect-flex ect-flex-col ect-gap-2">
               <li v-for="item in memo.items" :key="item.id" class="ect-flex ect-flex-wrap ect-gap-x-2 ect-items-baseline">
