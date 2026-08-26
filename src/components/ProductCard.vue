@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { formatProductPrice, type Material, type Product } from '../data/products'
 import { useCart, isCustomizedCartItem } from '../composables/useCart'
 import { useWishlist } from '../composables/useWishlist'
+import { useAuth } from '../composables/useAuth'
 import CertifiedBadge from './CertifiedBadge.vue'
 import ImageWatermark from './ImageWatermark.vue'
 import QuantityStepper from './QuantityStepper.vue'
@@ -20,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{ addToCart: [] }>()
 const { addToCart, updateQty, items } = useCart()
 const { isWishlisted, toggle: toggleWishlist } = useWishlist()
+const { isLoggedIn } = useAuth()
 const cartLoading = ref(false)
 
 const wishlisted = computed(() => props.product ? isWishlisted(props.product.slug) : false)
@@ -147,10 +149,18 @@ const PLACEHOLDER_GRADIENT = 'ect-from-champagne ect-to-cream'
          pinned to the bottom so tiles with a two-line title stay aligned. -->
     <section class="ect-mt-auto ect-pt-2.5 ect-flex ect-flex-col ect-gap-2.5">
       <p
+        v-if="isLoggedIn"
         class="ect-font-body ect-text-base ect-font-medium ect-tracking-[0.03em] ect-text-charcoal ect-tabular-nums ect-whitespace-nowrap"
       >
         {{ priceLabel }}
       </p>
+      <RouterLink
+        v-else
+        to="/login"
+        class="ect-font-body ect-text-sm ect-font-medium ect-text-gold-700 hover:ect-text-gold-800 ect-transition-colors ect-whitespace-nowrap"
+      >
+        Sign in to view price
+      </RouterLink>
 
       <!-- In the bag: an editable quantity control, so the running count is
            visible on the catalog and buyers can type a bulk figure, adjust it,

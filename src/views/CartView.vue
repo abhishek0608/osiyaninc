@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+import { useAuth } from '../composables/useAuth'
 import { useCart, type CartItem, isCustomizedCartItem } from '../composables/useCart'
 import VolumeDiscountInfo from '../components/VolumeDiscountInfo.vue'
 import QuantityStepper from '../components/QuantityStepper.vue'
@@ -19,6 +20,7 @@ const {
   removeFromCart,
   clearCart,
 } = useCart()
+const { isLoggedIn } = useAuth()
 const rowLoading = ref<Record<string, boolean>>({})
 
 function isRowLoading(id: string) {
@@ -183,7 +185,7 @@ function customizationEntries(item: CartItem) {
                   </section>
                   <!-- Price (desktop) -->
                   <p v-if="isItemCustomized(item)" class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium ect-hidden sm:ect-block">Quote</p>
-                  <p v-else class="ect-font-display ect-text-base sm:ect-text-lg ect-font-medium ect-text-charcoal ect-whitespace-nowrap ect-hidden sm:ect-block">{{ itemSubtotal(item) }}</p>
+                  <p v-else-if="isLoggedIn" class="ect-font-display ect-text-base sm:ect-text-lg ect-font-medium ect-text-charcoal ect-whitespace-nowrap ect-hidden sm:ect-block">{{ itemSubtotal(item) }}</p>
                 </section>
 
                 <section class="ect-flex ect-items-center ect-justify-between ect-mt-3 ect-gap-3">
@@ -202,7 +204,7 @@ function customizationEntries(item: CartItem) {
                   <section class="ect-flex ect-items-center ect-gap-3">
                     <!-- Price (mobile) -->
                     <p v-if="isItemCustomized(item)" class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium sm:ect-hidden">Quote</p>
-                    <p v-else class="ect-font-display ect-text-base ect-font-medium ect-text-charcoal sm:ect-hidden">{{ itemSubtotal(item) }}</p>
+                    <p v-else-if="isLoggedIn" class="ect-font-display ect-text-base ect-font-medium ect-text-charcoal sm:ect-hidden">{{ itemSubtotal(item) }}</p>
                     <svg
                       v-if="isRowLoading(item.id)"
                       class="ect-w-4 ect-h-4 ect-text-gold-600 ect-animate-spin"
@@ -227,7 +229,7 @@ function customizationEntries(item: CartItem) {
                 </section>
 
                 <!-- Price breakup tooltip -->
-                <span v-if="!isItemCustomized(item)" class="ect-relative ect-inline-block ect-group/tip ect-mt-2 ect-self-start">
+                <span v-if="isLoggedIn && !isItemCustomized(item)" class="ect-relative ect-inline-block ect-group/tip ect-mt-2 ect-self-start">
                   <span class="ect-font-body ect-text-[11px] ect-text-gold-600 ect-cursor-default ect-border-b ect-border-dashed ect-border-gold-400/60">View price breakup</span>
                   <span class="ect-absolute ect-left-0 ect-bottom-full ect-mb-2 ect-w-56 ect-bg-white ect-rounded-xl ect-shadow-xl ect-shadow-charcoal/10 ect-ring-1 ect-ring-charcoal/[0.06] ect-p-3 ect-opacity-0 ect-invisible group-hover/tip:ect-opacity-100 group-hover/tip:ect-visible ect-transition-all ect-duration-200 ect-z-10">
                     <span class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/40 ect-block ect-mb-2">Price Breakup</span>
@@ -270,18 +272,18 @@ function customizationEntries(item: CartItem) {
                     <p class="ect-font-body ect-text-xs ect-text-charcoal/50">{{ item.product.category }}</p>
                   </section>
                   <span v-if="isItemCustomized(item)" class="ect-font-body ect-text-sm ect-text-gold-700 ect-font-medium ect-whitespace-nowrap">Quote</span>
-                  <span v-else class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-whitespace-nowrap">{{ itemSubtotal(item) }}</span>
+                  <span v-else-if="isLoggedIn" class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-whitespace-nowrap">{{ itemSubtotal(item) }}</span>
                 </li>
               </ul>
 
               <hr class="ect-border-sand ect-mb-4" />
 
               <section class="ect-space-y-2 ect-mb-4">
-                <article class="ect-flex ect-justify-between">
+                <article v-if="isLoggedIn" class="ect-flex ect-justify-between">
                   <span class="ect-font-body ect-text-sm ect-text-charcoal/60">Subtotal ({{ totalItems }} item{{ totalItems !== 1 ? 's' : '' }})</span>
                   <span class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ formattedTotal }}</span>
                 </article>
-                <article v-if="volumeDiscountTier" class="ect-flex ect-justify-between">
+                <article v-if="isLoggedIn && volumeDiscountTier" class="ect-flex ect-justify-between">
                   <span class="ect-font-body ect-text-sm ect-text-gold-600 ect-flex ect-items-center ect-gap-1.5">
                     Volume discount ({{ discountPercent }}% · {{ volumeDiscountTier.minQty }}+ items)
                   </span>
@@ -310,11 +312,14 @@ function customizationEntries(item: CartItem) {
 
               <article class="ect-flex ect-justify-between ect-items-baseline ect-mb-5">
                 <span class="ect-font-display ect-text-lg ect-text-charcoal">Total</span>
-                <section class="ect-text-right">
+                <section v-if="isLoggedIn" class="ect-text-right">
                   <span class="ect-font-display ect-text-2xl ect-text-charcoal ect-block">{{ volumeDiscountTier ? formattedDiscountedTotal : formattedTotal }}</span>
                   <span v-if="volumeDiscountTier" class="ect-font-body ect-text-[11px] ect-text-gold-600">You save {{ formattedDiscount }} ({{ discountPercent }}%)</span>
                   <span v-if="quoteNote" class="ect-font-body ect-text-[11px] ect-text-gold-600 ect-block">{{ quoteNote }}</span>
                 </section>
+                <RouterLink v-else to="/login" class="ect-font-body ect-text-sm ect-font-medium ect-text-gold-700 hover:ect-text-gold-800 ect-transition-colors">
+                  Sign in to view prices
+                </RouterLink>
               </article>
 
               <RouterLink to="/checkout" class="ect-flex ect-items-center ect-justify-center ect-gap-2 ect-w-full ect-py-4 ect-bg-charcoal ect-text-white ect-font-body ect-text-base ect-font-semibold ect-rounded-xl hover:ect-bg-noir ect-transition-colors ect-shadow-luxe-sm">
