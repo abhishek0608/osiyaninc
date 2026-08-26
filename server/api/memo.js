@@ -316,9 +316,15 @@ export async function returnMemoItems({ memoId, lines = null, actorId = null }) 
  * locked prices carry over to the order, and the order gets an invoice — the
  * existing Invoice row hangs off Order, so conversion produces both rather than
  * a floating invoice.
+ *
+ * `customerId` scopes the memo to its owner for self-service conversion; staff
+ * callers omit it, the same contract as extendMemo.
  */
-export async function convertMemoToOrder({ memoId, lines = null, actorId = null }) {
+export async function convertMemoToOrder({ memoId, lines = null, actorId = null, customerId = null }) {
   const memo = await loadOpenMemo(memoId)
+  if (customerId && memo.customerId !== customerId) {
+    throw new MemoError('MEMO_NOT_FOUND', 'Memo not found.', 404)
+  }
   const resolved = resolveLineQtys(memo, lines)
   const customer = await getMemoCustomer(memo.customerId)
 

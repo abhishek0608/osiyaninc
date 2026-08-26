@@ -69,6 +69,10 @@ const error = ref('')
 const extendingId = ref('')
 const extendError = ref('')
 const extendMessage = ref('')
+// Same again for a purchase in flight.
+const convertingId = ref('')
+const convertError = ref('')
+const convertMessage = ref('')
 // Which account the loaded memos belong to, so a sign-out (or a different
 // sign-in) never leaves one customer looking at another's consignment.
 let loadedForUserId = ''
@@ -82,6 +86,9 @@ function reset() {
   extendError.value = ''
   extendMessage.value = ''
   extendingId.value = ''
+  convertError.value = ''
+  convertMessage.value = ''
+  convertingId.value = ''
   loadedForUserId = ''
 }
 
@@ -159,6 +166,37 @@ export function useMemos() {
     }
   }
 
+  // Buy some (or all) of what is still out. The server converts those lines to
+  // a confirmed order at the memo's locked prices and reports the order number.
+  async function convert(memoId: string, lines: { memoItemId: string; qty: number }[] | null = null) {
+    const userId = user.value?.id || ''
+    if (!userId || !memoId || convertingId.value) return false
+    convertingId.value = memoId
+    convertError.value = ''
+    convertMessage.value = ''
+    try {
+      const res = await fetch(`${API_BASE}/api/account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'memo-convert', userId, memoId, lines: lines || undefined }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || 'Unable to complete this purchase.')
+      const updated = data.memo as Memo
+      const index = memos.value.findIndex((memo) => memo.id === updated.id)
+      if (index >= 0) memos.value[index] = { ...memos.value[index], ...updated }
+      convertMessage.value = data.order?.orderNo
+        ? `Purchase confirmed — order ${data.order.orderNo} covers the pieces you kept.`
+        : 'Purchase confirmed.'
+      return true
+    } catch (e) {
+      convertError.value = e instanceof Error ? e.message : 'Unable to complete this purchase.'
+      return false
+    } finally {
+      convertingId.value = ''
+    }
+  }
+
   if (!authWatchBound) {
     authWatchBound = true
     watch(
@@ -192,9 +230,13 @@ export function useMemos() {
     extendingId: computed(() => extendingId.value),
     extendError: computed(() => extendError.value),
     extendMessage: computed(() => extendMessage.value),
+    convertingId: computed(() => convertingId.value),
+    convertError: computed(() => convertError.value),
+    convertMessage: computed(() => convertMessage.value),
     load,
     refresh: () => load(true),
     extend,
+    convert,
   }
 }
 

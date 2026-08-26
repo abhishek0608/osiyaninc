@@ -15,6 +15,7 @@ import {
 } from '../server/api/signup-requests.js'
 import {
   MemoError,
+  convertMemoToOrder,
   createMemo,
   extendMemo,
   getMemoOutstandingPaise,
@@ -777,6 +778,29 @@ async function handlePostMemoExtend(res, customerId, body) {
   return res.status(200).json({ memo: toMemoPayload(memo) })
 }
 
+// Buying the pieces is the customer's own action, like extending: the line
+// rules (still open, qty still out) live in convertMemoToOrder — this only
+// proves whose memo it is before handing over.
+async function handlePostMemoConvert(res, customerId, body) {
+  if (!customerId) return res.status(400).json({ message: 'userId is required.' })
+  const memoId = String(body?.memoId || '').trim()
+  if (!memoId) return res.status(400).json({ message: 'memoId is required.' })
+  // Optional: specific lines to keep. Omitting them buys everything still out.
+  const lines = Array.isArray(body?.lines) ? body.lines : null
+
+  let result
+  try {
+    result = await convertMemoToOrder({ memoId, lines, actorId: customerId, customerId })
+  } catch (err) {
+    return memoErrorResponse(res, err)
+  }
+  return res.status(200).json({
+    memo: toMemoPayload(result.memo),
+    order: result.order,
+    invoice: result.invoice,
+  })
+}
+
 function normalizeMemoShipTo(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   const allowed = ['name', 'email', 'phone', 'address', 'city', 'state', 'country', 'pincode']
@@ -816,6 +840,7 @@ export default async function handler(req, res) {
       if (mode === 'wishlist') return await handlePostWishlist(res, userId, body)
       if (mode === 'memo') return await handlePostMemo(res, userId, body)
       if (mode === 'memo-extend') return await handlePostMemoExtend(res, userId, body)
+      if (mode === 'memo-convert') return await handlePostMemoConvert(res, userId, body)
       if (mode === 'service-request') return await handlePostServiceRequest(res, body)
       if (mode === 'service-upload') return await handlePostServiceUpload(res, body)
       return res.status(400).json({ message: 'Invalid mode for POST.' })
