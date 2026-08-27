@@ -7,7 +7,7 @@ const year = new Date().getFullYear()
     <section class="footer-about">
       <h2>About Us</h2>
       <RouterLink to="/about">Our Story</RouterLink>
-      <RouterLink to="/about">Contact Us</RouterLink>
+      <RouterLink to="/contact">Contact Us</RouterLink>
       <RouterLink to="/about">Terms &amp; Conditions</RouterLink>
       <RouterLink to="/about">Privacy Policy</RouterLink>
     </section>
