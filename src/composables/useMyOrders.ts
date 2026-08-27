@@ -59,6 +59,15 @@ function reset() {
   loadedForUserId = ''
 }
 
+// Orders can be created outside this composable (a memo conversion goes
+// straight to the account API). Those flows call this so the next load()
+// refetches instead of serving the list from before the order existed. The
+// current list stays on screen meanwhile — only the "already loaded" mark is
+// cleared, not the data.
+export function invalidateMyOrders() {
+  loadedForUserId = ''
+}
+
 export function useMyOrders() {
   const { user } = useAuth()
 

@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from './useAuth'
+import { invalidateMyOrders } from './useMyOrders'
 
 // A memo is jewellery the customer is holding on consignment — the pieces are
 // with them, but nothing has been charged and the goods stay ours until they
@@ -189,6 +190,8 @@ export function useMemos() {
       convertMessage.value = data.order?.orderNo
         ? `Purchase confirmed — order ${data.order.orderNo} covers the pieces you kept.`
         : 'Purchase confirmed.'
+      // The conversion just wrote an order the cached list has never seen.
+      invalidateMyOrders()
       return true
     } catch (e) {
       convertError.value = e instanceof Error ? e.message : 'Unable to complete this purchase.'
