@@ -8,7 +8,7 @@ const year = new Date().getFullYear()
       <h2>About Us</h2>
       <RouterLink to="/about">Our Story</RouterLink>
       <RouterLink to="/contact">Contact Us</RouterLink>
-      <RouterLink to="/about">Terms &amp; Conditions</RouterLink>
+      <RouterLink to="/terms-conditions">Terms &amp; Conditions</RouterLink>
       <RouterLink to="/about">Privacy Policy</RouterLink>
     </section>
 
