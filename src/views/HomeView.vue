@@ -1,6 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+// A slash gets a zero-width space after it, so "Bangles/Bracelets" wraps there
+// — and only there — on tiles too narrow to hold it on one line.
+const breakable = (name: string) => name.replace('/', '/\u200B')
+
+// Home-page category collage. Each tile deep-links to its collection page and
+// only names itself on hover. The photos are separate /osiyan-category-*.jpg
+// files so swapping one is a file drop, not an edit here.
+const CATEGORY_TILES = [
+  { slug: 'earrings', name: 'Earrings', image: '/osiyan-category-earrings.jpg', alt: 'Diamond drop earring worn on the ear' },
+  { slug: 'rings', name: 'Rings', image: '/osiyan-category-rings.jpg', alt: 'Emerald and diamond halo ring worn on the hand' },
+  { slug: 'bracelets', name: 'Bangles/Bracelets', image: '/osiyan-category-bracelets.jpg', alt: 'Gold Osiyan bangles set with emeralds and diamonds' },
+  { slug: 'necklaces', name: 'Necklaces', image: '/osiyan-category-necklaces.jpg', alt: 'Emerald pendant necklace worn at the collarbone' },
+]
+
 const email = ref('')
 const subscribed = ref(false)
 
@@ -52,12 +66,22 @@ function subscribe() {
       </article>
     </section>
 
-    <section class="jewelry-mosaic" aria-label="High Jewelry details">
-      <div class="mosaic-column">
-        <img src="/osiyan-luxury-1.jpeg" alt="Osiyan high jewelry piece" loading="lazy" />
-        <img src="/osiyan-luxury-2.jpg" alt="Osiyan fine jewelry piece" loading="lazy" />
+    <section class="category-section" aria-labelledby="shop-by-category">
+      <div class="category-grid">
+        <h2 id="shop-by-category" class="category-caption">
+          <span>Shop</span><span>by</span><span>Category</span>
+        </h2>
+        <RouterLink
+          v-for="tile in CATEGORY_TILES"
+          :key="tile.slug"
+          class="category-tile"
+          :class="`tile-${tile.slug}`"
+          :to="`/collections/${tile.slug}`"
+        >
+          <img :src="tile.image" :alt="tile.alt" loading="lazy" />
+          <span class="category-name">{{ breakable(tile.name) }}</span>
+        </RouterLink>
       </div>
-      <div class="mosaic-green"><span>OSIYAN</span></div>
     </section>
 
     <section class="little-section">
@@ -107,11 +131,29 @@ function subscribe() {
 .high-section .high-intro { margin-bottom: 33px; font-size: 16px; line-height: 1.4; }
 .explore-button { align-self: center; width: 142px; height: 40px; margin-top: 50px; display: grid; place-items: center; border: 1px solid #000; color: #000; text-decoration: none; font-size: 16px; }
 .explore-button:hover { background: #000; color: #fff; }
-.jewelry-mosaic { display: grid; grid-template-columns: 1fr 1fr; min-height: 592px; background: #fff; }
-.mosaic-column { padding: 0 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: center; }
-.mosaic-column img { width: 100%; aspect-ratio: 1; object-fit: cover; }
-.mosaic-green { display: grid; place-items: center; background: #3f7652; color: rgba(255,255,255,.9); }
-.mosaic-green span { font-family: var(--font-display); font-size: clamp(52px, 8vw, 106px); letter-spacing: .26em; padding-left: .26em; font-weight: 300; }
+/* Shop by Category — four category tiles that each link to their collection
+   page and only name themselves on hover. Gutters, gaps and the caption are the
+   live site's fixed pixel values; the tiles scale with the page. */
+.category-section { background: #fff; padding: 5px 40px; }
+.category-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.category-caption { grid-area: 2 / 4; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--font-accent); font-style: italic; font-weight: 400; font-size: 68px; line-height: 1.2; color: #5d4a62; }
+.category-tile { position: relative; overflow: hidden; aspect-ratio: 1; display: grid; place-items: center; text-decoration: none; }
+.tile-earrings { grid-area: 1 / 1; }
+.tile-rings { grid-area: 2 / 1; }
+.tile-bracelets { grid-area: 1 / 2 / 3 / 4; }
+.tile-necklaces { grid-area: 1 / 4; }
+.category-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .7s cubic-bezier(.2, .7, .2, 1); }
+.category-tile:hover img, .category-tile:focus-visible img { transform: scale(1.05); }
+/* Scrim under the name — barely there on dark photos, enough to hold white
+   type on pale ones. */
+.category-tile::after { content: ''; position: absolute; inset: 0; background: rgba(20, 17, 15, .22); opacity: 0; transition: opacity .35s ease; }
+.category-tile:hover::after, .category-tile:focus-visible::after { opacity: 1; }
+/* Revealed with opacity rather than display so the name still names the link
+   for screen readers, and is always on where there is no hover to trigger it. */
+.category-name { position: relative; z-index: 1; max-width: 100%; overflow-wrap: anywhere; padding: 0 3%; text-align: center; font-family: var(--font-body); font-weight: 700; font-size: clamp(18px, 3.6vw, 72px); line-height: 1.04; letter-spacing: -.01em; color: #fff; text-shadow: 0 2px 18px rgba(20, 17, 15, .45); opacity: 0; transition: opacity .35s ease; }
+.category-tile:hover .category-name, .category-tile:focus-visible .category-name { opacity: 1; }
+.category-tile:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+@media (hover: none) { .category-name, .category-tile::after { opacity: 1; } }
 .little-section { display: grid; grid-template-columns: 1fr 1fr; min-height: 905px; background: #fff; }
 .little-section article { padding: 185px clamp(36px, 6.2vw, 79px) 80px; }
 .shop-button { margin-top: 96px; width: 142px; height: 45px; display: grid; place-items: center; background: #3f7652; color: #000; text-decoration: none; font-size: 16px; }
@@ -142,9 +184,11 @@ function subscribe() {
   .high-section { min-height: 0; }
   .high-image-wrap { min-height: 110vw; }
   .high-section article { padding: 70px 28px 90px; }
-  .jewelry-mosaic { grid-template-columns: 1fr; }
-  .mosaic-column { padding: 26px; }
-  .mosaic-green { min-height: 360px; }
+  .category-section { padding: 5px 16px 14px; }
+  .category-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tile-earrings, .tile-rings, .tile-bracelets, .tile-necklaces { grid-area: auto; }
+  .category-caption { grid-area: auto; grid-column: 1 / -1; flex-direction: row; gap: .3em; padding-bottom: 6px; font-size: clamp(26px, 7.4vw, 48px); }
+  .category-name { font-size: clamp(15px, 5.4vw, 34px); }
   .little-section article { min-height: 590px; padding: 90px 28px; }
   .little-section > img { height: auto; min-height: 120vw; object-fit: cover; }
   .world-section > img { height: 75vw; }
@@ -157,7 +201,5 @@ function subscribe() {
   .yoga-section h2, .little-section h2 { font-size: 76px; }
   .high-section h2 { font-size: 42px; }
   .high-section p { font-size: 19px; }
-  .mosaic-column { grid-template-columns: 1fr; }
-  .mosaic-green span { font-size: 45px; }
 }
 </style>
