@@ -1056,11 +1056,11 @@ onBeforeUnmount(() => {
 /* A thumbnail run needs more air than a bare text list, and the image must not
    shrink when a label wraps. */
 .submenu-links a.has-thumb { gap: 10px; }
-.submenu-links a.has-thumb + a.has-thumb { margin-top: 3px; }
+.submenu-links a.has-thumb + a.has-thumb { margin-top: 5px; }
 .submenu-thumb {
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 48px;
+  height: 48px;
   border-radius: 6px;
   object-fit: cover;
   background: var(--surface-pill);
@@ -1276,8 +1276,8 @@ onBeforeUnmount(() => {
     padding-left: 5px;
   }
   .drawer-group-links a.has-thumb .submenu-thumb {
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     border-radius: 999px;
   }
   .drawer-group-links a.is-emphasis { border-color: rgba(201, 162, 39, 0.4); color: var(--gold-text); }
