@@ -1,3 +1,5 @@
+import { findCollectionBySlug } from './collections'
+import { pieceTypeLabel, type PieceTypeId } from './filters'
 import type { Color, Material, ProductSubtype } from './products'
 
 /**
@@ -9,11 +11,15 @@ import type { Color, Material, ProductSubtype } from './products'
  * Submenu links carry an `exact` flag. `true` means the destination genuinely
  * reflects the label (a real collection page, or a collection page plus a
  * filter the catalogue can apply). `false` marks a link the catalogue cannot
- * express yet — there is no hoop/chandelier/ear-cuff subtype, no platinum
- * material, and no price-band filter — so it lands on the unfiltered category
+ * express yet — there is no platinum material, no price-band filter and no
+ * choker/layered/temple-work subtype — so it lands on the unfiltered category
  * page. Those are deliberate placeholders, not wiring bugs: the menu is drawn
  * in full per the design, and each `false` becomes `true` for free once the
  * taxonomy grows.
+ *
+ * "Shop by style" is the one column that is never written by hand: `styleColumn`
+ * builds it from the Types the collection page's own Type filter offers, so the
+ * menu only ever names styles the shopper can then see ticked on the page.
  */
 
 type TabId = 'new' | 'bestseller' | 'all'
@@ -37,6 +43,10 @@ export interface NavSubLink {
   exact: boolean
   /** Renders in gold as a column's closing "shop all" line. */
   emphasis?: boolean
+  /** Square thumbnail shown to the left of the label, in `public/`. */
+  image?: string
+  /** Required alongside `image`; the label alone is not a description. */
+  imageAlt?: string
 }
 
 /** A headed run of links. A column may stack two (the design pairs metal + price). */
@@ -116,6 +126,21 @@ function filterLink(label: string, slug: string, query?: CollectionQuery): NavSu
   return { label, to: collectionUrl(slug, query), exact: true }
 }
 
+/**
+ * A style link carrying a thumbnail. Only the Shop-by-style runs use one, and
+ * only where every link in the run has one — a half-illustrated column reads as
+ * missing images rather than a deliberate mix.
+ */
+function styleLink(
+  label: string,
+  slug: string,
+  query: CollectionQuery,
+  image: string,
+  imageAlt: string,
+): NavSubLink {
+  return { label, to: collectionUrl(slug, query), exact: true, image, imageAlt }
+}
+
 /** A link the catalogue can't filter for yet — falls back to the category page. */
 function pendingLink(label: string, slug: string): NavSubLink {
   return { label, to: `/collections/${slug}`, exact: false }
@@ -167,6 +192,69 @@ function collectionsColumn(slug: string, shopAllLabel: string): NavGroup[] {
   ]
 }
 
+/**
+ * The `?style=` value that carries a Type.
+ *
+ * Every Type id doubles as a real `ProductSubtype` and travels as itself. The
+ * exception is `studs`, whose records sit under the catalogue's singular
+ * `stud` — `pieceTypeForStyle` reads either back as the Type, so the page still
+ * lands with the box ticked. Written out in full rather than defaulted, so a new
+ * Type cannot be added without deciding what its link carries.
+ */
+const TYPE_STYLE: Record<PieceTypeId, ProductSubtype> = {
+  bangle: 'bangle',
+  'gemstone-bracelet': 'gemstone-bracelet',
+  'tennis-bracelet': 'tennis-bracelet',
+  chain: 'chain',
+  hoops: 'hoops',
+  studs: 'stud',
+  'dangle-drop': 'dangle-drop',
+  'statement-earring': 'statement-earring',
+  stackable: 'stackable',
+  'statement-ring': 'statement-ring',
+  bridal: 'bridal',
+  'gemstone-ring': 'gemstone-ring',
+}
+
+/** Thumbnail per Type, for the Shop-by-style runs that are illustrated. */
+const TYPE_THUMB: Partial<Record<PieceTypeId, { image: string; alt: string }>> = {
+  stackable: { image: '/ring-type-stackable.jpg', alt: 'Stacked slim gold ring bands' },
+  'statement-ring': { image: '/ring-type-statement.jpg', alt: 'Wide gemstone-set statement ring' },
+  bridal: { image: '/ring-type-bridal.jpg', alt: 'Diamond solitaire engagement ring' },
+  'gemstone-ring': { image: '/ring-type-gemstone.jpg', alt: 'Coloured gemstone ring' },
+}
+
+/**
+ * The "Shop by style" column for a collection: the Types that page sells, in the
+ * order it sells them, under the labels its own Type filter uses.
+ *
+ * The menu and the filter rail both read `preset.typeOptions`, so the two cannot
+ * drift apart — a Type added in `collections.ts` appears here, and a style the
+ * page has no control for cannot. Thumbnails follow the `styleLink` rule: the
+ * run is illustrated only once every Type in it has an image, never half.
+ *
+ * A page with no Type facet has no Types to name and gets no column.
+ */
+function styleColumn(slug: string): NavGroup[] {
+  const types = findCollectionBySlug(slug)?.preset.typeOptions ?? []
+  if (!types.length) return []
+  const thumbs = types.map((id) => TYPE_THUMB[id])
+  const illustrated = thumbs.every(Boolean)
+  return [
+    {
+      heading: 'Shop by style',
+      links: types.map((id, index) => {
+        const label = pieceTypeLabel(id)
+        const query: CollectionQuery = { style: TYPE_STYLE[id] }
+        const thumb = illustrated ? thumbs[index] : undefined
+        return thumb
+          ? styleLink(label, slug, query, thumb.image, thumb.alt)
+          : filterLink(label, slug, query)
+      }),
+    },
+  ]
+}
+
 export const NAV_ITEMS: NavItem[] = [
   {
     label: 'Earrings',
@@ -174,19 +262,7 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/collections/earrings',
     submenu: {
       columns: [
-        [
-          {
-            heading: 'Shop by style',
-            links: [
-              filterLink('Studs', 'earrings', { style: 'stud' }),
-              filterLink('Hoops', 'earrings', { style: 'hoops' }),
-              filterLink('Drops', 'earrings', { style: 'drop' }),
-              pendingLink('Chandeliers', 'earrings'),
-              pendingLink('Ear cuffs', 'earrings'),
-              filterLink('Jhumkas', 'earrings', { style: 'jhumka' }),
-            ],
-          },
-        ],
+        styleColumn('earrings'),
         metalAndPrice('earrings'),
         collectionsColumn('earrings', 'Shop all earrings'),
       ],
@@ -214,19 +290,7 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/collections/rings',
     submenu: {
       columns: [
-        [
-          {
-            heading: 'Shop by style',
-            links: [
-              filterLink('Solitaires', 'rings', { style: 'solitaire' }),
-              filterLink('Clusters', 'rings', { style: 'cluster' }),
-              filterLink('Multi-stone', 'rings', { style: 'multi-stone' }),
-              filterLink('Open rings', 'rings', { style: 'open-ring' }),
-              pendingLink('Eternity bands', 'rings'),
-              pendingLink('Cocktail rings', 'rings'),
-            ],
-          },
-        ],
+        styleColumn('rings'),
         metalAndPrice('rings'),
         collectionsColumn('rings', 'Shop all rings'),
       ],
@@ -256,14 +320,15 @@ export const NAV_ITEMS: NavItem[] = [
       columns: [
         [
           {
+            // Necklaces is the one category with no Type facet, so `styleColumn`
+            // has nothing to read and this column stays hand-written. It holds
+            // only styles the catalogue can filter for; it becomes a
+            // `styleColumn('necklaces')` the day that page gets its Types.
             heading: 'Shop by style',
             links: [
               siteLink('Pendants', '/collections/pendants'),
               filterLink('Statement necklaces', 'necklaces', { style: 'statement-necklace' }),
               filterLink('Mangal sutra', 'necklaces', { style: 'mangal-sutra' }),
-              pendingLink('Chokers', 'necklaces'),
-              pendingLink('Layered chains', 'necklaces'),
-              pendingLink('Temple work', 'necklaces'),
             ],
           },
         ],
@@ -294,17 +359,7 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/collections/bracelets',
     submenu: {
       columns: [
-        [
-          {
-            heading: 'Shop by style',
-            links: [
-              filterLink('Bangle', 'bracelets', { style: 'bangle' }),
-              filterLink('Gemstone Bracelet', 'bracelets', { style: 'gemstone-bracelet' }),
-              filterLink('Tennis Bracelet', 'bracelets', { style: 'tennis-bracelet' }),
-              filterLink('Chain', 'bracelets', { style: 'chain' }),
-            ],
-          },
-        ],
+        styleColumn('bracelets'),
         metalAndPrice('bracelets'),
         collectionsColumn('bracelets', 'Shop all bangles & bracelets'),
       ],

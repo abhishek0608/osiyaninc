@@ -620,8 +620,9 @@ onBeforeUnmount(() => {
                   v-for="link in group.links"
                   :key="link.label"
                   :to="link.to"
-                  :class="{ 'is-emphasis': link.emphasis }"
+                  :class="{ 'is-emphasis': link.emphasis, 'has-thumb': link.image }"
                 >
+                  <img v-if="link.image" :src="link.image" :alt="link.imageAlt" class="submenu-thumb" loading="lazy" decoding="async" />
                   {{ link.label }}
                   <span v-if="link.emphasis" class="submenu-arrow" aria-hidden="true">&rarr;</span>
                 </RouterLink>
@@ -694,8 +695,11 @@ onBeforeUnmount(() => {
                     v-for="link in group.links"
                     :key="link.label"
                     :to="link.to"
-                    :class="{ 'is-emphasis': link.emphasis }"
-                  >{{ link.label }}</RouterLink>
+                    :class="{ 'is-emphasis': link.emphasis, 'has-thumb': link.image }"
+                  >
+                    <img v-if="link.image" :src="link.image" :alt="link.imageAlt" class="submenu-thumb" loading="lazy" decoding="async" />
+                    {{ link.label }}
+                  </RouterLink>
                 </div>
               </div>
 
@@ -1049,6 +1053,18 @@ onBeforeUnmount(() => {
 .submenu-group + .submenu-group { margin-top: 10px; }
 .submenu-heading { margin: 0; color: var(--label); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; }
 .submenu-links { display: flex; flex-direction: column; gap: 11px; }
+/* A thumbnail run needs more air than a bare text list, and the image must not
+   shrink when a label wraps. */
+.submenu-links a.has-thumb { gap: 10px; }
+.submenu-links a.has-thumb + a.has-thumb { margin-top: 3px; }
+.submenu-thumb {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--surface-pill);
+}
 .submenu-links a {
   display: inline-flex;
   align-items: center;
@@ -1250,6 +1266,19 @@ onBeforeUnmount(() => {
     text-decoration: none;
     font-size: 14px;
     line-height: 1;
+  }
+  /* Pills, not rows: the thumb rides inside the chip as a round avatar and the
+     left padding tightens to sit against it. */
+  .drawer-group-links a.has-thumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 5px;
+  }
+  .drawer-group-links a.has-thumb .submenu-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
   }
   .drawer-group-links a.is-emphasis { border-color: rgba(201, 162, 39, 0.4); color: var(--gold-text); }
   .drawer-group-links a:focus-visible { outline: 2px solid var(--plum); outline-offset: 2px; }
