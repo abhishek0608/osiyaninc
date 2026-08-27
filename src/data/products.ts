@@ -44,6 +44,11 @@ export type ProductSubtype =
   | 'cluster'
   | 'multi-stone'
   | 'open-ring'
+  // Ring Types the storefront filters by.
+  | 'stackable'
+  | 'statement-ring'
+  | 'bridal'
+  | 'gemstone-ring'
   | 'pendant'
   | 'statement-necklace'
   | 'cuff'

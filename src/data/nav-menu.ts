@@ -74,6 +74,7 @@ const SUBTYPES: readonly ProductSubtype[] = [
   'cuff', 'chain-bracelet', 'drop', 'stud', 'mangal-sutra', 'jhumka',
   'bangle', 'gemstone-bracelet', 'tennis-bracelet', 'chain',
   'hoops', 'dangle-drop', 'statement-earring',
+  'stackable', 'statement-ring', 'bridal', 'gemstone-ring',
 ]
 const METALS: readonly Color[] = ['yellow', 'white', 'rose', 'oxidised']
 const MATERIALS: readonly Material[] = ['gold', 'silver']

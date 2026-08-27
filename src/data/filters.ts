@@ -17,7 +17,8 @@ import type { Color } from './products'
  * rail and the mobile panel render from that, so a page's filter list is a
  * merchandising edit rather than a component change. Bracelets & Bangles wants
  * Price, Metal, Stone, Type over five stones; Earrings wants Price, Stone,
- * Metal, Type over 24 stones and its own four Types.
+ * Metal, Type over 24 stones and its own four Types; Rings wants only Price and
+ * Type.
  */
 
 export type FacetId =
@@ -306,10 +307,18 @@ export type PieceTypeId =
   | 'studs'
   | 'dangle-drop'
   | 'statement-earring'
+  // Rings
+  | 'stackable'
+  | 'statement-ring'
+  | 'bridal'
+  | 'gemstone-ring'
 
 interface TypeContext {
   category: string
   subtype: string
+  /** Title alone. Some words only mean the silhouette when they name the piece:
+   *  a solitaire's prose can mention its "delicate band" without being one. */
+  title: string
   text: string
   stones: string[]
   styles: string[]
@@ -342,6 +351,7 @@ const isBraceletCategory = (c: TypeContext) => c.category.startsWith('bracelet')
 const hasColouredStone = (c: TypeContext) =>
   COLOURED_STONES.some((gem) => c.stones.includes(gem) || hasWord(c.text, gem))
 
+const isStatementish = (c: TypeContext) => c.styles.includes('statement') || hasWord(c.text, 'statement')
 const isHoopish = (c: TypeContext) => hasWord(c.text, 'hoops?') || hasWord(c.text, 'huggies?') || hasWord(c.text, 'creoles?')
 const isDangleish = (c: TypeContext) =>
   hasWord(c.text, 'drops?') || hasWord(c.text, 'dangles?') || hasWord(c.text, 'chandeliers?') || hasWord(c.text, 'jhumkas?')
@@ -411,7 +421,35 @@ export const PIECE_TYPE_OPTIONS: PieceTypeOption[] = [
   {
     id: 'statement-earring',
     label: 'Statement Earring',
-    infer: (c) => c.styles.includes('statement') || hasWord(c.text, 'statement'),
+    infer: isStatementish,
+  },
+  {
+    // "Band" is read off the title only: a solitaire's description can mention
+    // its delicate band without the ring being one to stack.
+    id: 'stackable',
+    label: 'Stackable',
+    infer: (c) =>
+      hasWord(c.text, 'stackable') || hasWord(c.text, 'stacking') ||
+      hasWord(c.title, 'bands?') || hasWord(c.text, 'eternity'),
+  },
+  {
+    id: 'statement-ring',
+    label: 'Statement',
+    infer: isStatementish,
+  },
+  {
+    // Solitaires count even untagged: the house sells them as the engagement
+    // ring, which is what this Type is for.
+    id: 'bridal',
+    label: 'Bridal',
+    infer: (c) =>
+      c.styles.includes('bridal') || c.subtype === 'solitaire' ||
+      hasWord(c.text, 'bridal') || hasWord(c.text, 'engagement') || hasWord(c.text, 'wedding'),
+  },
+  {
+    id: 'gemstone-ring',
+    label: 'Gemstone',
+    infer: hasColouredStone,
   },
 ]
 
@@ -425,6 +463,10 @@ const TYPE_CATEGORIES: Record<PieceTypeId, string[]> = {
   studs: ['earring', 'earrings'],
   'dangle-drop': ['earring', 'earrings'],
   'statement-earring': ['earring', 'earrings'],
+  stackable: ['ring', 'rings'],
+  'statement-ring': ['ring', 'rings'],
+  bridal: ['ring', 'rings'],
+  'gemstone-ring': ['ring', 'rings'],
 }
 
 export const PIECE_TYPE_IDS: PieceTypeId[] = PIECE_TYPE_OPTIONS.map((option) => option.id)
@@ -481,6 +523,7 @@ export function productHasPieceType(product: any, id: PieceTypeId): boolean {
   return option.infer({
     category,
     subtype,
+    title: String(product?.title || '').toLowerCase(),
     text: productText(product),
     stones: tagList(product?.stoneTags),
     styles: tagList(product?.styleTags),

@@ -16,7 +16,21 @@ export interface CollectionLink {
 }
 
 export const COLLECTION_LINKS: CollectionLink[] = [
-  { slug: 'rings', label: 'Ring', title: 'Rings', description: 'Solitaires, clusters and everyday bands.', icon: 'ring', preset: { category: 'Rings' } },
+  // Rings narrows on Price and Type alone — the two questions a ring shopper
+  // starts from. Stone Shape and Stone Size are deliberately dropped here even
+  // though rings carry centre stones.
+  {
+    slug: 'rings',
+    label: 'Ring',
+    title: 'Rings',
+    description: 'Solitaires, clusters and everyday bands.',
+    icon: 'ring',
+    preset: {
+      category: 'Rings',
+      facets: ['price', 'type'],
+      typeOptions: ['stackable', 'statement-ring', 'bridal', 'gemstone-ring'],
+    },
+  },
   // Earrings leads on Stone — the house sells 24 of them here — then Metal,
   // which is why the facet order is spelled out rather than shared with
   // Bracelets & Bangles. No Platinum in earrings, but 14K Rose is offered.
