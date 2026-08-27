@@ -216,12 +216,28 @@ const TYPE_STYLE: Record<PieceTypeId, ProductSubtype> = {
   'gemstone-ring': 'gemstone-ring',
 }
 
-/** Thumbnail per Type, for the Shop-by-style runs that are illustrated. */
+/**
+ * Thumbnail per Type, for the Shop-by-style runs that are illustrated.
+ *
+ * Every image is the shot the live site's own "Shop by Style" gallery uses for
+ * that style, square-cropped to its subject — so the menu shows the shopper the
+ * same piece osiyaninc.com does. Stays `Partial` even though all twelve Types
+ * are filled: it is what keeps `styleColumn`'s all-or-nothing guard honest for
+ * the next Type added.
+ */
 const TYPE_THUMB: Partial<Record<PieceTypeId, { image: string; alt: string }>> = {
-  stackable: { image: '/ring-type-stackable.jpg', alt: 'Stacked slim gold ring bands' },
-  'statement-ring': { image: '/ring-type-statement.jpg', alt: 'Wide gemstone-set statement ring' },
-  bridal: { image: '/ring-type-bridal.jpg', alt: 'Diamond solitaire engagement ring' },
-  'gemstone-ring': { image: '/ring-type-gemstone.jpg', alt: 'Coloured gemstone ring' },
+  stackable: { image: '/ring-type-stackable.jpg', alt: 'Stack of pavé and solitaire bands in mixed golds' },
+  'statement-ring': { image: '/ring-type-statement.jpg', alt: 'Wide yellow gold band with pavé diamond panels' },
+  bridal: { image: '/ring-type-bridal.jpg', alt: 'White gold double-halo diamond engagement ring' },
+  'gemstone-ring': { image: '/ring-type-gemstone.jpg', alt: 'Oval tanzanite ring in a diamond halo' },
+  studs: { image: '/earring-type-studs.jpg', alt: 'Clover-cluster diamond studs' },
+  'dangle-drop': { image: '/earring-type-dangle-drop.jpg', alt: 'Pink sapphire and diamond pear drop earrings' },
+  hoops: { image: '/earring-type-hoops.jpg', alt: 'Inside-out pavé diamond hoops' },
+  'statement-earring': { image: '/earring-type-statement.jpg', alt: 'Emerald and diamond chandelier earrings' },
+  bangle: { image: '/bracelet-type-bangle.jpg', alt: 'Yellow gold diamond line bangle' },
+  chain: { image: '/bracelet-type-chain.jpg', alt: 'Rose gold slider bracelet with diamond halos' },
+  'tennis-bracelet': { image: '/bracelet-type-tennis.jpg', alt: 'White gold diamond tennis bracelet' },
+  'gemstone-bracelet': { image: '/bracelet-type-gemstone.jpg', alt: 'Multi-gemstone and diamond link bracelet' },
 }
 
 /**
