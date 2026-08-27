@@ -44,7 +44,8 @@ export interface Memo {
   formattedOutstanding: string
   notes: string
   shipTo: Record<string, string> | null
-  orderId: string | null
+  /** Every order billed off this memo, oldest first; empty until one is. */
+  orders: { id: string; orderNo: string; status: string }[]
   items: MemoItem[]
 }
 

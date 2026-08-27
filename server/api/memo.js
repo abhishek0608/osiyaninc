@@ -17,6 +17,14 @@ export const MEMO_STATUSES = ['ISSUED', 'PARTIAL', 'CONVERTED', 'RETURNED', 'CAN
 export const MEMO_EXTEND_WINDOW_DAYS = 3
 export const MEMO_MAX_SELF_EXTENSIONS = 1
 
+// Everything toMemoPayload reads off a memo row. Callers needing more (the
+// customer, say) spread this and add to it, so no payload ever reports an empty
+// `orders` merely because the relation was left out of the query.
+export const MEMO_PAYLOAD_INCLUDE = {
+  items: { orderBy: { createdAt: 'asc' } },
+  orders: { select: { id: true, orderNo: true, status: true }, orderBy: { createdAt: 'asc' } },
+}
+
 export class MemoError extends Error {
   constructor(code, message, status = 400) {
     super(message)
@@ -287,7 +295,7 @@ async function refreshMemoStatus(memoId, actorId, client) {
       closedAt: closed ? new Date() : null,
       updatedById: actorId || undefined,
     },
-    include: { items: { orderBy: { createdAt: 'asc' } } },
+    include: MEMO_PAYLOAD_INCLUDE,
   })
 }
 
@@ -315,7 +323,8 @@ export async function returnMemoItems({ memoId, lines = null, actorId = null }) 
  * The customer is keeping pieces: those lines become a real sale. The memo's
  * locked prices carry over to the order, and the order gets an invoice — the
  * existing Invoice row hangs off Order, so conversion produces both rather than
- * a floating invoice.
+ * a floating invoice. The order records the memo it came from, so a memo bought
+ * in instalments ends up with one order per buyback, all of them traceable.
  *
  * `customerId` scopes the memo to its owner for self-service conversion; staff
  * callers omit it, the same contract as extendMemo.
@@ -341,6 +350,7 @@ export async function convertMemoToOrder({ memoId, lines = null, actorId = null,
             channel: customer?.channel || 'B2C',
             status: 'CONFIRMED',
             customerId: memo.customerId,
+            memoId: memo.id,
             subtotalPaise,
             totalPaise: subtotalPaise,
             currency: memo.currency,
@@ -393,11 +403,6 @@ export async function convertMemoToOrder({ memoId, lines = null, actorId = null,
       })
     }
 
-    // Only the first conversion owns the orderId link; a second partial
-    // conversion creates its own order, referenced from that order's notes.
-    if (!memo.orderId) {
-      await tx.memo.update({ where: { id: memo.id }, data: { orderId: order.id } })
-    }
     const updated = await refreshMemoStatus(memo.id, actorId, tx)
     return { memo: updated, order, invoice }
   })
@@ -463,7 +468,7 @@ export async function extendMemo({ memoId, days = null, actorId = null, bySelf =
       lastExtendedAt: new Date(),
       updatedById: actorId || undefined,
     },
-    include: { items: { orderBy: { createdAt: 'asc' } } },
+    include: MEMO_PAYLOAD_INCLUDE,
   })
 }
 
@@ -472,7 +477,7 @@ export async function cancelMemo({ memoId, actorId = null }) {
   return prisma.memo.update({
     where: { id: memo.id },
     data: { status: 'CANCELLED', closedAt: new Date(), updatedById: actorId || undefined },
-    include: { items: { orderBy: { createdAt: 'asc' } } },
+    include: MEMO_PAYLOAD_INCLUDE,
   })
 }
 
@@ -499,7 +504,13 @@ export function toMemoPayload(memo, extra = {}) {
     formattedOutstanding: formatMemoMoney(outstandingPaise, memo.currency),
     notes: memo.notes || '',
     shipTo: memo.shipTo || null,
-    orderId: memo.orderId || null,
+    // Empty unless the caller included the relation; a memo that has never been
+    // billed has none either way.
+    orders: (memo.orders || []).map((order) => ({
+      id: order.id,
+      orderNo: order.orderNo,
+      status: order.status,
+    })),
     items: items.map((item) => ({
       id: item.id,
       variantId: item.variantId,

@@ -88,6 +88,15 @@ function statusPillClass(order: MyOrder) {
                 :class="statusPillClass(order)"
               >{{ orderStatusLabel(order) }}</span>
               <span class="ect-inline-flex ect-items-center ect-gap-1.5 ect-ml-2 ect-px-2.5 ect-py-1 ect-rounded-full ect-border ect-border-gold-300/70 ect-font-body ect-text-xs ect-font-medium ect-text-gold-800">{{ orderPaymentLabel(order) }}</span>
+              <!-- Billed off a memo: the pieces were already with them, so the
+                   consignment they came from is the useful thing to link to. -->
+              <RouterLink
+                v-if="order.memo"
+                :to="{ name: 'memo-detail', params: { id: order.memo.id } }"
+                class="ect-inline-flex ect-items-center ect-gap-1.5 ect-ml-2 ect-px-2.5 ect-py-1 ect-rounded-full ect-border ect-border-charcoal/15 ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors"
+              >
+                From memo {{ order.memo.memoNo }}
+              </RouterLink>
             </section>
           </li>
         </ul>

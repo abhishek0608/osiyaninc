@@ -313,6 +313,9 @@ export function toMyOrderPayload(order) {
     termsDueDate: order.termsDueDate || null,
     notes: order.notes || '',
     shipTo: order.shipTo || null,
+    // Set when the order came out of a memo, so the account pages can point
+    // back at the consignment the pieces were already out on.
+    memo: order.memo ? { id: order.memo.id, memoNo: order.memo.memoNo } : null,
     items,
   }
 }
@@ -323,6 +326,7 @@ export async function getMyOrders(customerId) {
     where: { customerId },
     include: {
       payments: { select: { status: true } },
+      memo: { select: { id: true, memoNo: true } },
       items: {
         orderBy: { createdAt: 'asc' },
         include: {

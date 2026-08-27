@@ -36,6 +36,8 @@ export interface MyOrder {
   termsDueDate: string | null
   notes: string
   shipTo: Record<string, string> | null
+  /** Set when the order came out of a memo — the pieces were already with them. */
+  memo: { id: string; memoNo: string } | null
   items: MyOrderItem[]
 }
 

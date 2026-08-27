@@ -35,7 +35,7 @@ interface MemoDetail {
   customerFormattedOutstanding: string
   createdBy?: string
   shipTo: Record<string, string> | null
-  order: { id: string; orderNo: string; status: string } | null
+  orders: { id: string; orderNo: string; status: string }[]
   items: MemoItem[]
 }
 
@@ -250,11 +250,16 @@ onMounted(() => {
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Customer total on memo</dt>
               <dd class="ect-font-body ect-text-sm ect-text-charcoal">{{ memo.customerFormattedOutstanding }}</dd>
             </div>
-            <div v-if="memo.order">
+            <div v-if="memo.orders?.length">
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Converted to</dt>
               <dd>
-                <RouterLink :to="{ name: 'internal-order', params: { id: memo.order.id } }" class="ect-font-body ect-text-sm ect-font-semibold ect-text-rose-700 hover:ect-underline">
-                  {{ memo.order.orderNo }}
+                <RouterLink
+                  v-for="billed in memo.orders"
+                  :key="billed.id"
+                  :to="{ name: 'internal-order', params: { id: billed.id } }"
+                  class="ect-block ect-font-body ect-text-sm ect-font-semibold ect-text-rose-700 hover:ect-underline"
+                >
+                  {{ billed.orderNo }}
                 </RouterLink>
               </dd>
             </div>

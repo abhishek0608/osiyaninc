@@ -395,6 +395,12 @@ model Order {
   termsDays         Int?
   termsDueDate      DateTime?
   notes             String?
+  // Set when the order came out of a memo: the customer kept pieces that were
+  // already with them on consignment. A partial buyback bills only some of the
+  // lines, so one memo can produce several orders over its life — which is why
+  // the link lives here, on every converted order, rather than as a single
+  // pointer on Memo that only ever recorded the first conversion.
+  memoId            String?
   createdById       String?
   updatedById       String?
   createdAt         DateTime        @default(now())
@@ -407,7 +413,10 @@ model Order {
   payments          Payment[]
   shipments         Shipment[]
   invoice           Invoice?
-  memo              Memo?
+  memo              Memo?           @relation(fields: [memoId], references: [id], onDelete: SetNull)
+
+  // The memo screens read every order a memo produced.
+  @@index([memoId])
 }
 
 model OrderItem {
@@ -562,32 +571,33 @@ model Invoice {
 // either buys the pieces or returns them. It is deliberately NOT an Order —
 // there is no payment, and stock is reserved rather than sold.
 model Memo {
-  id            String     @id @default(cuid())
-  memoNo        String     @unique
-  customerId    String
-  status        MemoStatus @default(ISSUED)
-  issuedAt      DateTime   @default(now())
-  dueDate       DateTime
-  closedAt      DateTime?
+  id             String     @id @default(cuid())
+  memoNo         String     @unique
+  customerId     String
+  status         MemoStatus @default(ISSUED)
+  issuedAt       DateTime   @default(now())
+  dueDate        DateTime
+  closedAt       DateTime?
   // Due dates move: a customer nearing the end of the period can push it out
   // themselves, and staff can extend any open memo. Both are recorded here so a
   // memo that has already been stretched is obvious.
-  extensionCount Int       @default(0)
+  extensionCount Int        @default(0)
   lastExtendedAt DateTime?
   // Prices are locked when the goods go out, not when the memo converts.
-  subtotalPaise Int
-  currency      String     @default("USD")
+  subtotalPaise  Int
+  currency       String     @default("USD")
   // Ship-to is a snapshot: storefront addresses are not rows in Address.
-  shipTo        Json?
-  notes         String?
-  orderId       String?    @unique // set when the memo converts to a sale
-  createdById   String?
-  updatedById   String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  customer      User       @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  order         Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  items         MemoItem[]
+  shipTo         Json?
+  notes          String?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  customer       User       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  // Every order billed off this memo, oldest first — more than one when the
+  // customer bought in instalments.
+  orders         Order[]
+  items          MemoItem[]
 
   @@index([customerId, status])
   @@index([status, dueDate])

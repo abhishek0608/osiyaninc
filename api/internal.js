@@ -38,6 +38,7 @@ import {
 } from '../server/api/service-requests.js'
 import {
   MemoError,
+  MEMO_PAYLOAD_INCLUDE,
   OPEN_MEMO_STATUSES,
   MEMO_STATUSES,
   cancelMemo,
@@ -639,8 +640,8 @@ async function handleMemosListResource(req, res, body) {
         take: MEMO_PAGE_SIZE,
         orderBy: { issuedAt: 'desc' },
         include: {
+          ...MEMO_PAYLOAD_INCLUDE,
           customer: { select: { id: true, email: true, firstName: true, lastName: true } },
-          items: { orderBy: { createdAt: 'asc' } },
         },
       }),
       prisma.memo.count({ where }),
@@ -714,9 +715,8 @@ async function handleMemoResource(req, res, body) {
       const memo = await prisma.memo.findUnique({
         where: { id: memoId },
         include: {
+          ...MEMO_PAYLOAD_INCLUDE,
           customer: { select: { id: true, email: true, firstName: true, lastName: true, memoLimitPaise: true } },
-          items: { orderBy: { createdAt: 'asc' } },
-          order: { select: { id: true, orderNo: true, status: true } },
         },
       })
       if (!memo) return res.status(404).json({ message: 'Memo not found.' })
@@ -732,7 +732,6 @@ async function handleMemoResource(req, res, body) {
           // Stored in cents, unlike customerOutstandingPaise above, which is in
           // whole dollars. Convert so the screen compares like with like.
           customerLimitPaise: creditLimitToUsd(memo.customer?.memoLimitPaise),
-          order: memo.order || null,
           createdBy: actorName(actorMap, memo.createdById) || memoCustomerName(memo.customer),
           modifiedBy: actorName(actorMap, memo.updatedById),
           modifiedAt: memo.updatedAt,

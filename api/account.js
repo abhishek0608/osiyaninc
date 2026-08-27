@@ -21,6 +21,7 @@ import {
   getMemoOutstandingPaise,
   getMemoCustomer,
   formatMemoMoney,
+  MEMO_PAYLOAD_INCLUDE,
   toMemoPayload,
 } from '../server/api/memo.js'
 import { getMyOrders } from '../server/api/checkout.js'
@@ -684,7 +685,7 @@ async function handleGetMemos(res, customerId) {
 
   const memos = await prisma.memo.findMany({
     where: { customerId },
-    include: { items: { orderBy: { createdAt: 'asc' } } },
+    include: MEMO_PAYLOAD_INCLUDE,
     orderBy: { issuedAt: 'desc' },
   })
   const outstandingPaise = await getMemoOutstandingPaise(customerId)
