@@ -9,7 +9,7 @@ const year = new Date().getFullYear()
       <RouterLink to="/about">Our Story</RouterLink>
       <RouterLink to="/contact">Contact Us</RouterLink>
       <RouterLink to="/terms-conditions">Terms &amp; Conditions</RouterLink>
-      <RouterLink to="/about">Privacy Policy</RouterLink>
+      <RouterLink to="/privacy-policy">Privacy Policy</RouterLink>
     </section>
 
     <RouterLink to="/" class="footer-logo" aria-label="Osiyan home">

@@ -35,6 +35,7 @@ const router = createRouter({
     { path: '/services', name: 'services', component: () => import('../views/ServicesView.vue'), meta: { title: 'Services', description: 'Jewellery services at Kiana — custom design, repair, resizing, polishing and more.' } },
     { path: '/contact', name: 'contact', component: () => import('../views/ContactView.vue'), meta: { title: 'Contact Us', description: 'Get in touch with Osiyan — 580 5th Avenue Suite 802, New York, NY 10036.' } },
     { path: '/terms-conditions', name: 'terms', component: () => import('../views/TermsView.vue'), meta: { title: 'Terms & Conditions', description: 'The terms and conditions governing your use of the Osiyan website and services.' } },
+    { path: '/privacy-policy', name: 'privacy-policy', component: () => import('../views/PrivacyPolicyView.vue'), meta: { title: 'Privacy Policy', description: 'How Osiyan collects, uses, discloses and safeguards your personal information.' } },
     { path: '/careers', redirect: '/about' },
     { path: '/search', name: 'search', component: () => import('../views/SearchView.vue'), meta: { title: 'Search', noindex: true } },
     { path: '/chat', name: 'chat', component: () => import('../views/ChatView.vue'), meta: { title: 'Chat', noindex: true } },
