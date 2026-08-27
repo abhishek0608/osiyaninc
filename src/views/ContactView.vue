@@ -113,9 +113,20 @@ function handleSubmit() {
 .contact-hero::before {
   content: '';
   position: absolute;
-  inset: 0 0 auto;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  /* The live strip is inset 60px each side but never narrows past the 980px
+     canvas, so it sits centred with white gutters on wide screens. */
+  width: max(980px, calc(100% - 120px));
   height: calc(100% - 63px);
   background: #5d4a62;
+}
+/* Below the canvas width the live page just overflows; go full-bleed instead
+   of forcing a horizontal scrollbar. */
+@media (max-width: 1000px) {
+  .contact-hero::before { width: 100%; }
 }
 
 .contact-hero h1 {
