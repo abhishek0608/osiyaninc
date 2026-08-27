@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { useOrders } from '../composables/useOrders'
+import { useMyOrders } from '../composables/useMyOrders'
 
 const route = useRoute()
-const { orders } = useOrders()
+const { orders, load, findByOrderNo } = useMyOrders()
+
+// Checkout has just written this order server-side, so the list is refetched
+// rather than reused — a cached copy from earlier in the session would not
+// contain the order this page is about.
+onMounted(() => void load(true))
 
 // Memos have their own confirmation page (/memo-confirmation) — nothing was
 // paid and the goods are still ours, so they never land here.
@@ -18,19 +23,21 @@ const referenceNumber = computed(() => {
   if (fromQuery) return fromQuery
   const fromReference = String(route.query.reference || '').trim()
   if (fromReference) return fromReference
-  return orders.value[0]?.id || 'ORD-000000'
+  return orders.value[0]?.orderNo || 'ORD-000000'
 })
+
+const placedOrder = computed(() =>
+  confirmationKind.value === 'order' ? findByOrderNo(referenceNumber.value) : null
+)
 
 // An order placed on payment terms ships now and is billed later, so the due
 // date is repeated here rather than only in the confirmation email.
-const termsOrder = computed(() => {
-  if (confirmationKind.value !== 'order') return null
-  const order = orders.value.find((o) => o.id === referenceNumber.value)
-  return order?.payment.term === 'terms' ? order : null
-})
+const termsOrder = computed(() =>
+  placedOrder.value?.paymentTerm === 'terms' ? placedOrder.value : null
+)
 
 const formattedDueDate = computed(() => {
-  const iso = termsOrder.value?.payment.dueDate
+  const iso = termsOrder.value?.termsDueDate
   if (!iso) return ''
   return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
 })
@@ -38,13 +45,11 @@ const formattedDueDate = computed(() => {
 // A card order whose charge has not been confirmed settled yet — either the
 // webhook had not landed by the time this page opened, or the method is a slow
 // one still processing. The order is placed either way, but the page must not
-// imply the money is in. Orders from before settlement was tracked leave the
-// field undefined, which reads as settled and shows nothing.
+// imply the money is in.
 const unsettledOrder = computed(() => {
-  if (confirmationKind.value !== 'order') return null
-  const order = orders.value.find((o) => o.id === referenceNumber.value)
-  if (!order || order.payment.term !== 'immediate') return null
-  return order.payment.settlement === 'pending' ? order : null
+  const order = placedOrder.value
+  if (!order || order.paymentTerm !== 'immediate') return null
+  return order.paymentSettlement === 'pending' ? order : null
 })
 </script>
 
@@ -70,7 +75,7 @@ const unsettledOrder = computed(() => {
 
       <section v-if="termsOrder" class="ect-bg-champagne/40 ect-border ect-border-gold-300/60 ect-rounded-sm ect-p-5 ect-mb-6 ect-text-left">
         <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mb-1">
-          On payment terms · Net {{ termsOrder.payment.termDays }}
+          On payment terms · Net {{ termsOrder.termsDays }}
         </p>
         <p class="ect-font-body ect-text-sm ect-text-charcoal/60">
           Nothing was charged now. {{ termsOrder.formattedTotal }} is due by

@@ -273,3 +273,73 @@ export async function clearOrderedCartItems(cartId, lines) {
   if (!ids.length) return
   await prisma.cartItem.deleteMany({ where: { cartId, id: { in: ids } } })
 }
+
+/**
+ * A customer's own order, shaped for the storefront's account pages. Amounts are
+ * whole US dollars, matching the order tables (see money.js). The settlement
+ * flags mirror what the confirmation page needs: a card order is only "paid"
+ * once a payment row reaches SUCCESS, which the Stripe webhook decides.
+ */
+export function toMyOrderPayload(order) {
+  const settled = (order.payments || []).some((payment) => payment.status === 'SUCCESS')
+  const onTerms = Boolean(order.termsDueDate)
+  const items = (order.items || []).map((item) => {
+    const product = item.variant?.product
+    return {
+      id: item.id,
+      title: item.titleSnapshot,
+      slug: product?.slug || '',
+      image: product?.images?.[0]?.url || '',
+      qty: item.qty,
+      priceUsd: item.pricePaise,
+      formattedPrice: formatUsd(item.pricePaise, order.currency),
+    }
+  })
+  return {
+    id: order.id,
+    orderNo: order.orderNo,
+    status: order.status,
+    createdAt: order.createdAt,
+    itemCount: items.reduce((sum, item) => sum + item.qty, 0),
+    subtotalUsd: order.subtotalPaise,
+    discountUsd: order.discountPaise,
+    totalUsd: order.totalPaise,
+    currency: order.currency,
+    formattedTotal: formatUsd(order.totalPaise, order.currency),
+    paymentTerm: onTerms ? 'terms' : 'immediate',
+    // Only meaningful for immediate orders; a terms order was never charged.
+    paymentSettlement: settled ? 'settled' : 'pending',
+    termsDays: order.termsDays ?? null,
+    termsDueDate: order.termsDueDate || null,
+    notes: order.notes || '',
+    shipTo: order.shipTo || null,
+    items,
+  }
+}
+
+/** Every order belonging to one customer, newest first. */
+export async function getMyOrders(customerId) {
+  const orders = await prisma.order.findMany({
+    where: { customerId },
+    include: {
+      payments: { select: { status: true } },
+      items: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          variant: {
+            include: {
+              product: {
+                select: {
+                  slug: true,
+                  images: { where: { active: true }, orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+  return orders.map((order) => toMyOrderPayload(order))
+}

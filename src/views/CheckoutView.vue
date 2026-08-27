@@ -3,7 +3,8 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import type { StripeElements, StripePaymentElement } from '@stripe/stripe-js'
 import { useCart, isCustomizedCartItem } from '../composables/useCart'
-import { useOrders, type OrderPayment, type PaymentTerm } from '../composables/useOrders'
+import { type OrderPayment, type PaymentTerm } from '../composables/useOrders'
+import { getNextReferenceNumber } from '../composables/useReferenceNumbers'
 import { useQuotes } from '../composables/useQuotes'
 import { useSavedAddresses, countryDisplayName } from '../composables/useSavedAddresses'
 import { useAuth } from '../composables/useAuth'
@@ -27,7 +28,6 @@ const {
   formattedDiscountedTotal,
   clearCart,
 } = useCart()
-const { addOrder } = useOrders()
 const { addQuote } = useQuotes()
 const { addresses: allSavedAddresses, getById, save: saveAddress } = useSavedAddresses()
 const { user, canMemoUser, canPayTermsUser, paymentTermDays } = useAuth()
@@ -158,6 +158,17 @@ function buildPayment(): OrderPayment {
   }
 }
 
+// The order itself lives in the database — checkout opened it server-side
+// before anything was charged, and the account pages read it back from there.
+// This is only the reference and total the confirmation email and the
+// redirect need, never a second copy of the order.
+function describeOrder(orderNo: string | undefined, total: number) {
+  return {
+    id: orderNo || getNextReferenceNumber('ORD', 'orders'),
+    formattedTotal: '$' + total.toLocaleString('en-US'),
+  }
+}
+
 const hasCustomizedItems = computed(() =>
   items.some((item) => isCustomizedCartItem(item)),
 )
@@ -187,8 +198,8 @@ function finalizeStandardOrder(orderNo?: string, serverTotal?: number) {
   const snapshot = [...items]
   const payment = buildPayment()
   // The server re-prices the cart, so its total is the one that was charged —
-  // recording the client's figure could show a number nobody was billed.
-  const order = addOrder(snapshot, serverTotal ?? discountedTotal.value, payment, orderNo)
+  // reporting the client's figure could show a number nobody was billed.
+  const order = describeOrder(orderNo, serverTotal ?? discountedTotal.value)
   void notifyTransaction({
     kind: 'order',
     orderId: order.id,
@@ -265,7 +276,7 @@ function finalizeCheckout(orderNo?: string, serverTotal?: number) {
     // priced (non-customized) portion of a mixed order.
     const nonCustomTotal = nonCustomGross - Math.round((nonCustomGross * discountPercent.value) / 100)
     const payment = buildPayment()
-    const order = addOrder(snapshot, serverTotal ?? nonCustomTotal, payment, orderNo)
+    const order = describeOrder(orderNo, serverTotal ?? nonCustomTotal)
     void notifyTransaction({
       kind: 'order',
       orderId: order.id,

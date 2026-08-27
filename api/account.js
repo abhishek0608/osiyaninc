@@ -23,6 +23,7 @@ import {
   formatMemoMoney,
   toMemoPayload,
 } from '../server/api/memo.js'
+import { getMyOrders } from '../server/api/checkout.js'
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto'
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
@@ -654,6 +655,17 @@ function describeFailure(err) {
   return { error: err?.name || 'Error', reason, code: pCode }
 }
 
+// --- Orders ----------------------------------------------------------------
+// Orders live in the database from the moment checkout opens one, so the
+// account page reads them from there rather than from any browser-side copy.
+
+async function handleGetOrders(res, customerId) {
+  if (!customerId) return res.status(400).json({ message: 'userId is required.' })
+  const customer = await prisma.user.findUnique({ where: { id: customerId }, select: { id: true } })
+  if (!customer) return res.status(404).json({ message: 'User not found.' })
+  return res.status(200).json({ orders: await getMyOrders(customerId) })
+}
+
 // --- Memo (consignment) ---------------------------------------------------
 // Goods leave without payment, so the permission and the limit are enforced
 // here, server-side; the checkout button only mirrors what this allows.
@@ -826,6 +838,7 @@ export default async function handler(req, res) {
       if (mode === 'profile') return await handleGetProfile(res, userId)
       if (mode === 'cart') return await handleGetCart(res, userId)
       if (mode === 'wishlist') return await handleGetWishlist(res, userId)
+      if (mode === 'orders') return await handleGetOrders(res, userId)
       if (mode === 'memos') return await handleGetMemos(res, userId)
       return res.status(400).json({ message: 'Invalid mode for GET.' })
     }
