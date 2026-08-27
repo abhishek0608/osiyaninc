@@ -3,6 +3,26 @@ import { ref, computed, watch, onMounted } from 'vue'
 import ProductCard from './ProductCard.vue'
 import FilterModal from './FilterModal.vue'
 import { CATALOG_CATEGORIES, CENTER_SHAPE_OPTIONS, centerStoneSizesForShapes, formatCenterStoneSize, productHasCenterShape, productHasCenterStoneSize, type Category, type Material, type Color, type ProductSubtype } from '../data/products'
+import {
+  BANGLE_BRACELET_TYPE_OPTIONS,
+  DEFAULT_FACETS,
+  FACET_ORDER,
+  METAL_OPTIONS,
+  STONE_OPTIONS,
+  bangleBraceletTypeLabel,
+  formatPrice,
+  metalLabel,
+  priceBoundsFor,
+  productHasBangleBraceletType,
+  productHasMetal,
+  productHasStone,
+  productPriceValue,
+  stoneLabel,
+  type BangleBraceletTypeId,
+  type FacetId,
+  type MetalId,
+  type StoneId,
+} from '../data/filters'
 import { presetCategories, useCollectionPreset } from '../composables/useCollectionPreset'
 import { useProductsApi } from '../composables/useProductsApi'
 import { useAuth } from '../composables/useAuth'
@@ -18,6 +38,29 @@ interface Filters {
   subtypes: ProductSubtype[]
   centerShapes: string[]
   centerStoneSizes: string[]
+  metals: MetalId[]
+  stones: StoneId[]
+  types: BangleBraceletTypeId[]
+  /** Null means "still at the slider's end", so no bound is sent for it. */
+  priceMin: number | null
+  priceMax: number | null
+}
+
+/** Cleared filters, scoped to whatever categories the page locks. */
+function emptyFilters(categories: readonly Category[] = []): Filters {
+  return {
+    categories: [...categories],
+    materials: [],
+    colors: [],
+    subtypes: [],
+    centerShapes: [],
+    centerStoneSizes: [],
+    metals: [],
+    stones: [],
+    types: [],
+    priceMin: null,
+    priceMax: null,
+  }
 }
 
 const props = withDefaults(defineProps<{ hideHeader?: boolean; sidebar?: boolean; guestPreviewLimit?: number }>(), {
@@ -37,7 +80,37 @@ const filterOpen = ref(false)
 // shoppers can drill into just one without escaping the page's scope.
 const lockedCategories = ref<Category[]>([])
 const singleLockedCategory = computed(() => (lockedCategories.value.length === 1 ? lockedCategories.value[0] : null))
-const appliedFilters = ref<Filters>({ categories: [], materials: [], colors: [], subtypes: [], centerShapes: [], centerStoneSizes: [] })
+const appliedFilters = ref<Filters>(emptyFilters())
+// Which facets this collection offers. Set from the preset so the filter list is
+// a merchandising edit in src/data/collections.ts, not a change in here.
+const facets = ref<FacetId[]>([...DEFAULT_FACETS])
+
+// The price slider's ends come from the pieces actually in scope, so the
+// Bracelets & Bangles page opens on that catalogue's own span rather than the
+// whole site's. Null bounds (nothing in scope is priced) hide the facet.
+const scopedProducts = computed(() => {
+  const locked = lockedCategories.value
+  const list = products.value
+  return locked.length ? list.filter((p) => locked.includes(p.category as Category)) : list
+})
+const priceBounds = computed(() => priceBoundsFor(scopedProducts.value))
+
+/**
+ * Is this facet actually drawn? Two facets can drop out beyond the page's own
+ * list — Category on a single-category page (the title already says it) and
+ * Price with nothing priced in scope — and a facet that isn't drawn must not
+ * count as one, or the rule that separates sections opens the rail with nothing
+ * above it.
+ */
+const showFacet = (facet: FacetId) => {
+  if (!facets.value.includes(facet)) return false
+  if (facet === 'category') return !singleLockedCategory.value
+  if (facet === 'price') return Boolean(priceBounds.value)
+  return true
+}
+const visibleFacets = computed(() => FACET_ORDER.filter(showFacet))
+// Sections are separated by a rule above each one, so the first goes without.
+const isFirstFacet = (facet: FacetId) => visibleFacets.value[0] === facet
 const filteredProducts = ref<any[]>([])
 const listLoading = ref(false)
 const firstLoadDone = ref(false)
@@ -52,14 +125,15 @@ function scrollToResultsTop() {
 }
 
 function applyPreset(p: NonNullable<typeof preset.value>) {
-  const f: Filters = { categories: [], materials: [], colors: [], subtypes: [], centerShapes: [], centerStoneSizes: [] }
   const locked = presetCategories(p)
-  f.categories = [...locked]
+  const f = emptyFilters(locked)
   if (p.material) f.materials = [p.material]
   if (p.color) f.colors = [p.color]
   if (p.subtypes !== undefined) f.subtypes = p.subtypes
+  if (p.types !== undefined) f.types = [...p.types]
   appliedFilters.value = f
   lockedCategories.value = locked
+  facets.value = p.facets?.length ? [...p.facets] : [...DEFAULT_FACETS]
   if (p.tab) activeTab.value = p.tab
 }
 
@@ -149,11 +223,27 @@ function toggleCategory(cat: Category) {
   scrollToResultsTop()
 }
 function toggleMaterial(m: Material) {
-  const arr = appliedFilters.value.materials
-  const i = arr.indexOf(m)
-  if (i === -1) arr.push(m)
-  else arr.splice(i, 1)
+  toggleIn(appliedFilters.value.materials, m)
+}
+
+/** Add-or-remove for the single-axis facets, which all behave identically. */
+function toggleIn<T>(list: T[], value: T) {
+  const i = list.indexOf(value)
+  if (i === -1) list.push(value)
+  else list.splice(i, 1)
   scrollToResultsTop()
+}
+
+function toggleMetal(id: MetalId) {
+  toggleIn(appliedFilters.value.metals, id)
+}
+
+function toggleStone(id: StoneId) {
+  toggleIn(appliedFilters.value.stones, id)
+}
+
+function toggleType(id: BangleBraceletTypeId) {
+  toggleIn(appliedFilters.value.types, id)
 }
 function toggleCenterShape(s: string) {
   const arr = appliedFilters.value.centerShapes
@@ -172,6 +262,56 @@ function toggleCenterStoneSize(s: string) {
   scrollToResultsTop()
 }
 
+// --- Price facet ---
+const priceFloor = computed(() => priceBounds.value?.min ?? 0)
+const priceCeil = computed(() => priceBounds.value?.max ?? 0)
+// ~200 stops across the span, so dragging feels smooth on a $500k range and
+// still lands on round-ish dollars on a narrow one.
+const priceStep = computed(() => Math.max(1, Math.round((priceCeil.value - priceFloor.value) / 200)))
+// A whole number of steps rarely lands exactly on the dearest piece, and a max
+// thumb that can't reach the top would quietly hold that piece out of an
+// otherwise-cleared filter. The input's ceiling is therefore rounded up to the
+// next stop; the value it reports is still clamped to the real maximum, so the
+// top stop reads as "no upper bound".
+const priceSliderMax = computed(() => {
+  const span = priceCeil.value - priceFloor.value
+  if (span <= 0) return priceCeil.value
+  return priceFloor.value + Math.ceil(span / priceStep.value) * priceStep.value
+})
+const priceSpan = computed(() => Math.max(1, priceSliderMax.value - priceFloor.value))
+
+// Thumb positions while dragging. Committing on release keeps one drag from
+// firing a request per pixel, while the labels still track the thumb live.
+const priceDraft = ref<{ low: number; high: number } | null>(null)
+const priceLow = computed(() => priceDraft.value?.low ?? appliedFilters.value.priceMin ?? priceFloor.value)
+const priceHigh = computed(() => priceDraft.value?.high ?? appliedFilters.value.priceMax ?? priceCeil.value)
+const priceNarrowed = computed(
+  () => appliedFilters.value.priceMin != null || appliedFilters.value.priceMax != null,
+)
+
+function dragPrice(edge: 'low' | 'high', value: number) {
+  const next = { low: priceLow.value, high: priceHigh.value }
+  if (edge === 'low') next.low = Math.max(priceFloor.value, Math.min(value, next.high))
+  else next.high = Math.min(priceCeil.value, Math.max(value, next.low))
+  priceDraft.value = next
+}
+
+function commitPrice() {
+  const draft = priceDraft.value
+  priceDraft.value = null
+  if (!draft) return
+  // A thumb parked at its end is "no bound", so the filter stays inactive and
+  // pieces the price query can't resolve are not silently dropped.
+  appliedFilters.value.priceMin = draft.low <= priceFloor.value ? null : draft.low
+  appliedFilters.value.priceMax = draft.high >= priceCeil.value ? null : draft.high
+}
+
+function clearPrice() {
+  priceDraft.value = null
+  appliedFilters.value.priceMin = null
+  appliedFilters.value.priceMax = null
+}
+
 function applyModalFilters(filters: Omit<Filters, 'subtypes'>) {
   appliedFilters.value = { ...filters, subtypes: appliedFilters.value.subtypes }
   scrollToResultsTop()
@@ -187,7 +327,32 @@ function snapshotFilters(): Filters {
     subtypes: [...f.subtypes],
     centerShapes: [...f.centerShapes],
     centerStoneSizes: [...f.centerStoneSizes],
+    metals: [...f.metals],
+    stones: [...f.stones],
+    types: [...f.types],
+    priceMin: f.priceMin,
+    priceMax: f.priceMax,
   }
+}
+
+/**
+ * The facets the API doesn't express. Multi-select is OR within a facet and AND
+ * across them, so "18K White Gold or Platinum" widens while adding a Stone
+ * narrows — which is what the checkboxes look like they do.
+ */
+function applyClientFacets(list: any[], f: Filters): any[] {
+  let out = Array.isArray(list) ? list : []
+  if (f.subtypes?.length) out = out.filter((p) => f.subtypes.includes(p.subtype))
+  if (f.centerShapes?.length) {
+    out = out.filter((p) => f.centerShapes.some((shape) => productHasCenterShape(p.customizationOptions?.centerShapes, shape)))
+  }
+  if (f.centerStoneSizes?.length) {
+    out = out.filter((p) => f.centerStoneSizes.some((size) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, size)))
+  }
+  if (f.metals.length) out = out.filter((p) => f.metals.some((id) => productHasMetal(p, id)))
+  if (f.stones.length) out = out.filter((p) => f.stones.some((id) => productHasStone(p, id)))
+  if (f.types.length) out = out.filter((p) => f.types.some((id) => productHasBangleBraceletType(p, id)))
+  return out
 }
 
 async function loadFilteredProducts() {
@@ -206,19 +371,7 @@ async function loadFilteredProducts() {
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data?.message || 'Failed to load filtered products.')
-    let list = Array.isArray(data?.products) ? data.products : []
-    const subtypes = filters.subtypes
-    if (subtypes?.length) {
-      list = list.filter((p: any) => subtypes.includes(p.subtype))
-    }
-    const shapes = filters.centerShapes
-    if (shapes?.length) {
-      list = list.filter((p: any) => shapes.some((s) => productHasCenterShape(p.customizationOptions?.centerShapes, s)))
-    }
-    const sizes = filters.centerStoneSizes
-    if (sizes?.length) {
-      list = list.filter((p: any) => sizes.some((s) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, s)))
-    }
+    const list = applyClientFacets(Array.isArray(data?.products) ? data.products : [], filters)
     if (requestId === filterRequestId) filteredProducts.value = list
   } catch (err) {
     console.error('Filter API error:', err)
@@ -229,10 +382,9 @@ async function loadFilteredProducts() {
     if (f.categories.length) list = list.filter((p) => f.categories.includes(p.category))
     if (f.materials.length) list = list.filter((p) => f.materials.includes(p.material))
     if (f.colors.length) list = list.filter((p) => f.colors.includes(p.color))
-    if (f.subtypes?.length) list = list.filter((p) => f.subtypes.includes(p.subtype as ProductSubtype))
-    if (f.centerShapes?.length) list = list.filter((p) => f.centerShapes.some((s) => productHasCenterShape(p.customizationOptions?.centerShapes, s)))
-    if (f.centerStoneSizes?.length) list = list.filter((p) => f.centerStoneSizes.some((s) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, s)))
-    if (requestId === filterRequestId) filteredProducts.value = list
+    if (f.priceMin != null) list = list.filter((p) => productPriceValue(p) >= (f.priceMin as number))
+    if (f.priceMax != null) list = list.filter((p) => productPriceValue(p) <= (f.priceMax as number))
+    if (requestId === filterRequestId) filteredProducts.value = applyClientFacets(list, f)
   } finally {
     if (requestId === filterRequestId) {
       listLoading.value = false
@@ -253,6 +405,78 @@ const categoryChips = computed<Category[]>(() => {
   return selected.filter((c) => c !== singleLockedCategory.value)
 })
 
+interface FilterChip {
+  key: string
+  label: string
+  /** The facet that already shows this selection, or null if none does. */
+  facet: FacetId | null
+  remove: () => void
+}
+
+/**
+ * Every applied filter as a removable chip.
+ *
+ * Colour and subtype have no control anywhere — they arrive from a collection
+ * preset or a mega-menu deep link (`?metal=yellow`, `?style=stud`) — so they
+ * carry no facet, and the desktop rail shows them for exactly that reason: a
+ * filter the shopper can't see is one they can't undo.
+ */
+const filterChips = computed<FilterChip[]>(() => {
+  const f = appliedFilters.value
+  const chips: FilterChip[] = []
+  categoryChips.value.forEach((cat) =>
+    chips.push({ key: `cat-${cat}`, label: cat, facet: 'category', remove: () => toggleCategory(cat) }),
+  )
+  f.materials.forEach((m) =>
+    chips.push({ key: `mat-${m}`, label: m.charAt(0).toUpperCase() + m.slice(1), facet: 'material', remove: () => toggleMaterial(m) }),
+  )
+  f.colors.forEach((c) =>
+    chips.push({
+      key: `color-${c}`,
+      label: c.charAt(0).toUpperCase() + c.slice(1),
+      facet: null,
+      remove: () => { appliedFilters.value.colors = f.colors.filter((v) => v !== c) },
+    }),
+  )
+  f.subtypes.forEach((t) =>
+    chips.push({
+      key: `subtype-${t}`,
+      label: t.replace(/-/g, ' ').replace(/^./, (ch) => ch.toUpperCase()),
+      facet: null,
+      remove: () => { appliedFilters.value.subtypes = f.subtypes.filter((v) => v !== t) },
+    }),
+  )
+  f.metals.forEach((id) =>
+    chips.push({ key: `metal-${id}`, label: metalLabel(id), facet: 'metal', remove: () => toggleMetal(id) }),
+  )
+  f.stones.forEach((id) =>
+    chips.push({ key: `stone-${id}`, label: stoneLabel(id), facet: 'stone', remove: () => toggleStone(id) }),
+  )
+  f.types.forEach((id) =>
+    chips.push({ key: `type-${id}`, label: bangleBraceletTypeLabel(id), facet: 'type', remove: () => toggleType(id) }),
+  )
+  f.centerShapes.forEach((shape) =>
+    chips.push({ key: `shape-${shape}`, label: shape, facet: 'stone-shape', remove: () => toggleCenterShape(shape) }),
+  )
+  f.centerStoneSizes.forEach((size) =>
+    chips.push({ key: `size-${size}`, label: formatCenterStoneSize(size), facet: 'stone-size', remove: () => toggleCenterStoneSize(size) }),
+  )
+  if (priceNarrowed.value) {
+    chips.push({
+      key: 'price',
+      label: `${formatPrice(priceLow.value)} – ${formatPrice(priceHigh.value)}`,
+      facet: 'price',
+      remove: clearPrice,
+    })
+  }
+  return chips
+})
+
+/** Chips the sidebar's own controls don't already show, for the desktop rail. */
+const unshownChips = computed(() =>
+  filterChips.value.filter((chip) => chip.facet === null || !facets.value.includes(chip.facet)),
+)
+
 const activeFilterCount = computed(() => {
   const f = appliedFilters.value
   let count = 0
@@ -266,6 +490,10 @@ const activeFilterCount = computed(() => {
   if (f.subtypes?.length) count++
   if (f.centerShapes?.length) count++
   if (f.centerStoneSizes?.length) count++
+  if (f.metals.length) count++
+  if (f.stones.length) count++
+  if (f.types.length) count++
+  if (priceNarrowed.value) count++
   return count
 })
 
@@ -344,8 +572,106 @@ watch([activeTab, appliedFilters], () => {
 
       <!-- Desktop filter sidebar -->
       <aside v-if="sidebar && !catalogLocked" class="ect-hidden lg:ect-block lg:ect-w-56 lg:ect-shrink-0 lg:ect-sticky lg:ect-top-28 lg:ect-self-start lg:ect-max-h-[calc(100vh-8rem)] lg:ect-overflow-y-auto lg:ect-pr-2 ect-no-scrollbar">
+        <!-- Price -->
+        <hr v-if="showFacet('price') && !isFirstFacet('price')" class="ect-border-sand ect-mb-6" />
+        <section v-if="showFacet('price')" class="ect-mb-6">
+          <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.18em] ect-text-gold-700 ect-mb-3.5">Price</h3>
+          <p class="ect-font-body ect-text-sm ect-text-charcoal/80 ect-mb-3">{{ formatPrice(priceLow) }} <span class="ect-text-charcoal/35">–</span> {{ formatPrice(priceHigh) }}</p>
+          <div class="price-range">
+            <span class="price-track" aria-hidden="true" />
+            <span
+              class="price-fill"
+              aria-hidden="true"
+              :style="{
+                left: `${((priceLow - priceFloor) / priceSpan) * 100}%`,
+                right: `${100 - ((priceHigh - priceFloor) / priceSpan) * 100}%`,
+              }"
+            />
+            <input
+              type="range"
+              class="price-thumb"
+              aria-label="Minimum price"
+              :min="priceFloor"
+              :max="priceSliderMax"
+              :step="priceStep"
+              :value="priceLow"
+              @input="dragPrice('low', Number(($event.target as HTMLInputElement).value))"
+              @change="commitPrice()"
+            />
+            <input
+              type="range"
+              class="price-thumb"
+              aria-label="Maximum price"
+              :min="priceFloor"
+              :max="priceSliderMax"
+              :step="priceStep"
+              :value="priceHigh"
+              @input="dragPrice('high', Number(($event.target as HTMLInputElement).value))"
+              @change="commitPrice()"
+            />
+          </div>
+          <button
+            v-if="priceNarrowed"
+            type="button"
+            @click="clearPrice()"
+            class="ect-mt-3 ect-font-body ect-text-xs ect-font-medium ect-text-gold-700 hover:ect-text-gold-800 ect-underline ect-underline-offset-2 ect-transition-colors"
+          >Reset price</button>
+        </section>
+
+        <!-- Metal -->
+        <hr v-if="showFacet('metal') && !isFirstFacet('metal')" class="ect-border-sand ect-mb-6" />
+        <section v-if="showFacet('metal')" class="ect-mb-6">
+          <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.18em] ect-text-gold-700 ect-mb-3.5">Metal</h3>
+          <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
+            <li v-for="option in METAL_OPTIONS" :key="option.id">
+              <label class="ect-flex ect-items-center ect-gap-2.5 ect-cursor-pointer ect-group">
+                <input type="checkbox" class="ect-sr-only" :checked="appliedFilters.metals.includes(option.id)" @change="toggleMetal(option.id)" />
+                <span class="ect-w-[18px] ect-h-[18px] ect-rounded ect-border ect-flex ect-items-center ect-justify-center ect-transition-colors" :class="appliedFilters.metals.includes(option.id) ? 'ect-bg-rose-700 ect-border-rose-700' : 'ect-border-charcoal/25 group-hover:ect-border-rose-400'">
+                  <svg v-if="appliedFilters.metals.includes(option.id)" class="ect-w-3 ect-h-3 ect-text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                </span>
+                <span class="ect-font-body ect-text-sm ect-text-charcoal/80 group-hover:ect-text-charcoal ect-transition-colors">{{ option.label }}</span>
+              </label>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Stone -->
+        <hr v-if="showFacet('stone') && !isFirstFacet('stone')" class="ect-border-sand ect-mb-6" />
+        <section v-if="showFacet('stone')" class="ect-mb-6">
+          <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.18em] ect-text-gold-700 ect-mb-3.5">Stone</h3>
+          <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
+            <li v-for="option in STONE_OPTIONS" :key="option.id">
+              <label class="ect-flex ect-items-center ect-gap-2.5 ect-cursor-pointer ect-group">
+                <input type="checkbox" class="ect-sr-only" :checked="appliedFilters.stones.includes(option.id)" @change="toggleStone(option.id)" />
+                <span class="ect-w-[18px] ect-h-[18px] ect-rounded ect-border ect-flex ect-items-center ect-justify-center ect-transition-colors" :class="appliedFilters.stones.includes(option.id) ? 'ect-bg-rose-700 ect-border-rose-700' : 'ect-border-charcoal/25 group-hover:ect-border-rose-400'">
+                  <svg v-if="appliedFilters.stones.includes(option.id)" class="ect-w-3 ect-h-3 ect-text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                </span>
+                <span class="ect-font-body ect-text-sm ect-text-charcoal/80 group-hover:ect-text-charcoal ect-transition-colors">{{ option.label }}</span>
+              </label>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Type -->
+        <hr v-if="showFacet('type') && !isFirstFacet('type')" class="ect-border-sand ect-mb-6" />
+        <section v-if="showFacet('type')" class="ect-mb-6">
+          <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.18em] ect-text-gold-700 ect-mb-3.5">Type</h3>
+          <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
+            <li v-for="option in BANGLE_BRACELET_TYPE_OPTIONS" :key="option.id">
+              <label class="ect-flex ect-items-center ect-gap-2.5 ect-cursor-pointer ect-group">
+                <input type="checkbox" class="ect-sr-only" :checked="appliedFilters.types.includes(option.id)" @change="toggleType(option.id)" />
+                <span class="ect-w-[18px] ect-h-[18px] ect-rounded ect-border ect-flex ect-items-center ect-justify-center ect-transition-colors" :class="appliedFilters.types.includes(option.id) ? 'ect-bg-rose-700 ect-border-rose-700' : 'ect-border-charcoal/25 group-hover:ect-border-rose-400'">
+                  <svg v-if="appliedFilters.types.includes(option.id)" class="ect-w-3 ect-h-3 ect-text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                </span>
+                <span class="ect-font-body ect-text-sm ect-text-charcoal/80 group-hover:ect-text-charcoal ect-transition-colors">{{ option.label }}</span>
+              </label>
+            </li>
+          </ul>
+        </section>
+
         <!-- Category -->
-        <section v-if="!singleLockedCategory" class="ect-mb-6">
+        <hr v-if="showFacet('category') && !isFirstFacet('category')" class="ect-border-sand ect-mb-6" />
+        <section v-if="showFacet('category')" class="ect-mb-6">
           <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.18em] ect-text-gold-700 ect-mb-3.5">Category</h3>
           <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
             <li v-for="cat in categoryOptions" :key="cat">
@@ -359,10 +685,10 @@ watch([activeTab, appliedFilters], () => {
             </li>
           </ul>
         </section>
-        <hr v-if="!singleLockedCategory" class="ect-border-sand ect-mb-6" />
 
         <!-- Material -->
-        <section class="ect-mb-6">
+        <hr v-if="showFacet('material') && !isFirstFacet('material')" class="ect-border-sand ect-mb-6" />
+        <section v-if="showFacet('material')" class="ect-mb-6">
           <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.18em] ect-text-gold-700 ect-mb-3.5">Material</h3>
           <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
             <li v-for="m in materialOptions" :key="m.id">
@@ -376,10 +702,10 @@ watch([activeTab, appliedFilters], () => {
             </li>
           </ul>
         </section>
-        <hr class="ect-border-sand ect-mb-6" />
 
         <!-- Stone Shape -->
-        <section>
+        <hr v-if="showFacet('stone-shape') && !isFirstFacet('stone-shape')" class="ect-border-sand ect-mb-6" />
+        <section v-if="showFacet('stone-shape')" class="ect-mb-6">
           <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.18em] ect-text-gold-700 ect-mb-3.5">Stone Shape</h3>
           <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
             <li v-for="shape in CENTER_SHAPE_OPTIONS" :key="shape">
@@ -393,10 +719,10 @@ watch([activeTab, appliedFilters], () => {
             </li>
           </ul>
         </section>
-        <hr class="ect-border-sand ect-my-6" />
 
         <!-- Stone Size -->
-        <section>
+        <hr v-if="showFacet('stone-size') && !isFirstFacet('stone-size')" class="ect-border-sand ect-mb-6" />
+        <section v-if="showFacet('stone-size')">
           <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.18em] ect-text-gold-700 ect-mb-3.5">Stone Size</h3>
           <p v-if="!appliedFilters.centerShapes.length" class="ect-font-body ect-text-sm ect-leading-5 ect-text-charcoal/45">Select a stone shape to see available sizes.</p>
           <ul v-else class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
@@ -446,27 +772,19 @@ watch([activeTab, appliedFilters], () => {
           </div>
         </div>
 
-    <!-- Active filter chips -->
-    <section v-if="activeFilterCount > 0" class="ect-flex ect-flex-wrap ect-gap-2 ect-mb-6" :class="sidebar ? 'lg:ect-hidden' : ''">
-      <span v-for="cat in categoryChips" :key="cat" class="ect-inline-flex ect-items-center ect-gap-1 ect-px-3 ect-py-1 ect-rounded-full ect-bg-charcoal/10 ect-text-charcoal ect-font-body ect-text-xs ect-font-medium">
-        {{ cat }}
-        <button type="button" @click="toggleCategory(cat)" class="hover:ect-text-charcoal/70">×</button>
+    <!-- Active filter chips. With a sidebar the desktop rail carries only what
+         no visible facet shows — a colour or subtype from a mega-menu deep
+         link — since the checkboxes already stand for the rest. -->
+    <section v-if="filterChips.length" class="ect-flex ect-flex-wrap ect-gap-2 ect-mb-6" :class="sidebar ? 'lg:ect-hidden' : ''">
+      <span v-for="chip in filterChips" :key="chip.key" class="ect-inline-flex ect-items-center ect-gap-1 ect-px-3 ect-py-1 ect-rounded-full ect-bg-charcoal/10 ect-text-charcoal ect-font-body ect-text-xs ect-font-medium">
+        {{ chip.label }}
+        <button type="button" @click="chip.remove()" class="hover:ect-text-charcoal/70" :aria-label="`Remove ${chip.label} filter`">×</button>
       </span>
-      <span v-for="m in appliedFilters.materials" :key="m" class="ect-inline-flex ect-items-center ect-gap-1 ect-px-3 ect-py-1 ect-rounded-full ect-bg-charcoal/10 ect-text-charcoal ect-font-body ect-text-xs ect-font-medium ect-capitalize">
-        {{ m }}
-        <button type="button" @click="appliedFilters.materials = appliedFilters.materials.filter(v => v !== m)" class="hover:ect-text-charcoal/70">×</button>
-      </span>
-      <span v-for="subtype in appliedFilters.subtypes" :key="subtype" class="ect-inline-flex ect-items-center ect-gap-1 ect-px-3 ect-py-1 ect-rounded-full ect-bg-charcoal/10 ect-text-charcoal ect-font-body ect-text-xs ect-font-medium ect-capitalize">
-        {{ subtype.replace('-', ' ') }}
-        <button type="button" @click="appliedFilters.subtypes = appliedFilters.subtypes.filter(t => t !== subtype)" class="hover:ect-text-charcoal/70">×</button>
-      </span>
-      <span v-for="shape in appliedFilters.centerShapes" :key="'shape-'+shape" class="ect-inline-flex ect-items-center ect-gap-1 ect-px-3 ect-py-1 ect-rounded-full ect-bg-charcoal/10 ect-text-charcoal ect-font-body ect-text-xs ect-font-medium">
-        {{ shape }}
-        <button type="button" @click="toggleCenterShape(shape)" class="hover:ect-text-charcoal/70">×</button>
-      </span>
-      <span v-for="size in appliedFilters.centerStoneSizes" :key="'size-'+size" class="ect-inline-flex ect-items-center ect-gap-1 ect-px-3 ect-py-1 ect-rounded-full ect-bg-charcoal/10 ect-text-charcoal ect-font-body ect-text-xs ect-font-medium">
-        {{ formatCenterStoneSize(size) }}
-        <button type="button" @click="appliedFilters.centerStoneSizes = appliedFilters.centerStoneSizes.filter(s => s !== size)" class="hover:ect-text-charcoal/70">×</button>
+    </section>
+    <section v-if="sidebar && unshownChips.length" class="ect-hidden lg:ect-flex ect-flex-wrap ect-gap-2 ect-mb-6">
+      <span v-for="chip in unshownChips" :key="chip.key" class="ect-inline-flex ect-items-center ect-gap-1 ect-px-3 ect-py-1 ect-rounded-full ect-bg-charcoal/10 ect-text-charcoal ect-font-body ect-text-xs ect-font-medium">
+        {{ chip.label }}
+        <button type="button" @click="chip.remove()" class="hover:ect-text-charcoal/70" :aria-label="`Remove ${chip.label} filter`">×</button>
       </span>
     </section>
 
@@ -516,7 +834,7 @@ watch([activeTab, appliedFilters], () => {
       <p class="ect-font-body ect-text-sm ect-text-charcoal/50 ect-mb-5">Try adjusting or clearing your filters to see more.</p>
       <button
         type="button"
-        @click="appliedFilters = { categories: [...lockedCategories], materials: [], colors: [], subtypes: [], centerShapes: [], centerStoneSizes: [] }"
+        @click="appliedFilters = emptyFilters(lockedCategories)"
         class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-5 ect-py-2.5 ect-rounded-full ect-bg-charcoal ect-text-white ect-font-body ect-text-sm ect-font-semibold hover:ect-bg-noir ect-transition-colors"
       >
         Clear all filters
@@ -533,6 +851,8 @@ watch([activeTab, appliedFilters], () => {
     :initial="appliedFilters"
     :products="products"
     :locked-categories="lockedCategories"
+    :facets="facets"
+    :price-bounds="priceBounds"
     @apply="applyModalFilters"
   />
 </template>
@@ -541,4 +861,55 @@ watch([activeTab, appliedFilters], () => {
 .ect-no-scrollbar::-webkit-scrollbar { display: none; }
 .ect-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Two range inputs stacked on one track. The inputs are transparent and let
+   pointer events through except on their thumbs, so either end stays grabbable
+   even when both sit at the same value. */
+.price-range { position: relative; height: 20px; }
+.price-track,
+.price-fill {
+  position: absolute;
+  top: 50%;
+  height: 3px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+}
+.price-track { left: 0; right: 0; background: #ebe7e2; }
+.price-fill { background: #a33d4f; }
+.price-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  background: none;
+  appearance: none;
+  -webkit-appearance: none;
+  pointer-events: none;
+}
+.price-thumb:focus { outline: none; }
+.price-thumb::-webkit-slider-runnable-track { height: 20px; background: none; }
+.price-thumb::-moz-range-track { height: 20px; background: none; }
+.price-thumb::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid #a33d4f;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(27, 25, 23, 0.25);
+  cursor: pointer;
+}
+.price-thumb::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid #a33d4f;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(27, 25, 23, 0.25);
+  cursor: pointer;
+}
+.price-thumb:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(163, 61, 79, 0.25); }
+.price-thumb:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px rgba(163, 61, 79, 0.25); }
 </style>

@@ -48,6 +48,13 @@ export type ProductSubtype =
   | 'statement-necklace'
   | 'cuff'
   | 'chain-bracelet'
+  // Bangle/bracelet Types the storefront filters and the mega menu links by.
+  // bangleBraceletTypeOf in src/data/filters.ts reads older `cuff` and
+  // `chain-bracelet` records as these until merchandising refiles them.
+  | 'bangle'
+  | 'gemstone-bracelet'
+  | 'tennis-bracelet'
+  | 'chain'
   | 'drop'
   | 'stud'
   | 'mangal-sutra'

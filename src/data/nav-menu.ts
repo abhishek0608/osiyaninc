@@ -72,6 +72,7 @@ export interface NavItem {
 const SUBTYPES: readonly ProductSubtype[] = [
   'solitaire', 'cluster', 'multi-stone', 'open-ring', 'pendant', 'statement-necklace',
   'cuff', 'chain-bracelet', 'drop', 'stud', 'mangal-sutra', 'jhumka',
+  'bangle', 'gemstone-bracelet', 'tennis-bracelet', 'chain',
 ]
 const METALS: readonly Color[] = ['yellow', 'white', 'rose', 'oxidised']
 const MATERIALS: readonly Material[] = ['gold', 'silver']
@@ -156,7 +157,6 @@ function collectionsColumn(slug: string, shopAllLabel: string): NavGroup[] {
       heading: 'Collections',
       links: [
         filterLink('New arrivals', slug, { tab: 'new' }),
-        pendingLink('Bridal', slug),
         pendingLink('Everyday', slug),
         pendingLink('Gifting', slug),
         shopAll(shopAllLabel, `/collections/${slug}`),
@@ -296,12 +296,10 @@ export const NAV_ITEMS: NavItem[] = [
           {
             heading: 'Shop by style',
             links: [
-              filterLink('Cuffs', 'bracelets', { style: 'cuff' }),
-              filterLink('Chain bracelets', 'bracelets', { style: 'chain-bracelet' }),
-              pendingLink('Classic bangles', 'bracelets'),
-              pendingLink('Yoga bangles', 'bracelets'),
-              pendingLink('Tennis bracelets', 'bracelets'),
-              pendingLink('Charm bracelets', 'bracelets'),
+              filterLink('Bangle', 'bracelets', { style: 'bangle' }),
+              filterLink('Gemstone Bracelet', 'bracelets', { style: 'gemstone-bracelet' }),
+              filterLink('Tennis Bracelet', 'bracelets', { style: 'tennis-bracelet' }),
+              filterLink('Chain', 'bracelets', { style: 'chain' }),
             ],
           },
         ],

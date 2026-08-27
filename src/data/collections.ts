@@ -19,7 +19,17 @@ export const COLLECTION_LINKS: CollectionLink[] = [
   { slug: 'rings', label: 'Ring', title: 'Rings', description: 'Solitaires, clusters and everyday bands.', icon: 'ring', preset: { category: 'Rings' } },
   { slug: 'earrings', label: 'Earring', title: 'Earrings', description: 'Studs, drops and statement jhumkas.', icon: 'earrings', preset: { category: 'Earrings' } },
   { slug: 'pendants', label: 'Pendant', title: 'Pendants', description: 'Delicate pendants to layer or wear solo.', icon: 'pendant', preset: { subtypes: ['pendant'] } },
-  { slug: 'bracelets', label: 'Bracelet / Bangle', title: 'Bracelets & Bangles', description: 'Cuffs, chains and classic bangles.', icon: 'bracelet', preset: { categories: ['Bracelets', 'Bangles'] } },
+  // Bracelets & Bangles filters on Price/Metal/Stone/Type instead of the default
+  // set: Category would only split the page back into its two halves, and Type
+  // already carries that split (Bangle) alongside the bracelet silhouettes.
+  {
+    slug: 'bracelets',
+    label: 'Bracelet / Bangle',
+    title: 'Bracelets & Bangles',
+    description: 'Cuffs, chains and classic bangles.',
+    icon: 'bracelet',
+    preset: { categories: ['Bracelets', 'Bangles'], facets: ['price', 'metal', 'stone', 'type'] },
+  },
   { slug: 'necklaces', label: 'Necklace', title: 'Necklaces', description: 'Statement necklaces and timeless chains.', icon: 'necklace', preset: { category: 'Necklaces' } },
 ]
 

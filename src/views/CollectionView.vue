@@ -5,6 +5,7 @@ import CollectionGrid from '../components/CollectionGrid.vue'
 import { findCollectionBySlug } from '../data/collections'
 import { useCollectionPreset } from '../composables/useCollectionPreset'
 import { parseCollectionQuery } from '../data/nav-menu'
+import { isBangleBraceletTypeId } from '../data/filters'
 import { setPageMeta } from '../composables/useSeo'
 
 const route = useRoute()
@@ -24,10 +25,20 @@ function applyForSlug() {
   // ?metal=yellow, ?tab=new), so those links deep-link into a filtered grid and
   // stay shareable. Anything the query doesn't name falls back to the
   // collection's own preset.
+  //
+  // ?style= carries a subtype, except on Bracelets & Bangles where the four
+  // bangle/bracelet Types go to the Type facet instead — that facet resolves
+  // records still filed as `cuff` or `chain-bracelet`, which a bare subtype
+  // match would miss.
   const q = parseCollectionQuery(route.query)
+  const styleFilter = !q.style
+    ? {}
+    : isBangleBraceletTypeId(q.style)
+      ? { types: [q.style] }
+      : { subtypes: [q.style] }
   setPreset({
     ...c.preset,
-    ...(q.style ? { subtypes: [q.style] } : {}),
+    ...styleFilter,
     ...(q.metal ? { color: q.metal } : {}),
     ...(q.material ? { material: q.material } : {}),
     ...(q.tab ? { tab: q.tab } : {}),

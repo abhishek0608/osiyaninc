@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import type { Category, Material, Color, ProductSubtype } from '../data/products'
+import type { BangleBraceletTypeId, FacetId } from '../data/filters'
 
 type TabId = 'new' | 'bestseller' | 'all'
 
@@ -15,6 +16,13 @@ export interface CollectionPreset {
   color?: Color
   tab?: TabId
   subtypes?: ProductSubtype[]
+  /** Bangle/bracelet Type facet selection. */
+  types?: BangleBraceletTypeId[]
+  /**
+   * The filter facets this collection offers, in render order. Omitted means
+   * DEFAULT_FACETS, so a page only names this when its filter set differs.
+   */
+  facets?: FacetId[]
 }
 
 /** The categories a preset scopes to, whether it used `category` or `categories`. */
