@@ -49,7 +49,7 @@ export type ProductSubtype =
   | 'cuff'
   | 'chain-bracelet'
   // Bangle/bracelet Types the storefront filters and the mega menu links by.
-  // bangleBraceletTypeOf in src/data/filters.ts reads older `cuff` and
+  // PIECE_TYPE_OPTIONS in src/data/filters.ts reads older `cuff` and
   // `chain-bracelet` records as these until merchandising refiles them.
   | 'bangle'
   | 'gemstone-bracelet'
@@ -57,6 +57,10 @@ export type ProductSubtype =
   | 'chain'
   | 'drop'
   | 'stud'
+  // Earring Types the storefront filters and the mega menu links by.
+  | 'hoops'
+  | 'dangle-drop'
+  | 'statement-earring'
   | 'mangal-sutra'
   | 'jhumka'
 

@@ -101,6 +101,9 @@ const subtypeOptions = [
   { value: 'chain', label: 'Chain' },
   { value: 'drop', label: 'Drop earrings' },
   { value: 'stud', label: 'Stud earrings' },
+  { value: 'hoops', label: 'Hoops' },
+  { value: 'dangle-drop', label: 'Dangle and drop' },
+  { value: 'statement-earring', label: 'Statement earring' },
   { value: 'mangal-sutra', label: 'Mangal sutra' },
   { value: 'jhumka', label: 'Jhumka' },
 ]

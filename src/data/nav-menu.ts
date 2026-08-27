@@ -73,6 +73,7 @@ const SUBTYPES: readonly ProductSubtype[] = [
   'solitaire', 'cluster', 'multi-stone', 'open-ring', 'pendant', 'statement-necklace',
   'cuff', 'chain-bracelet', 'drop', 'stud', 'mangal-sutra', 'jhumka',
   'bangle', 'gemstone-bracelet', 'tennis-bracelet', 'chain',
+  'hoops', 'dangle-drop', 'statement-earring',
 ]
 const METALS: readonly Color[] = ['yellow', 'white', 'rose', 'oxidised']
 const MATERIALS: readonly Material[] = ['gold', 'silver']
@@ -177,7 +178,7 @@ export const NAV_ITEMS: NavItem[] = [
             heading: 'Shop by style',
             links: [
               filterLink('Studs', 'earrings', { style: 'stud' }),
-              pendingLink('Hoops', 'earrings'),
+              filterLink('Hoops', 'earrings', { style: 'hoops' }),
               filterLink('Drops', 'earrings', { style: 'drop' }),
               pendingLink('Chandeliers', 'earrings'),
               pendingLink('Ear cuffs', 'earrings'),

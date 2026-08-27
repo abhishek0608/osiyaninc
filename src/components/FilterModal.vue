@@ -2,22 +2,23 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { CATALOG_CATEGORIES, CENTER_SHAPE_OPTIONS, centerStoneSizesForShapes, formatCenterStoneSize, productHasCenterShape, productHasCenterStoneSize, type Category, type Material, type Color } from '../data/products'
 import {
-  BANGLE_BRACELET_TYPE_OPTIONS,
   DEFAULT_FACETS,
-  FACET_ORDER,
-  METAL_OPTIONS,
-  STONE_OPTIONS,
-  bangleBraceletTypeLabel,
+  FACET_HEADINGS,
   formatPrice,
   metalLabel,
-  productHasBangleBraceletType,
+  metalOptionsFor,
+  pieceTypeLabel,
+  pieceTypeOptionsFor,
   productHasMetal,
+  productHasPieceType,
   productHasStone,
   productPriceValue,
   stoneLabel,
-  type BangleBraceletTypeId,
+  stoneOptionsFor,
   type FacetId,
+  type FacetOption,
   type MetalId,
+  type PieceTypeId,
   type PriceBounds,
   type StoneId,
 } from '../data/filters'
@@ -30,7 +31,7 @@ interface Filters {
   centerStoneSizes: string[]
   metals: MetalId[]
   stones: StoneId[]
-  types: BangleBraceletTypeId[]
+  types: PieceTypeId[]
   priceMin: number | null
   priceMax: number | null
 }
@@ -44,13 +45,23 @@ const props = defineProps<{
   // the section but offers only those, so the shopper narrows without escaping
   // the page's scope.
   lockedCategories?: Category[]
-  /** The facets this collection offers; the panel mirrors the desktop sidebar. */
+  /**
+   * The facets this collection offers, in order, and the options each offers —
+   * the panel mirrors the desktop sidebar exactly, so both come from the grid
+   * rather than being decided again here.
+   */
   facets?: FacetId[]
+  metalOptions?: MetalId[]
+  stoneOptions?: StoneId[]
+  typeOptions?: PieceTypeId[]
   /** Price slider ends, already scoped to the page's categories by the grid. */
   priceBounds?: PriceBounds | null
 }>()
 
 const facets = computed<FacetId[]>(() => (props.facets?.length ? props.facets : DEFAULT_FACETS))
+const metalOptions = computed(() => metalOptionsFor(props.metalOptions))
+const stoneOptions = computed(() => stoneOptionsFor(props.stoneOptions))
+const typeOptions = computed(() => pieceTypeOptionsFor(props.typeOptions))
 
 const lockedCategories = computed<Category[]>(() => props.lockedCategories ?? [])
 const singleLockedCategory = computed<Category | null>(() =>
@@ -60,18 +71,78 @@ const categoryOptions = computed<Category[]>(() =>
   lockedCategories.value.length > 1 ? lockedCategories.value : CATALOG_CATEGORIES,
 )
 
-// Same rule placement as the desktop rail in CollectionGrid.vue: one rule above
-// each section and none above the first, so a facet that isn't drawn — Category
-// on a single-category page, Price with nothing priced in scope — must not count
-// as one.
+/** The pill facets, and the options each offers on this page. */
+const CHECKBOX_FACETS: FacetId[] = ['metal', 'stone', 'type', 'category', 'material', 'stone-shape']
+
+const materialOptions: FacetOption[] = [
+  { id: 'gold', label: 'Gold' },
+  { id: 'silver', label: 'Silver' },
+]
+
+function facetOptions(facet: FacetId): FacetOption[] {
+  switch (facet) {
+    case 'metal': return metalOptions.value
+    case 'stone': return stoneOptions.value
+    case 'type': return typeOptions.value
+    case 'category': return categoryOptions.value.map((cat) => ({ id: cat, label: cat }))
+    case 'material': return materialOptions
+    case 'stone-shape': return CENTER_SHAPE_OPTIONS.map((shape) => ({ id: shape, label: shape }))
+    default: return []
+  }
+}
+
+function facetSelected(facet: FacetId): string[] {
+  const f = local.value
+  switch (facet) {
+    case 'metal': return f.metals
+    case 'stone': return f.stones
+    case 'type': return f.types
+    case 'category': return f.categories
+    case 'material': return f.materials
+    case 'stone-shape': return f.centerShapes
+    default: return []
+  }
+}
+
+function toggleFacet(facet: FacetId, id: string) {
+  switch (facet) {
+    case 'metal': return toggleMetal(id as MetalId)
+    case 'stone': return toggleStone(id as StoneId)
+    case 'type': return toggleType(id as PieceTypeId)
+    case 'category': return toggleCategory(id as Category)
+    case 'material': return toggleMaterial(id as Material)
+    case 'stone-shape': return toggleCenterShape(id)
+  }
+}
+
+/** Count each pill would yield if it were the one chosen. */
+function facetCount(facet: FacetId, id: string): number {
+  switch (facet) {
+    case 'metal': return countFor('metal', (p) => productHasMetal(p, id as MetalId))
+    case 'stone': return countFor('stone', (p) => productHasStone(p, id as StoneId))
+    case 'type': return countFor('type', (p) => productHasPieceType(p, id as PieceTypeId))
+    case 'category': return countFor('category', (p) => p.category === id)
+    case 'material': return countFor('material', (p) => p.material === id)
+    case 'stone-shape': return countFor('shape', (p) => productHasCenterShape(p.customizationOptions?.centerShapes, id))
+    default: return 0
+  }
+}
+
+/**
+ * Same as the desktop rail in CollectionGrid.vue: a facet that isn't drawn —
+ * Category on a single-category page, Price with nothing priced in scope, any
+ * pill facet with no options — must not count as one, or the rule that
+ * separates sections opens the panel with nothing above it.
+ */
 const showFacet = (facet: FacetId) => {
   if (!facets.value.includes(facet)) return false
-  if (facet === 'category') return !singleLockedCategory.value
+  if (facet === 'category' && singleLockedCategory.value) return false
   if (facet === 'price') return Boolean(props.priceBounds)
+  if (CHECKBOX_FACETS.includes(facet)) return facetOptions(facet).length > 0
   return true
 }
-const visibleFacets = computed(() => FACET_ORDER.filter(showFacet))
-const isFirstFacet = (facet: FacetId) => visibleFacets.value[0] === facet
+// Preset order, not a fixed one: Earrings wants Stone before Metal.
+const visibleFacets = computed(() => facets.value.filter(showFacet))
 
 const emit = defineEmits<{
   (e: 'update:modelValue', val: boolean): void
@@ -129,7 +200,7 @@ function matches(p: any, exclude: string = '') {
   if (exclude !== 'size' && f.centerStoneSizes.length && !f.centerStoneSizes.some((s) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, s))) return false
   if (exclude !== 'metal' && f.metals.length && !f.metals.some((id) => productHasMetal(p, id))) return false
   if (exclude !== 'stone' && f.stones.length && !f.stones.some((id) => productHasStone(p, id))) return false
-  if (exclude !== 'type' && f.types.length && !f.types.some((id) => productHasBangleBraceletType(p, id))) return false
+  if (exclude !== 'type' && f.types.length && !f.types.some((id) => productHasPieceType(p, id))) return false
   if (exclude !== 'price') {
     const value = productPriceValue(p)
     if (f.priceMin != null && value < f.priceMin) return false
@@ -199,14 +270,8 @@ function toggleMaterial(m: Material) {
 
 function toggleCenterShape(s: string) {
   const idx = local.value.centerShapes.indexOf(s)
-  if (idx === -1) {
-    local.value.centerShapes.push(s)
-    // Size counts are faceted by the selected shape. Reveal the next facet so
-    // shoppers can immediately see which stone sizes are available.
-    stoneSizeOpen.value = true
-  } else {
-    local.value.centerShapes.splice(idx, 1)
-  }
+  if (idx === -1) local.value.centerShapes.push(s)
+  else local.value.centerShapes.splice(idx, 1)
   const availableSizes = new Set(centerStoneSizesForShapes(local.value.centerShapes))
   local.value.centerStoneSizes = local.value.centerStoneSizes.filter((size) => availableSizes.has(size))
 }
@@ -231,7 +296,7 @@ function toggleStone(id: StoneId) {
   toggleIn(local.value.stones, id)
 }
 
-function toggleType(id: BangleBraceletTypeId) {
+function toggleType(id: PieceTypeId) {
   toggleIn(local.value.types, id)
 }
 
@@ -241,13 +306,7 @@ function countFor(facet: string, predicate: (p: any) => boolean) {
   return list.filter((p) => matches(p, facet) && predicate(p)).length
 }
 
-const categoryCount = (cat: Category) => countFor('category', (p) => p.category === cat)
-const materialCount = (m: Material) => countFor('material', (p) => p.material === m)
-const shapeCount = (s: string) => countFor('shape', (p) => productHasCenterShape(p.customizationOptions?.centerShapes, s))
 const sizeCount = (s: string) => countFor('size', (p) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, s))
-const metalCount = (id: MetalId) => countFor('metal', (p) => productHasMetal(p, id))
-const stoneCount = (id: StoneId) => countFor('stone', (p) => productHasStone(p, id))
-const typeCount = (id: BangleBraceletTypeId) => countFor('type', (p) => productHasBangleBraceletType(p, id))
 const availableCenterStoneSizes = computed(() => centerStoneSizesForShapes(local.value.centerShapes))
 
 // Applied selections rendered as removable chips at the top of the panel.
@@ -267,7 +326,7 @@ const activeChips = computed(() => {
   chosen.forEach((c) => chips.push({ key: `cat-${c}`, label: c, remove: () => toggleCategory(c) }))
   local.value.metals.forEach((id) => chips.push({ key: `metal-${id}`, label: metalLabel(id), remove: () => toggleMetal(id) }))
   local.value.stones.forEach((id) => chips.push({ key: `stone-${id}`, label: stoneLabel(id), remove: () => toggleStone(id) }))
-  local.value.types.forEach((id) => chips.push({ key: `type-${id}`, label: bangleBraceletTypeLabel(id), remove: () => toggleType(id) }))
+  local.value.types.forEach((id) => chips.push({ key: `type-${id}`, label: pieceTypeLabel(id), remove: () => toggleType(id) }))
   local.value.centerShapes.forEach((s) => chips.push({ key: `shape-${s}`, label: s, remove: () => toggleCenterShape(s) }))
   local.value.centerStoneSizes.forEach((s) => chips.push({ key: `size-${s}`, label: formatCenterStoneSize(s), remove: () => toggleCenterStoneSize(s) }))
   if (priceNarrowed.value) {
@@ -290,10 +349,6 @@ function clear() {
     priceMax: null,
   }
 }
-
-// Collapsible sections (header toggles content visibility).
-const stoneShapeOpen = ref(false)
-const stoneSizeOpen = ref(false)
 
 function apply() {
   emit('apply', cloneFilters(local.value))
@@ -368,11 +423,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
           </header>
 
           <section class="ect-px-6 ect-py-4 ect-space-y-4">
-            <!-- Price -->
-            <template v-if="showFacet('price')">
-              <hr v-if="!isFirstFacet('price')" class="ect-border-sand" />
-              <section>
-                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-2">Price</h3>
+            <!-- One ordered pass, mirroring the desktop rail: the preset decides
+                 which facets appear and in what order. -->
+            <template v-for="(facet, index) in visibleFacets" :key="facet">
+              <hr v-if="index > 0" class="ect-border-sand" />
+
+              <!-- Price -->
+              <section v-if="facet === 'price'">
+                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-2">{{ FACET_HEADINGS.price }}</h3>
                 <p class="ect-font-body ect-text-sm ect-text-charcoal/80 ect-mb-3">{{ formatPrice(priceLow) }} <span class="ect-text-charcoal/35">–</span> {{ formatPrice(priceHigh) }}</p>
                 <div class="price-range">
                   <span class="price-track" aria-hidden="true" />
@@ -407,194 +465,46 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
                 </div>
               </section>
 
-            </template>
-
-            <!-- Metal -->
-            <template v-if="showFacet('metal')">
-              <hr v-if="!isFirstFacet('metal')" class="ect-border-sand" />
-              <section>
-                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-2">Metal</h3>
+              <!-- Metal, Stone, Type, Category, Material, Stone Shape: one pill
+                   list, options and order per the preset. -->
+              <section v-else-if="CHECKBOX_FACETS.includes(facet)">
+                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-2">{{ FACET_HEADINGS[facet] }}</h3>
                 <section class="ect-flex ect-flex-wrap ect-gap-2">
                   <button
-                    v-for="option in METAL_OPTIONS"
+                    v-for="option in facetOptions(facet)"
                     :key="option.id"
                     type="button"
-                    :aria-pressed="local.metals.includes(option.id)"
-                    :class="local.metals.includes(option.id) ? 'ect-bg-gold-50 ect-text-gold-700 ect-border-gold-400' : 'ect-border-sand ect-text-charcoal/80 hover:ect-border-gold-400/60'"
+                    :aria-pressed="facetSelected(facet).includes(option.id)"
+                    :class="facetSelected(facet).includes(option.id) ? 'ect-bg-gold-50 ect-text-gold-700 ect-border-gold-400' : 'ect-border-sand ect-text-charcoal/80 hover:ect-border-gold-400/60'"
                     class="ect-flex-none ect-inline-flex ect-items-center ect-gap-1.5 ect-font-body ect-text-[13px] ect-font-medium ect-px-3 ect-py-2.5 ect-rounded-full ect-border ect-whitespace-nowrap ect-transition-colors"
-                    @click="toggleMetal(option.id)"
+                    @click="toggleFacet(facet, option.id)"
                   >
                     {{ option.label }}
-                    <span class="ect-text-xs" :class="local.metals.includes(option.id) ? 'ect-text-gold-700/60' : 'ect-text-charcoal/40'">{{ metalCount(option.id) }}</span>
+                    <span class="ect-text-xs" :class="facetSelected(facet).includes(option.id) ? 'ect-text-gold-700/60' : 'ect-text-charcoal/40'">{{ facetCount(facet, option.id) }}</span>
                   </button>
                 </section>
               </section>
 
-            </template>
-
-            <!-- Stone -->
-            <template v-if="showFacet('stone')">
-              <hr v-if="!isFirstFacet('stone')" class="ect-border-sand" />
-              <section>
-                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-2">Stone</h3>
-                <section class="ect-flex ect-flex-wrap ect-gap-2">
+              <!-- Stone Size is faceted by the chosen shape, so it stands apart. -->
+              <section v-else-if="facet === 'stone-size'">
+                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-2">{{ FACET_HEADINGS['stone-size'] }}</h3>
+                <section class="ect-flex ect-gap-2.5 ect-flex-wrap">
+                  <p v-if="!local.centerShapes.length" class="ect-font-body ect-text-sm ect-text-charcoal/45">Select a stone shape to see available sizes.</p>
                   <button
-                    v-for="option in STONE_OPTIONS"
-                    :key="option.id"
+                    v-for="size in availableCenterStoneSizes"
+                    :key="size"
                     type="button"
-                    :aria-pressed="local.stones.includes(option.id)"
-                    :class="local.stones.includes(option.id) ? 'ect-bg-gold-50 ect-text-gold-700 ect-border-gold-400' : 'ect-border-sand ect-text-charcoal/80 hover:ect-border-gold-400/60'"
-                    class="ect-flex-none ect-inline-flex ect-items-center ect-gap-1.5 ect-font-body ect-text-[13px] ect-font-medium ect-px-3 ect-py-2.5 ect-rounded-full ect-border ect-whitespace-nowrap ect-transition-colors"
-                    @click="toggleStone(option.id)"
+                    :aria-pressed="local.centerStoneSizes.includes(size)"
+                    :class="local.centerStoneSizes.includes(size) ? 'ect-bg-gold-50 ect-text-gold-700 ect-border-gold-400' : 'ect-border-sand ect-text-charcoal/80 hover:ect-border-gold-400/60'"
+                    class="ect-inline-flex ect-items-center ect-gap-1.5 ect-font-body ect-text-sm ect-font-medium ect-px-5 ect-py-2.5 ect-rounded-full ect-border ect-transition-colors"
+                    @click="toggleCenterStoneSize(size)"
                   >
-                    {{ option.label }}
-                    <span class="ect-text-xs" :class="local.stones.includes(option.id) ? 'ect-text-gold-700/60' : 'ect-text-charcoal/40'">{{ stoneCount(option.id) }}</span>
+                    {{ formatCenterStoneSize(size) }}
+                    <span class="ect-text-xs" :class="local.centerStoneSizes.includes(size) ? 'ect-text-gold-700/60' : 'ect-text-charcoal/40'">{{ sizeCount(size) }}</span>
                   </button>
                 </section>
               </section>
-
             </template>
-
-            <!-- Type -->
-            <template v-if="showFacet('type')">
-              <hr v-if="!isFirstFacet('type')" class="ect-border-sand" />
-              <section>
-                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-2">Type</h3>
-                <section class="ect-flex ect-flex-wrap ect-gap-2">
-                  <button
-                    v-for="option in BANGLE_BRACELET_TYPE_OPTIONS"
-                    :key="option.id"
-                    type="button"
-                    :aria-pressed="local.types.includes(option.id)"
-                    :class="local.types.includes(option.id) ? 'ect-bg-gold-50 ect-text-gold-700 ect-border-gold-400' : 'ect-border-sand ect-text-charcoal/80 hover:ect-border-gold-400/60'"
-                    class="ect-flex-none ect-inline-flex ect-items-center ect-gap-1.5 ect-font-body ect-text-[13px] ect-font-medium ect-px-3 ect-py-2.5 ect-rounded-full ect-border ect-whitespace-nowrap ect-transition-colors"
-                    @click="toggleType(option.id)"
-                  >
-                    {{ option.label }}
-                    <span class="ect-text-xs" :class="local.types.includes(option.id) ? 'ect-text-gold-700/60' : 'ect-text-charcoal/40'">{{ typeCount(option.id) }}</span>
-                  </button>
-                </section>
-              </section>
-
-            </template>
-
-            <!-- Material -->
-            <template v-if="showFacet('material')">
-              <hr v-if="!isFirstFacet('material')" class="ect-border-sand" />
-            <section>
-              <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-2">Material</h3>
-              <section class="ect-flex ect-gap-2.5 ect-flex-wrap">
-                <button
-                  v-for="m in (['gold', 'silver'] as Material[])"
-                  :key="m"
-                  type="button"
-                  :aria-pressed="local.materials.includes(m)"
-                  :class="local.materials.includes(m) ? 'ect-bg-rose-500 ect-text-white ect-border-rose-500' : 'ect-bg-champagne ect-text-charcoal ect-border-transparent hover:ect-bg-sand'"
-                  class="ect-inline-flex ect-items-center ect-gap-1.5 ect-font-body ect-text-sm ect-font-medium ect-px-5 ect-py-2.5 ect-rounded-full ect-border ect-capitalize ect-transition-colors"
-                  @click="toggleMaterial(m)"
-                >
-                  {{ m }}
-                  <span class="ect-text-xs" :class="local.materials.includes(m) ? 'ect-text-white/60' : 'ect-text-charcoal/40'">{{ materialCount(m) }}</span>
-                </button>
-              </section>
-            </section>
-
-            </template>
-
-            <!-- Category (pills wrap onto multiple lines). Hidden when the page
-                 locks a single category; narrowed to the page's own categories
-                 when it locks several. -->
-            <template v-if="showFacet('category')">
-              <hr v-if="!isFirstFacet('category')" class="ect-border-sand" />
-              <section>
-                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50 ect-mb-2">Category</h3>
-                <section class="ect-flex ect-flex-wrap ect-gap-2">
-                  <button
-                    v-for="cat in categoryOptions"
-                    :key="cat"
-                    type="button"
-                    :aria-pressed="local.categories.includes(cat)"
-                    :class="local.categories.includes(cat) ? 'ect-bg-gold-50 ect-text-gold-700 ect-border-gold-400' : 'ect-border-sand ect-text-charcoal/80 hover:ect-border-gold-400/60'"
-                    class="ect-flex-none ect-inline-flex ect-items-center ect-gap-1.5 ect-font-body ect-text-[13px] ect-font-medium ect-px-3 ect-py-2.5 ect-rounded-full ect-border ect-whitespace-nowrap ect-transition-colors"
-                    @click="toggleCategory(cat)"
-                  >
-                    {{ cat }}
-                    <span class="ect-text-xs" :class="local.categories.includes(cat) ? 'ect-text-gold-700/60' : 'ect-text-charcoal/40'">{{ categoryCount(cat) }}</span>
-                  </button>
-                </section>
-              </section>
-
-            </template>
-
-            <!-- Stone Shape -->
-            <template v-if="showFacet('stone-shape')">
-              <hr v-if="!isFirstFacet('stone-shape')" class="ect-border-sand" />
-            <section>
-              <button
-                type="button"
-                class="ect-w-full ect-flex ect-items-center ect-justify-between ect-mb-2"
-                :aria-expanded="stoneShapeOpen"
-                @click="stoneShapeOpen = !stoneShapeOpen"
-              >
-                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50">Stone Shape</h3>
-                <span class="ect-flex ect-items-center ect-gap-2">
-                  <span v-if="local.centerShapes.length" class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/70">{{ local.centerShapes.length }} selected</span>
-                  <svg class="ect-w-4 ect-h-4 ect-text-charcoal/40 ect-transition-transform" :class="stoneShapeOpen ? 'ect-rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </span>
-              </button>
-              <section v-show="stoneShapeOpen" class="ect-flex ect-gap-2.5 ect-flex-wrap">
-                <button
-                  v-for="shape in CENTER_SHAPE_OPTIONS"
-                  :key="shape"
-                  type="button"
-                  :aria-pressed="local.centerShapes.includes(shape)"
-                  :class="local.centerShapes.includes(shape) ? 'ect-bg-gold-50 ect-text-gold-700 ect-border-gold-400' : 'ect-border-sand ect-text-charcoal/80 hover:ect-border-gold-400/60'"
-                  class="ect-inline-flex ect-items-center ect-gap-1.5 ect-font-body ect-text-sm ect-font-medium ect-px-5 ect-py-2.5 ect-rounded-full ect-border ect-transition-colors"
-                  @click="toggleCenterShape(shape)"
-                >
-                  {{ shape }}
-                  <span class="ect-text-xs" :class="local.centerShapes.includes(shape) ? 'ect-text-gold-700/60' : 'ect-text-charcoal/40'">{{ shapeCount(shape) }}</span>
-                </button>
-              </section>
-            </section>
-
-            </template>
-
-            <!-- Stone Size -->
-            <hr v-if="showFacet('stone-size') && !isFirstFacet('stone-size')" class="ect-border-sand" />
-            <section v-if="showFacet('stone-size')">
-              <button
-                type="button"
-                class="ect-w-full ect-flex ect-items-center ect-justify-between ect-mb-2"
-                :aria-expanded="stoneSizeOpen"
-                @click="stoneSizeOpen = !stoneSizeOpen"
-              >
-                <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/50">Stone Size</h3>
-                <span class="ect-flex ect-items-center ect-gap-2">
-                  <span v-if="local.centerStoneSizes.length" class="ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/70">{{ local.centerStoneSizes.length }} selected</span>
-                  <svg class="ect-w-4 ect-h-4 ect-text-charcoal/40 ect-transition-transform" :class="stoneSizeOpen ? 'ect-rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </span>
-              </button>
-              <section v-show="stoneSizeOpen" class="ect-flex ect-gap-2.5 ect-flex-wrap">
-                <p v-if="!local.centerShapes.length" class="ect-font-body ect-text-sm ect-text-charcoal/45">Select a stone shape to see available sizes.</p>
-                <button
-                  v-for="size in availableCenterStoneSizes"
-                  :key="size"
-                  type="button"
-                  :aria-pressed="local.centerStoneSizes.includes(size)"
-                  :class="local.centerStoneSizes.includes(size) ? 'ect-bg-gold-50 ect-text-gold-700 ect-border-gold-400' : 'ect-border-sand ect-text-charcoal/80 hover:ect-border-gold-400/60'"
-                  class="ect-inline-flex ect-items-center ect-gap-1.5 ect-font-body ect-text-sm ect-font-medium ect-px-5 ect-py-2.5 ect-rounded-full ect-border ect-transition-colors"
-                  @click="toggleCenterStoneSize(size)"
-                >
-                  {{ formatCenterStoneSize(size) }}
-                  <span class="ect-text-xs" :class="local.centerStoneSizes.includes(size) ? 'ect-text-gold-700/60' : 'ect-text-charcoal/40'">{{ sizeCount(size) }}</span>
-                </button>
-              </section>
-            </section>
           </section>
 
           <!-- Footer -->
