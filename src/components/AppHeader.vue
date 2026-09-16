@@ -1063,8 +1063,12 @@ onBeforeUnmount(() => {
   padding: 36px var(--gutter) 42px;
 }
 /* The Shop-by-style tiles need a wider first column than a list of links —
-   this is where the width freed by dropping a featured card goes. */
-.submenu-inner.has-gallery { grid-template-columns: 330px 190px 190px 1fr; }
+   this is where the width freed by dropping a featured card goes. The track
+   carries its own right padding on top of the grid gap, so the tile block is
+   read as a gallery set apart from the link columns rather than as a first
+   column among four. */
+.submenu-inner.has-gallery { grid-template-columns: 360px 190px 190px 1fr; }
+.submenu-inner.has-gallery > .submenu-column:first-child { padding-right: 30px; }
 .submenu-column { display: flex; flex-direction: column; gap: 14px; }
 .submenu-group { display: flex; flex-direction: column; gap: 14px; }
 .submenu-group + .submenu-group { margin-top: 10px; }
@@ -1144,7 +1148,8 @@ onBeforeUnmount(() => {
    back enough width that a two-card feature run keeps card proportions. */
 @media (max-width: 1320px) {
   .submenu-inner { gap: 34px; }
-  .submenu-inner.has-gallery { grid-template-columns: 284px 176px 176px 1fr; }
+  .submenu-inner.has-gallery { grid-template-columns: 306px 176px 176px 1fr; }
+  .submenu-inner.has-gallery > .submenu-column:first-child { padding-right: 22px; }
 }
 
 /* --- Account dropdown --- */

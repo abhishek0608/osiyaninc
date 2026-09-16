@@ -362,13 +362,6 @@ export const NAV_ITEMS: NavItem[] = [
       ],
       features: [
         {
-          image: '/osiyan-yoga-bangles.jpg',
-          alt: 'Osiyan Yoga Bangles',
-          title: 'Yoga Bangles',
-          caption: 'The signature Osiyan silhouette',
-          to: '/collections/bracelets',
-        },
-        {
           image: '/bracelet-1.jpg',
           alt: 'Gold bracelet still life',
           title: 'New collection',
