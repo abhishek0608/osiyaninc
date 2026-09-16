@@ -153,10 +153,6 @@ function pendingLink(label: string, slug: string): NavSubLink {
   return { label, to: `/collections/${slug}`, exact: false }
 }
 
-function siteLink(label: string, to: string): NavSubLink {
-  return { label, to, exact: true }
-}
-
 function shopAll(label: string, to: string): NavSubLink {
   return { label, to, exact: true, emphasis: true }
 }
@@ -372,64 +368,12 @@ export const NAV_ITEMS: NavItem[] = [
     },
   },
   {
-    // High Jewelry is a house of pieces rather than a catalogue category, so its
-    // submenu points across the site instead of into one collection's filters.
+    // High Jewelry is a house of pieces rather than a catalogue category: it has
+    // no filters of its own to offer, so the item is a plain link to the page and
+    // carries no submenu.
     label: 'High Jewelry',
     key: 'high-jewelry',
     to: '/high-jewelry',
-    submenu: {
-      columns: [
-        [
-          {
-            heading: 'Explore',
-            links: [
-              siteLink('All collections', '/collections'),
-              filterLink('New arrivals', 'rings', { tab: 'new' }),
-              pendingLink('One-of-a-kind', 'rings'),
-              shopAll('View the full house', '/collections'),
-            ],
-          },
-        ],
-        [
-          {
-            heading: 'Shop by piece',
-            links: [
-              siteLink('Rings', '/collections/rings'),
-              siteLink('Earrings', '/collections/earrings'),
-              siteLink('Necklaces', '/collections/necklaces'),
-              siteLink('Pendants', '/collections/pendants'),
-              siteLink('Bangles & bracelets', '/collections/bracelets'),
-            ],
-          },
-        ],
-        [
-          {
-            heading: 'The atelier',
-            links: [
-              siteLink('Bespoke commissions', '/services'),
-              siteLink('Our craft', '/about'),
-              siteLink('Talk to a specialist', '/chat'),
-            ],
-          },
-        ],
-      ],
-      features: [
-        {
-          image: '/osiyan-high-jewelry.jpg',
-          alt: 'Emerald and diamond high jewelry earrings',
-          title: 'High Jewelry',
-          caption: 'Rare stones, singular settings',
-          to: '/high-jewelry',
-        },
-        {
-          image: '/osiyan-luxury-1.jpeg',
-          alt: 'Osiyan high jewelry detail',
-          title: 'Unseen Hours',
-          caption: 'The making of a one-off piece',
-          to: '/about',
-        },
-      ],
-    },
   },
   { label: 'Chat', key: 'chat', to: '/chat', icon: 'chat' },
   { label: 'About', key: 'about', to: '/about' },
