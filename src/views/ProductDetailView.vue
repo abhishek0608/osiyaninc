@@ -292,10 +292,15 @@ const technicalDetailRows = computed<Array<{ label: string; value: string }>>(()
   return [...attributeSpecs, ...specs]
 })
 
-// The spec sheet carries facts about the piece, including its fixed metal color.
+// The spec sheet carries facts about the piece: the metal it is cut from (purity
+// and its fixed color as one line, e.g. "14k Yellow Gold"), the centre stone's
+// size when the style number records one, then weights and stone groups.
 const specRows = computed<Array<{ label: string; value: string }>>(() => {
+  const attrs = product.value?.productAttributes
+  const metal = product.value ? [attrs?.metalPurity || '', productColorLabel.value].filter(Boolean).join(' ') : ''
   const rows = [
-    { label: 'Metal Color', value: product.value ? productColorLabel.value : '' },
+    { label: 'Metal', value: metal },
+    { label: 'Centre Stone', value: attrs?.centerStoneSize || '' },
     ...technicalDetailRows.value,
   ]
 
@@ -584,26 +589,7 @@ async function handleAddToCart() {
             {{ product.title }}
           </h1>
 
-          <div v-if="reviewSummary" class="ect-inline-flex ect-items-center ect-gap-2 ect-text-charcoal/55 ect-mb-5">
-            <StarRating :rating="product.rating || 0" size="sm" />
-            <span class="ect-font-body ect-text-sm">{{ reviewSummary }}</span>
-          </div>
-
-          <p
-            v-if="isLoggedIn"
-            class="ect-font-display ect-text-2xl sm:ect-text-3xl ect-font-light ect-text-charcoal ect-tabular-nums ect-mb-5"
-          >
-            {{ priceLabel }}
-          </p>
-          <RouterLink
-            v-else
-            to="/login"
-            class="ect-inline-block ect-font-body ect-text-base ect-font-medium ect-text-gold-700 hover:ect-text-gold-800 ect-transition-colors ect-mb-5"
-          >
-            Sign in to view price
-          </RouterLink>
-
-          <div v-if="productBadges.length" class="ect-flex ect-flex-wrap ect-gap-2 ect-mb-5">
+          <div v-if="productBadges.length" class="ect-flex ect-flex-wrap ect-gap-2 ect-mb-4">
             <span
               v-for="badge in productBadges"
               :key="badge"
@@ -612,111 +598,26 @@ async function handleAddToCart() {
               {{ badge }}
             </span>
           </div>
-
-          <p
-            v-if="product.description"
-            class="ect-font-body ect-text-[15px] ect-leading-7 ect-text-charcoal/65 ect-mb-8"
-          >
-            {{ product.description }}
-          </p>
-
-          <!-- Weight, carats and the certificate sit with the price, where they
-               inform the decision. Two panels: the spec sheet is always open
-               because it is part of the buying decision, while certification
-               folds away as a follow-up question. -->
-          <div
-            v-if="hasSpecDetails || certificationRows.length"
-            class="ect-mb-6 ect-border-t ect-border-sand"
-          >
-            <section v-if="hasSpecDetails" class="ect-py-5">
-              <h2 class="ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48 ect-mb-3">Details</h2>
-
-              <dl v-if="specRows.length" class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3">
-                <div v-for="row in specRows" :key="row.label" class="ect-flex ect-flex-col ect-gap-0.5">
-                  <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">{{ row.label }}</dt>
-                  <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
-                </div>
-              </dl>
-
-              <ul
-                v-if="product.details?.length"
-                class="ect-list-none ect-m-0 ect-p-0 ect-space-y-2.5"
-                :class="specRows.length ? 'ect-mt-4' : ''"
-              >
-                <li v-for="detail in product.details" :key="detail" class="ect-flex ect-gap-2.5">
-                  <span class="ect-mt-2 ect-w-1 ect-h-1 ect-rounded-full ect-bg-gold-400 ect-shrink-0" />
-                  <span class="ect-font-body ect-text-sm ect-leading-6 ect-text-charcoal/70">{{ detail }}</span>
-                </li>
-              </ul>
-
-              <p class="ect-mt-4 ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/45">
-                Weights and stone measurements may vary slightly. Photos are for representation purposes only.
-              </p>
-            </section>
-
-            <section v-if="certificationRows.length" class="ect-border-t ect-border-sand ect-py-5">
-              <h2 class="ect-m-0">
-                <button
-                  type="button"
-                  @click="certificationOpen = !certificationOpen"
-                  :aria-expanded="certificationOpen"
-                  aria-controls="product-certification-panel"
-                  class="ect-flex ect-w-full ect-items-center ect-justify-between ect-gap-4 ect-bg-transparent ect-p-0 ect-text-left focus:ect-outline-none focus-visible:ect-ring-2 focus-visible:ect-ring-gold-300 focus-visible:ect-ring-offset-4 focus-visible:ect-ring-offset-cream"
-                >
-                  <span class="ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">Certification</span>
-                  <span
-                    class="product-detail-accordion-chevron ect-flex ect-h-7 ect-w-7 ect-shrink-0 ect-items-center ect-justify-center ect-rounded-lg ect-text-gold-700"
-                    :class="certificationOpen ? 'product-detail-accordion-chevron--open' : ''"
-                    aria-hidden="true"
-                  >
-                    <svg class="ect-h-3.5 ect-w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                    </svg>
-                  </span>
-                </button>
-              </h2>
-
-              <!-- Animated on grid-template-rows so the panel slides without a
-                   measured max-height; `inert` keeps the collapsed report link
-                   out of the tab order. -->
-              <div
-                id="product-certification-panel"
-                class="product-detail-accordion-panel"
-                :class="certificationOpen ? 'product-detail-accordion-panel--open' : ''"
-                :inert="!certificationOpen"
-              >
-                <div class="ect-overflow-hidden">
-                  <dl class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3 ect-pt-4">
-                    <div v-for="row in certificationRows" :key="row.label" class="ect-flex ect-flex-col ect-gap-0.5">
-                      <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">{{ row.label }}</dt>
-                      <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
-                    </div>
-                  </dl>
-
-                  <!-- The report itself, when the scan has been uploaded. -->
-                  <a
-                    v-if="certification?.fileUrl"
-                    :href="certification.fileUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="ect-mt-4 ect-inline-flex ect-items-center ect-gap-2 ect-rounded-full ect-border ect-border-gold-200 ect-bg-gold-50 ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-gold-700 ect-transition-colors hover:ect-border-gold-300 hover:ect-bg-gold-100"
-                  >
-                    <svg class="ect-h-4 ect-w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 5.25-3.75 8.25-9 9.75C6.75 20.25 3 17.25 3 12V5.25l9-3 9 3V12z" />
-                    </svg>
-                    View certificate
-                  </a>
-
-                  <p v-else class="ect-mt-4 ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/45">
-                    The signed report is being scanned and will appear here shortly.
-                  </p>
-                </div>
-              </div>
-            </section>
+          <div v-if="reviewSummary" class="ect-inline-flex ect-items-center ect-gap-2 ect-text-charcoal/55 ect-mb-5">
+            <StarRating :rating="product.rating || 0" size="sm" />
+            <span class="ect-font-body ect-text-sm">{{ reviewSummary }}</span>
           </div>
-
-          <VolumeDiscountInfo class="ect-mt-5" label="Volume discount available" />
-
+          <p
+            v-if="isLoggedIn"
+            class="ect-font-display ect-text-2xl sm:ect-text-3xl ect-font-light ect-text-charcoal ect-tabular-nums ect-mb-6"
+          >
+            {{ priceLabel }}
+          </p>
+          <RouterLink
+            v-else
+            to="/login"
+            class="ect-inline-block ect-font-body ect-text-base ect-font-medium ect-text-gold-700 hover:ect-text-gold-800 ect-transition-colors ect-mb-6"
+          >
+            Sign in to view price
+          </RouterLink>
+          <!-- Price and purchase sit together, the way the live storefront
+               orders them: decide, then read on for the description and specs. -->
+          <VolumeDiscountInfo label="Volume discount available" />
           <!-- Primary action pair: a gold-edged aubergine bar with the wishlist
                square beside it, so the two read as one unit on the cream page. -->
           <div class="ect-mt-3 ect-flex ect-items-stretch ect-gap-3">
@@ -755,12 +656,115 @@ async function handleAddToCart() {
             View Cart
           </RouterLink>
 
-          <p class="ect-mt-4 ect-mb-8 ect-font-body ect-text-xs ect-text-charcoal/45 ect-flex ect-items-center ect-gap-1.5">
+          <p class="ect-mt-4 ect-font-body ect-text-xs ect-text-charcoal/45 ect-flex ect-items-center ect-gap-1.5">
             <svg class="ect-w-3.5 ect-h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Free shipping · Insured delivery · Made to order
           </p>
+
+          <div class="ect-mt-10">
+            <p
+              v-if="product.description"
+              class="ect-font-body ect-text-[15px] ect-leading-7 ect-text-charcoal/65 ect-mb-6"
+            >
+              {{ product.description }}
+            </p>
+
+            <!-- Everything about the piece sits below the purchase block: the spec
+                 sheet stays open because buyers scan it before committing, while
+                 certification folds away as a follow-up question. -->
+            <div
+              v-if="hasSpecDetails || certificationRows.length"
+              class="ect-border-y ect-border-sand"
+            >
+              <section v-if="hasSpecDetails" class="ect-py-5">
+                <h2 class="ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48 ect-mb-3">Details</h2>
+
+                <dl v-if="specRows.length" class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3">
+                  <div v-for="row in specRows" :key="row.label" class="ect-flex ect-flex-col ect-gap-0.5">
+                    <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">{{ row.label }}</dt>
+                    <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
+                  </div>
+                </dl>
+
+                <ul
+                  v-if="product.details?.length"
+                  class="ect-list-none ect-m-0 ect-p-0 ect-space-y-2.5"
+                  :class="specRows.length ? 'ect-mt-4' : ''"
+                >
+                  <li v-for="detail in product.details" :key="detail" class="ect-flex ect-gap-2.5">
+                    <span class="ect-mt-2 ect-w-1 ect-h-1 ect-rounded-full ect-bg-gold-400 ect-shrink-0" />
+                    <span class="ect-font-body ect-text-sm ect-leading-6 ect-text-charcoal/70">{{ detail }}</span>
+                  </li>
+                </ul>
+
+                <p class="ect-mt-4 ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/45">
+                  Weights and stone measurements may vary slightly. Photos are for representation purposes only.
+                </p>
+              </section>
+
+              <section v-if="certificationRows.length" class="ect-border-t ect-border-sand ect-py-5">
+                <h2 class="ect-m-0">
+                  <button
+                    type="button"
+                    @click="certificationOpen = !certificationOpen"
+                    :aria-expanded="certificationOpen"
+                    aria-controls="product-certification-panel"
+                    class="ect-flex ect-w-full ect-items-center ect-justify-between ect-gap-4 ect-bg-transparent ect-p-0 ect-text-left focus:ect-outline-none focus-visible:ect-ring-2 focus-visible:ect-ring-gold-300 focus-visible:ect-ring-offset-4 focus-visible:ect-ring-offset-cream"
+                  >
+                    <span class="ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">Certification</span>
+                    <span
+                      class="product-detail-accordion-chevron ect-flex ect-h-7 ect-w-7 ect-shrink-0 ect-items-center ect-justify-center ect-rounded-lg ect-text-gold-700"
+                      :class="certificationOpen ? 'product-detail-accordion-chevron--open' : ''"
+                      aria-hidden="true"
+                    >
+                      <svg class="ect-h-3.5 ect-w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                      </svg>
+                    </span>
+                  </button>
+                </h2>
+
+                <!-- Animated on grid-template-rows so the panel slides without a
+                     measured max-height; `inert` keeps the collapsed report link
+                     out of the tab order. -->
+                <div
+                  id="product-certification-panel"
+                  class="product-detail-accordion-panel"
+                  :class="certificationOpen ? 'product-detail-accordion-panel--open' : ''"
+                  :inert="!certificationOpen"
+                >
+                  <div class="ect-overflow-hidden">
+                    <dl class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3 ect-pt-4">
+                      <div v-for="row in certificationRows" :key="row.label" class="ect-flex ect-flex-col ect-gap-0.5">
+                        <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">{{ row.label }}</dt>
+                        <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
+                      </div>
+                    </dl>
+
+                    <!-- The report itself, when the scan has been uploaded. -->
+                    <a
+                      v-if="certification?.fileUrl"
+                      :href="certification.fileUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="ect-mt-4 ect-inline-flex ect-items-center ect-gap-2 ect-rounded-full ect-border ect-border-gold-200 ect-bg-gold-50 ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-gold-700 ect-transition-colors hover:ect-border-gold-300 hover:ect-bg-gold-100"
+                    >
+                      <svg class="ect-h-4 ect-w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 5.25-3.75 8.25-9 9.75C6.75 20.25 3 17.25 3 12V5.25l9-3 9 3V12z" />
+                      </svg>
+                      View certificate
+                    </a>
+
+                    <p v-else class="ect-mt-4 ect-font-body ect-text-xs ect-leading-5 ect-text-charcoal/45">
+                      The signed report is being scanned and will appear here shortly.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
         </section>
       </section>
 
