@@ -43,6 +43,7 @@ import {
   MEMO_STATUSES,
   cancelMemo,
   convertMemoToOrder,
+  createMemo,
   extendMemo,
   formatMemoMoney,
   getMemoOutstandingPaise,
@@ -808,6 +809,9 @@ async function handleUsersListResource(req, res, body) {
 
     const search = String(req?.query?.search || '').trim()
     const skip = Math.max(Number(req?.query?.skip) || 0, 0)
+    // canMemo=1 narrows to accounts approved for memo — the new-memo picker
+    // only wants those, since a memo cannot be raised for anyone else.
+    const memoOnly = ['1', 'true'].includes(String(req?.query?.canMemo || '').toLowerCase())
 
     // Case-insensitive match across the fields shown in the users table.
     const where = {}
@@ -818,6 +822,7 @@ async function handleUsersListResource(req, res, body) {
         { lastName: { contains: search, mode: 'insensitive' } },
       ]
     }
+    if (memoOnly) where.canMemo = true
 
     const [rows, total] = await Promise.all([
       prisma.user.findMany({
@@ -851,6 +856,7 @@ async function handleUsersListResource(req, res, body) {
       email: user.email || '',
       isInternal: user.isInternal,
       isAdmin: user.isAdmin,
+      canMemo: user.canMemo,
       channel: user.channel,
       orderCount: user._count.orders,
       // A user with no recorded creator self-registered through the storefront.
@@ -1044,6 +1050,116 @@ async function handleOrderCreateResource(req, res, body) {
   } catch (err) {
     console.error('Internal order create failed:', err)
     return res.status(500).json({ message: 'Unable to create order.' })
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Memo create (resource=memo-create) — staff issue a memo on a customer's behalf
+// ---------------------------------------------------------------------------
+
+/**
+ * What a customer can still take on memo, for the picker in the new-memo form.
+ * Mirrors the numbers the storefront shows the customer (api/account.js
+ * mode=memos), so staff and customer see the same headroom.
+ */
+async function memoAllowancePayload(customer) {
+  const outstandingUsd = await getMemoOutstandingPaise(customer.id)
+  const limitUsd = creditLimitToUsd(customer.memoLimitPaise)
+  const availableUsd = limitUsd == null ? null : Math.max(limitUsd - outstandingUsd, 0)
+  return {
+    canMemo: Boolean(customer.canMemo),
+    memoDays: Number(customer.memoDays) > 0 ? Number(customer.memoDays) : 30,
+    limitPaise: limitUsd,
+    formattedLimit: limitUsd == null ? null : formatMemoMoney(limitUsd),
+    outstandingPaise: outstandingUsd,
+    formattedOutstanding: formatMemoMoney(outstandingUsd),
+    availablePaise: availableUsd,
+    formattedAvailable: availableUsd == null ? null : formatMemoMoney(availableUsd),
+  }
+}
+
+async function handleMemoCreateResource(req, res, body) {
+  const userId = String(req?.query?.userId || body?.userId || '').trim()
+
+  try {
+    const internalUser = await assertInternalUser(userId)
+    if (!internalUser) return res.status(403).json({ message: 'Internal access required.' })
+
+    // GET ?customerId= answers "how much can this customer still take?" so the
+    // form can show the headroom before anything is submitted.
+    if (req.method === 'GET') {
+      const customerId = String(req?.query?.customerId || '').trim()
+      if (!customerId) return res.status(400).json({ message: 'customerId is required.' })
+      const customer = await prisma.user.findUnique({
+        where: { id: customerId },
+        select: { id: true, canMemo: true, memoLimitPaise: true, memoDays: true },
+      })
+      if (!customer) return res.status(404).json({ message: 'Customer not found.' })
+      return res.status(200).json({ allowance: await memoAllowancePayload(customer) })
+    }
+
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', 'GET,POST,OPTIONS')
+      return res.status(405).json({ message: 'Method not allowed' })
+    }
+
+    // Unlike a manual order, a memo always has a customer: the goods leave with
+    // someone, and that someone has to be approved for it.
+    const customerId = String(body?.customerId || '').trim()
+    if (!customerId) return res.status(400).json({ message: 'Choose the customer taking the pieces.' })
+    const notes = String(body?.notes || '').trim()
+
+    const requested = (Array.isArray(body?.items) ? body.items : [])
+      .map((item) => ({
+        slug: String(item?.slug || '').trim(),
+        qty: Math.min(Math.floor(Number(item?.qty) || 0), 999),
+      }))
+      .filter((item) => item.slug && item.qty > 0)
+    if (!requested.length) {
+      return res.status(400).json({ message: 'Add at least one piece to the memo.' })
+    }
+
+    // Same pricing as a manual order: the active variant's list price, locked
+    // onto the memo line so a later rate move does not change what is owed.
+    const products = await prisma.product.findMany({
+      where: { slug: { in: requested.map((item) => item.slug) } },
+      include: { variants: { where: { active: true } } },
+    })
+    const bySlug = new Map(products.map((p) => [p.slug, p]))
+
+    const lines = []
+    for (const item of requested) {
+      const product = bySlug.get(item.slug)
+      const variant = pickVariantForPricing(product?.variants || [])
+      if (!product || !variant) {
+        return res.status(400).json({ message: `No purchasable variant found for "${item.slug}".` })
+      }
+      lines.push({
+        variantId: variant.id,
+        titleSnapshot: product.title,
+        pricePaise: variant.listPricePaise || 0,
+        qty: item.qty,
+        currency: variant.currency || 'USD',
+      })
+    }
+
+    // createMemo re-checks the customer's memo permission, their value limit
+    // against everything already out, and that no piece is on another open memo.
+    const memo = await createMemo({
+      customerId,
+      lines,
+      notes,
+      actorId: internalUser.id,
+      currency: lines[0].currency,
+    })
+
+    return res.status(200).json({ memo: toMemoPayload(memo) })
+  } catch (err) {
+    if (err instanceof MemoError) {
+      return res.status(err.status).json({ message: err.message, code: err.code })
+    }
+    console.error('Internal memo create failed:', err)
+    return res.status(500).json({ message: 'Unable to create memo.' })
   }
 }
 
@@ -2637,6 +2753,7 @@ export default async function handler(req, res) {
   if (resource === 'users-list') return handleUsersListResource(req, res, body)
   if (resource === 'user-create') return handleUserCreateResource(req, res, body)
   if (resource === 'order-create') return handleOrderCreateResource(req, res, body)
+  if (resource === 'memo-create') return handleMemoCreateResource(req, res, body)
   if (resource === 'memos-list') return handleMemosListResource(req, res, body)
   if (resource === 'memo') return handleMemoResource(req, res, body)
   if (resource === 'product') return handleProductResource(req, res, body)

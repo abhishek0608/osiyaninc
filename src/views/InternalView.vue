@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import InternalNewOrderModal from '../components/InternalNewOrderModal.vue'
+import InternalNewMemoModal from '../components/InternalNewMemoModal.vue'
 import InternalNewUserModal from '../components/InternalNewUserModal.vue'
 import UiSelect from '../components/UiSelect.vue'
 import { API_BASE } from '../config-api'
@@ -416,12 +417,21 @@ function signupStatusClass(status: SignupRequestStatus) {
 
 // --- "New …" creation modals, one per tab ---
 const newOrderOpen = ref(false)
+const newMemoOpen = ref(false)
 const newUserOpen = ref(false)
 
 function onOrderCreated() {
   newOrderOpen.value = false
   void loadOrders(true)
   void loadMemos(true)
+}
+
+// A freshly issued memo opens straight away: the next step is usually to
+// hand over or ship the pieces, and that is done from the memo's own page.
+function onMemoCreated(memo: { id: string; memoNo: string }) {
+  newMemoOpen.value = false
+  void loadMemos(true)
+  if (memo.id) void router.push({ name: 'internal-memo', params: { id: memo.id } })
 }
 
 function onUserCreated() {
@@ -1446,6 +1456,7 @@ onMounted(() => {
     return
   }
   void loadOrders(true)
+  void loadMemos(true)
   void loadUsers(true)
   void loadSignupRequests(true)
   void loadProducts(true)
@@ -1575,7 +1586,16 @@ onBeforeUnmount(() => {
                 · {{ memoSummary.formattedOverdue }} overdue ({{ memoSummary.overdueCount }})
               </span>
             </p>
+            <button
+              type="button"
+              class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
+              :class="memoSummary ? '' : 'sm:ect-ml-auto'"
+              @click="newMemoOpen = true"
+            >
+              New memo
+            </button>
           </div>
+          <InternalNewMemoModal v-if="newMemoOpen" @close="newMemoOpen = false" @created="onMemoCreated" />
           <table class="ect-w-full ect-min-w-[980px] ect-border-collapse">
             <thead class="ect-bg-cream"><tr><th v-for="h in ['Memo', 'Customer', 'Pieces', 'Status', 'Value out', 'Due', 'Issued']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
