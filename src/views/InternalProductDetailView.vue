@@ -5,7 +5,7 @@ import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
 import { invalidateProductsCache } from '../composables/useProductsApi'
-import { BANGLE_SIZE_OPTIONS, CATEGORIES, CERT_LAB_OPTIONS, COLORS, METAL_PURITY_OPTIONS, NECKLACE_SIZE_OPTIONS, RING_SIZE_OPTIONS } from '../data/products'
+import { CATEGORIES, CERT_LAB_OPTIONS, COLORS, METAL_PURITY_OPTIONS } from '../data/products'
 
 // One photo in the product's S3 folder. `key` is the object key, which the
 // delete endpoint needs; display order comes from the "_<n>" filename suffix.
@@ -53,11 +53,7 @@ interface ProductForm {
   goldValue: string
   stoneLines: StoneLineForm[]
   metalPurity: string
-  centerStoneSizes: string
-  allowCustomCenterStoneSize: boolean
-  ringSize: string
-  bangleSize: string
-  necklaceSize: string
+  centerStoneSize: string
   certLab: string
   certNumber: string
   certifiedAt: string
@@ -133,11 +129,7 @@ const subtypeOptions = [
 
 const isNewProduct = computed(() => String(route.params.slug || '') === 'new')
 const fieldsEditable = computed(() => isNewProduct.value || isEditing.value)
-const isRingCategory = computed(() => form.value.category === 'Rings')
 const isBraceletCategory = computed(() => form.value.category === 'Bracelets')
-const isNecklaceCategory = computed(
-  () => form.value.category === 'Necklaces' || form.value.category === 'Mangal Sutra',
-)
 const isBangleCategory = computed(() => form.value.category === 'Bangles')
 const isBangleLikeProduct = computed(() => {
   if (isBangleCategory.value) return true
@@ -183,11 +175,7 @@ function emptyProductForm(): ProductForm {
     goldValue: '',
     stoneLines: [],
     metalPurity: '',
-    centerStoneSizes: '',
-    allowCustomCenterStoneSize: true,
-    ringSize: '',
-    bangleSize: '',
-    necklaceSize: '',
+    centerStoneSize: '',
     certLab: '',
     certNumber: '',
     certifiedAt: '',
@@ -226,11 +214,7 @@ const form = ref<ProductForm>({
   goldValue: '',
   stoneLines: [],
   metalPurity: '',
-  centerStoneSizes: '',
-  allowCustomCenterStoneSize: true,
-  ringSize: '',
-  bangleSize: '',
-  necklaceSize: '',
+  centerStoneSize: '',
   certLab: '',
   certNumber: '',
   certifiedAt: '',
@@ -289,6 +273,10 @@ const attributeDisplayRows = computed(() => [
   { label: 'Style no.', value: displayValue(form.value.styleNo) },
   { label: 'Gross weight', value: displayValue(form.value.grossWeight) },
   { label: 'Net weight', value: displayValue(form.value.netWeight) },
+  { label: 'Metal purity', value: displayValue(form.value.metalPurity) },
+  ...(supportsCenterStoneFields.value
+    ? [{ label: 'Center stone size', value: displayValue(form.value.centerStoneSize) }]
+    : []),
   { label: 'Gold rate', value: displayValue(form.value.goldRate) },
   { label: 'Gold value', value: displayValue(form.value.goldValue) },
 ])
@@ -296,22 +284,6 @@ const attributeDisplayRows = computed(() => [
 function stoneGroupLabel(group: StoneGroupValue) {
   return stoneGroupOptions.find((option) => option.value === group)?.label || group
 }
-
-const customizationDisplayRows = computed(() => {
-  const rows = [
-    { label: 'Metal purity', value: displayValue(form.value.metalPurity) },
-    ...(supportsCenterStoneFields.value
-      ? [
-          { label: 'Center stone sizes', value: displayValue(form.value.centerStoneSizes) },
-          { label: 'Allow custom center stone size', value: displayBoolean(form.value.allowCustomCenterStoneSize) },
-        ]
-      : []),
-    ...(isRingCategory.value ? [{ label: 'Ring size', value: displayValue(form.value.ringSize) }] : []),
-    ...(isBangleLikeProduct.value ? [{ label: 'Bangle size', value: displayValue(form.value.bangleSize) }] : []),
-    ...(isNecklaceCategory.value ? [{ label: 'Necklace size', value: displayValue(form.value.necklaceSize) }] : []),
-  ]
-  return rows
-})
 
 const certificateFileName = computed(() => {
   const key = productCertificate.value.key
@@ -373,12 +345,8 @@ function mapIncomingProduct(product: any): ProductForm {
     goldRate: String(product?.productAttributes?.goldRate || ''),
     goldValue: String(product?.productAttributes?.goldValue || ''),
     stoneLines: mapIncomingStoneLines(product?.productAttributes?.stoneLines),
-    metalPurity: Array.isArray(product?.customizationOptions?.metalPurities) ? (product.customizationOptions.metalPurities[0] || '') : '',
-    centerStoneSizes: Array.isArray(product?.customizationOptions?.centerStoneSizes) ? product.customizationOptions.centerStoneSizes.join(', ') : '',
-    allowCustomCenterStoneSize: product?.customizationOptions?.allowCustomCenterStoneSize !== false,
-    ringSize: Array.isArray(product?.customizationOptions?.ringSizes) ? (product.customizationOptions.ringSizes[0] || '') : '',
-    bangleSize: Array.isArray(product?.customizationOptions?.bangleSizes) ? (product.customizationOptions.bangleSizes[0] || '') : '',
-    necklaceSize: Array.isArray(product?.customizationOptions?.necklaceSizes) ? (product.customizationOptions.necklaceSizes[0] || '') : '',
+    metalPurity: String(product?.productAttributes?.metalPurity || ''),
+    centerStoneSize: String(product?.productAttributes?.centerStoneSize || ''),
     certLab: String(product?.certLab || ''),
     certNumber: String(product?.certNumber || ''),
     certifiedAt: toDateInputValue(product?.certifiedAt),
@@ -423,28 +391,11 @@ function mapIncomingImages(product: any): ProductImage[] {
   }))
 }
 
-function splitCommaSeparated(input: string) {
-  return String(input || '').split(',').map((v) => v.trim()).filter(Boolean)
-}
-
-function wrapSingle(value: string) {
-  return value ? [value] : []
-}
-
-function buildCustomizationOptionsPayload() {
-  return {
-    metalPurities: wrapSingle(form.value.metalPurity),
-    centerStoneSizes: supportsCenterStoneFields.value ? splitCommaSeparated(form.value.centerStoneSizes) : [],
-    allowCustomCenterStoneSize: form.value.allowCustomCenterStoneSize,
-    ringSizes: isRingCategory.value ? wrapSingle(form.value.ringSize) : [],
-    bangleSizes: isBangleLikeProduct.value ? wrapSingle(form.value.bangleSize) : [],
-    necklaceSizes: isNecklaceCategory.value ? wrapSingle(form.value.necklaceSize) : [],
-  }
-}
-
 function buildProductAttributesPayload() {
   return {
     grossWeight: normalizeInputValue(form.value.grossWeight),
+    metalPurity: normalizeInputValue(form.value.metalPurity),
+    centerStoneSize: supportsCenterStoneFields.value ? normalizeInputValue(form.value.centerStoneSize) : '',
     bagNo: normalizeInputValue(form.value.bagNo),
     styleNo: normalizeInputValue(form.value.styleNo),
     netWeight: normalizeInputValue(form.value.netWeight),
@@ -749,7 +700,6 @@ async function saveProduct() {
     color: form.value.color,
     description: form.value.description,
     productAttributes: buildProductAttributesPayload(),
-    customizationOptions: buildCustomizationOptionsPayload(),
     // Clearing the lab un-certifies the piece: the API drops the number and
     // date with it and the storefront tag disappears.
     certLab: normalizeInputValue(form.value.certLab),
@@ -1162,6 +1112,28 @@ watch(
                   />
                 </label>
                 <label class="ect-block">
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Metal purity</span>
+                  <select
+                    v-model="form.metalPurity"
+                    :disabled="!fieldsEditable"
+                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : 'ect-bg-white']"
+                  >
+                    <option value="">None</option>
+                    <option v-for="purity in METAL_PURITY_OPTIONS" :key="purity" :value="purity">{{ purity }}</option>
+                  </select>
+                </label>
+                <label v-if="supportsCenterStoneFields" class="ect-block">
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Center stone size</span>
+                  <input
+                    v-model="form.centerStoneSize"
+                    type="text"
+                    placeholder="9X7"
+                    :readonly="!fieldsEditable"
+                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                  />
+                  <span class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">Millimetre dimensions, as the Style No suffix records them.</span>
+                </label>
+                <label class="ect-block">
                   <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Gold rate</span>
                   <input
                     v-model="form.goldRate"
@@ -1270,76 +1242,6 @@ watch(
                 :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
               />
             </label>
-
-            <section class="ect-mt-5 ect-rounded-lg ect-border ect-border-rose-100 ect-bg-rose-50/30 ect-p-4">
-              <div class="ect-mb-4">
-                <h3 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Customization options</h3>
-                <p class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-1">These fields power the customer-facing customizable details section and the options shown in the customize card.</p>
-              </div>
-
-              <div class="ect-grid md:ect-grid-cols-2 ect-gap-4">
-                <label class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Metal purity</span>
-                  <select
-                    v-model="form.metalPurity"
-                    :disabled="!fieldsEditable"
-                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : 'ect-bg-white']"
-                  >
-                    <option value="">None</option>
-                    <option v-for="purity in METAL_PURITY_OPTIONS" :key="purity" :value="purity">{{ purity }}</option>
-                  </select>
-                </label>
-                <label v-if="supportsCenterStoneFields" class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Center stone sizes</span>
-                  <input
-                    v-model="form.centerStoneSizes"
-                    type="text"
-                    placeholder="6 mm, 7 mm, 8 mm"
-                    :readonly="!fieldsEditable"
-                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
-                  />
-                  <span class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">Comma-separated dimensions, e.g. 6 mm, 7 mm, 8 mm</span>
-                </label>
-                <label v-if="isRingCategory" class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Ring size</span>
-                  <select
-                    v-model="form.ringSize"
-                    :disabled="!fieldsEditable"
-                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : 'ect-bg-white']"
-                  >
-                    <option value="">None</option>
-                    <option v-for="size in RING_SIZE_OPTIONS" :key="size" :value="size">{{ size }}</option>
-                  </select>
-                </label>
-                <label v-if="isBangleLikeProduct" class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Bangle size</span>
-                  <select
-                    v-model="form.bangleSize"
-                    :disabled="!fieldsEditable"
-                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : 'ect-bg-white']"
-                  >
-                    <option value="">None</option>
-                    <option v-for="size in BANGLE_SIZE_OPTIONS" :key="size" :value="size">{{ size }}</option>
-                  </select>
-                </label>
-                <label v-if="isNecklaceCategory" class="ect-block md:ect-col-span-2">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Necklace size</span>
-                  <select
-                    v-model="form.necklaceSize"
-                    :disabled="!fieldsEditable"
-                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : 'ect-bg-white']"
-                  >
-                    <option value="">None</option>
-                    <option v-for="size in NECKLACE_SIZE_OPTIONS" :key="size" :value="size">{{ size }}</option>
-                  </select>
-                </label>
-              </div>
-
-              <label v-if="supportsCenterStoneFields" class="ect-mt-4 ect-inline-flex ect-items-center ect-gap-2 ect-rounded-lg ect-border ect-border-charcoal/10 ect-bg-white ect-px-3 ect-py-2.5" :class="{ 'ect-opacity-80': !fieldsEditable }">
-                <input v-model="form.allowCustomCenterStoneSize" type="checkbox" class="ect-h-4 ect-w-4" :disabled="!fieldsEditable" />
-                <span class="ect-font-body ect-text-sm ect-text-charcoal">Allow manual center stone size entry</span>
-              </label>
-            </section>
 
             <div class="ect-grid sm:ect-grid-cols-3 ect-gap-3 ect-mt-4">
               <label class="ect-flex ect-items-center ect-gap-2 ect-rounded-lg ect-border ect-border-charcoal/10 ect-bg-rose-50/50 ect-px-3 ect-py-2.5" :class="{ 'ect-opacity-80': !fieldsEditable }">
@@ -1642,19 +1544,6 @@ watch(
             <p class="ect-font-body ect-text-sm ect-leading-7 ect-text-charcoal/80 ect-whitespace-pre-wrap">
               {{ displayValue(form.description, 'No manual description added yet.') }}
             </p>
-          </article>
-
-          <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">
-            <div class="ect-mb-4">
-              <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Customization options</h2>
-              <p class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-1">These values power the customer-facing customizable details section and the customize card.</p>
-            </div>
-            <dl class="ect-grid md:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-4">
-              <div v-for="row in customizationDisplayRows" :key="row.label">
-                <dt class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-1.5">{{ row.label }}</dt>
-                <dd class="ect-font-body ect-text-sm ect-leading-6 ect-text-charcoal ect-break-words">{{ row.value }}</dd>
-              </div>
-            </dl>
           </article>
 
           <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">

@@ -74,7 +74,6 @@ async function fetchCatalogProductsFromDb() {
       certifiedAt: true,
       styleTags: true,
       stoneTags: true,
-      customizationOptions: true,
       isNewArrival: true,
       isBestSeller: true,
       rating: true,

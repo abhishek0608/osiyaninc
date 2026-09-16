@@ -550,8 +550,7 @@ const EXPORT_COLUMNS = [
   'bagNo', 'styleNo', 'qty', 'grossWeight', 'netWeight', 'goldRate', 'goldValue', 'stoneLines',
   'styleTags', 'stoneTags',
   'isNewArrival', 'isBestSeller', 'active', 'rating', 'reviewCount',
-  'metalPurities', 'centerStoneSizes', 'ringSizes', 'bangleSizes', 'necklaceSizes',
-  'allowCustomCenterStoneSize',
+  'metalPurity', 'centerStoneSize',
 ]
 
 const exporting = ref(false)

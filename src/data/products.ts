@@ -7,19 +7,6 @@ export interface PriceBreakup {
   total: string
 }
 
-// What a shopper can still choose. Stone shape, quality and type used to live
-// here as their own lists; they are read off the piece's stone lines now, since
-// the packing list states what was actually set rather than what could be.
-// Centre-stone size stays: the packing list carries no millimetre dimensions.
-export interface ProductCustomizationOptions {
-  metalPurities?: string[]
-  centerStoneSizes?: string[]
-  allowCustomCenterStoneSize?: boolean
-  ringSizes?: string[]
-  bangleSizes?: string[]
-  necklaceSizes?: string[]
-}
-
 // A piece's independent lab certification. `fileUrl` is the uploaded report;
 // it can be empty while the certificate is still being scanned, and the tag
 // still shows — `lab` alone is what marks a piece as certified.
@@ -50,6 +37,14 @@ export interface StoneLine {
 
 export interface ProductAttributes {
   grossWeight?: string
+  /**
+   * Metal purity as the Kt/Col column states it, and the centre stone's
+   * millimetre dimensions off the Style No suffix. Both were customization
+   * options once; on a piece that already exists they are facts, and the only
+   * thing reading them is the facet a shopper filters by.
+   */
+  metalPurity?: string
+  centerStoneSize?: string
   /** Bag number - identifies the one physical piece, e.g. "26/P/4362". */
   bagNo?: string
   /** Style number, shared by every piece cut from the same style, e.g. "RG0748_6". */
@@ -251,7 +246,6 @@ export interface Product {
   isBestSeller?: boolean
   rating?: number
   reviewCount?: number
-  customizationOptions?: ProductCustomizationOptions
   productAttributes?: ProductAttributes
   certification?: ProductCertification
 }

@@ -83,29 +83,6 @@ function normalizeOptionArray(input) {
   return input.map((value) => String(value || '').trim()).filter(Boolean)
 }
 
-function normalizeCustomizationOptions(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
-
-  const normalized = {
-    metalPurities: normalizeOptionArray(input.metalPurities),
-    centerStoneSizes: normalizeOptionArray(input.centerStoneSizes),
-    allowCustomCenterStoneSize: input.allowCustomCenterStoneSize !== false,
-    ringSizes: normalizeOptionArray(input.ringSizes),
-    bangleSizes: normalizeOptionArray(input.bangleSizes),
-    necklaceSizes: normalizeOptionArray(input.necklaceSizes),
-  }
-
-  const hasValues =
-    normalized.allowCustomCenterStoneSize ||
-    normalized.metalPurities.length ||
-    normalized.centerStoneSizes.length ||
-    normalized.ringSizes.length ||
-    normalized.bangleSizes.length ||
-    normalized.necklaceSizes.length
-
-  return hasValues ? normalized : undefined
-}
-
 function normalizeStoneLines(input) {
   if (!Array.isArray(input)) return []
   return input
@@ -132,6 +109,8 @@ function normalizeProductAttributes(input) {
 
   const normalized = {
     grossWeight: String(input.grossWeight || '').trim(),
+    metalPurity: String(input.metalPurity || '').trim(),
+    centerStoneSize: String(input.centerStoneSize || '').trim(),
     bagNo: String(input.bagNo || '').trim(),
     styleNo: String(input.styleNo || '').trim(),
     netWeight: String(input.netWeight || '').trim(),
@@ -142,6 +121,8 @@ function normalizeProductAttributes(input) {
 
   const hasValues =
     normalized.grossWeight ||
+    normalized.metalPurity ||
+    normalized.centerStoneSize ||
     normalized.bagNo ||
     normalized.styleNo ||
     normalized.netWeight ||
@@ -280,7 +261,6 @@ export function toApiProduct(dbProduct, preferredVariant = null) {
     isBestSeller: Boolean(dbProduct.isBestSeller),
     rating: typeof dbProduct.rating === 'number' ? dbProduct.rating : 0,
     reviewCount: typeof dbProduct.reviewCount === 'number' ? dbProduct.reviewCount : 0,
-    customizationOptions: normalizeCustomizationOptions(dbProduct.customizationOptions),
     productAttributes,
     certification: normalizeCertification(dbProduct),
   }

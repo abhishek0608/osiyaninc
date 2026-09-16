@@ -1099,29 +1099,6 @@ function normalizeOptionArray(input) {
   return input.map((value) => String(value || '').trim()).filter(Boolean)
 }
 
-function normalizeCustomizationOptions(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
-
-  const normalized = {
-    metalPurities: normalizeOptionArray(input.metalPurities),
-    centerStoneSizes: normalizeOptionArray(input.centerStoneSizes),
-    allowCustomCenterStoneSize: input.allowCustomCenterStoneSize !== false,
-    ringSizes: normalizeOptionArray(input.ringSizes),
-    bangleSizes: normalizeOptionArray(input.bangleSizes),
-    necklaceSizes: normalizeOptionArray(input.necklaceSizes),
-  }
-
-  const hasValues =
-    normalized.allowCustomCenterStoneSize ||
-    normalized.metalPurities.length ||
-    normalized.centerStoneSizes.length ||
-    normalized.ringSizes.length ||
-    normalized.bangleSizes.length ||
-    normalized.necklaceSizes.length
-
-  return hasValues ? normalized : null
-}
-
 function normalizeStoneLines(input) {
   if (!Array.isArray(input)) return []
   return input
@@ -1148,6 +1125,8 @@ function normalizeProductAttributes(input) {
 
   const normalized = {
     grossWeight: String(input.grossWeight || '').trim(),
+    metalPurity: String(input.metalPurity || '').trim(),
+    centerStoneSize: String(input.centerStoneSize || '').trim(),
     bagNo: String(input.bagNo || '').trim(),
     styleNo: String(input.styleNo || '').trim(),
     netWeight: String(input.netWeight || '').trim(),
@@ -1158,6 +1137,8 @@ function normalizeProductAttributes(input) {
 
   const hasValues =
     normalized.grossWeight ||
+    normalized.metalPurity ||
+    normalized.centerStoneSize ||
     normalized.bagNo ||
     normalized.styleNo ||
     normalized.netWeight ||
@@ -1223,7 +1204,6 @@ function buildBulkProductData(row) {
     color: String(row?.color || '').trim(),
     description: String(row?.description || '').trim() || null,
     productAttributes: normalizeProductAttributes(row?.productAttributes),
-    customizationOptions: normalizeCustomizationOptions(row?.customizationOptions),
     isNewArrival: Boolean(row?.isNewArrival),
     isBestSeller: Boolean(row?.isBestSeller),
     active: row?.active !== false,
@@ -1287,7 +1267,7 @@ async function importOneBulkRow(row, mode) {
           await upsertB2CPriceBookItem(tx, existing.id, listPricePaise)
         }
       })
-      await syncStoneSizesInUse(data.customizationOptions?.centerStoneSizes)
+      await syncStoneSizesInUse([data.productAttributes?.centerStoneSize])
       return { slug, status: 'updated', message: 'Updated' }
     }
 
@@ -1299,7 +1279,7 @@ async function importOneBulkRow(row, mode) {
       })
       if (listPricePaise > 0) await upsertB2CPriceBookItem(tx, product.id, listPricePaise)
     })
-    await syncStoneSizesInUse(data.customizationOptions?.centerStoneSizes)
+    await syncStoneSizesInUse([data.productAttributes?.centerStoneSize])
     return { slug, status: 'created', message: 'Created' }
   } catch (error) {
     const message =
@@ -1332,7 +1312,6 @@ async function handleProductExport(res) {
 
   const rows = products.map((p) => {
     const attrs = p.productAttributes && typeof p.productAttributes === 'object' ? p.productAttributes : {}
-    const opts = p.customizationOptions && typeof p.customizationOptions === 'object' ? p.customizationOptions : {}
     const list = (value) => (Array.isArray(value) ? value.join('|') : '')
     const price = p.variants[0]?.listPricePaise
     return {
@@ -1359,12 +1338,8 @@ async function handleProductExport(res) {
       active: p.active ? 'true' : 'false',
       rating: p.rating != null ? String(p.rating) : '',
       reviewCount: p.reviewCount != null ? String(p.reviewCount) : '',
-      metalPurities: list(opts.metalPurities),
-      centerStoneSizes: list(opts.centerStoneSizes),
-      ringSizes: list(opts.ringSizes),
-      bangleSizes: list(opts.bangleSizes),
-      necklaceSizes: list(opts.necklaceSizes),
-      allowCustomCenterStoneSize: opts.allowCustomCenterStoneSize === false ? 'false' : 'true',
+      metalPurity: attrs.metalPurity || '',
+      centerStoneSize: attrs.centerStoneSize || '',
     }
   })
 
@@ -1639,7 +1614,6 @@ async function getProductPayload(slug) {
     certifiedAt: product.certifiedAt || null,
     styleTags: Array.isArray(product.styleTags) ? product.styleTags : [],
     stoneTags: Array.isArray(product.stoneTags) ? product.stoneTags : [],
-    customizationOptions: normalizeCustomizationOptions(product.customizationOptions),
     isNewArrival: Boolean(product.isNewArrival),
     isBestSeller: Boolean(product.isBestSeller),
     active: Boolean(product.active),
@@ -1766,7 +1740,6 @@ async function handleProductPatch(res, currentSlug, body, userId) {
   const images = normalizeImages(body?.images)
   const imageError = validateImages(images)
   if (imageError) return res.status(400).json({ message: imageError })
-  const customizationOptions = normalizeCustomizationOptions(body?.customizationOptions)
   const productAttributes = normalizeProductAttributes(body?.productAttributes)
   const certification = normalizeCertificationInput(body)
   const manualDescription = String(body?.description || '').trim()
@@ -1805,7 +1778,6 @@ async function handleProductPatch(res, currentSlug, body, userId) {
           ...certification,
           styleTags: Array.isArray(body?.styleTags) ? normalizeTags(body.styleTags) : undefined,
           stoneTags: Array.isArray(body?.stoneTags) ? normalizeTags(body.stoneTags) : undefined,
-          customizationOptions,
           isNewArrival: Boolean(body?.isNewArrival),
           isBestSeller: Boolean(body?.isBestSeller),
           active: body?.active !== false,
@@ -1864,7 +1836,7 @@ async function handleProductPatch(res, currentSlug, body, userId) {
     // Keep the image-search vectors in sync with the edited product/images.
     await updateProductEmbeddingSafe(existing.id)
     await updateProductImageEmbeddingsSafe(existing.id)
-    await syncStoneSizesInUse(customizationOptions?.centerStoneSizes)
+    await syncStoneSizesInUse([productAttributes?.centerStoneSize])
   } catch (error) {
     console.error('[internal-product] patch failed:', error)
     const message =
@@ -1897,7 +1869,6 @@ async function handleProductPost(res, body, userId) {
   const images = normalizeImages(body?.images)
   const imageError = validateImages(images)
   if (imageError) return res.status(400).json({ message: imageError })
-  const customizationOptions = normalizeCustomizationOptions(body?.customizationOptions)
   const productAttributes = normalizeProductAttributes(body?.productAttributes)
   const certification = normalizeCertificationInput(body)
   const manualDescription = String(body?.description || '').trim()
@@ -1942,7 +1913,6 @@ async function handleProductPost(res, body, userId) {
           ...certification,
           styleTags: Array.isArray(body?.styleTags) ? normalizeTags(body.styleTags) : undefined,
           stoneTags: Array.isArray(body?.stoneTags) ? normalizeTags(body.stoneTags) : undefined,
-          customizationOptions,
           isNewArrival: Boolean(body?.isNewArrival),
           isBestSeller: Boolean(body?.isBestSeller),
           active: body?.active !== false,
@@ -1999,7 +1969,7 @@ async function handleProductPost(res, body, userId) {
     await updateProductEmbeddingSafe(createdRow.id)
     await updateProductImageEmbeddingsSafe(createdRow.id)
   }
-  await syncStoneSizesInUse(customizationOptions?.centerStoneSizes)
+  await syncStoneSizesInUse([productAttributes?.centerStoneSize])
 
   invalidateCatalogProductsCache()
   const created = await getProductPayload(nextSlug)

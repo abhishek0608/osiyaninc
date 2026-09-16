@@ -396,7 +396,7 @@ function applyClientFacets(list: any[], f: Filters): any[] {
     out = out.filter((p) => f.centerShapes.some((shape) => productHasCenterShape(productStoneShapes(p), shape)))
   }
   if (f.centerStoneSizes?.length) {
-    out = out.filter((p) => f.centerStoneSizes.some((size) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, size)))
+    out = out.filter((p) => f.centerStoneSizes.some((size) => productHasCenterStoneSize([p.productAttributes?.centerStoneSize], size)))
   }
   if (f.metals.length) out = out.filter((p) => f.metals.some((id) => productHasMetal(p, id)))
   if (f.stones.length) out = out.filter((p) => f.stones.some((id) => productHasStone(p, id)))

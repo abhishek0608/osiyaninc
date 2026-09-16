@@ -94,41 +94,6 @@ const METAL_TINT = {
 // Catalog
 // ---------------------------------------------------------------------------
 
-const RING_SIZES = ['10', '11', '12', '13', '14', '15', '16', '17', '18']
-const BANGLE_SIZES = ['2.2', '2.4', '2.6', '2.8']
-const NECKLACE_SIZES = ['16"', '18"', '20"', '22"']
-
-// Shape, quality and stone type are read off a piece's stone lines now, so the
-// only stone option left here is the centre-stone size.
-function goldRingOptions({ sizes } = {}) {
-  return {
-    metalPurities: ['14k Gold', '18k Gold', '22k Gold'],
-    centerStoneSizes: sizes,
-    ringSizes: RING_SIZES,
-  }
-}
-function earringOptions({ sizes = [] } = {}) {
-  return {
-    metalPurities: ['14k Gold', '18k Gold'],
-    centerStoneSizes: sizes,
-  }
-}
-function necklaceOptions({ sizes = [] } = {}) {
-  return {
-    metalPurities: ['14k Gold', '18k Gold', '22k Gold'],
-    centerStoneSizes: sizes,
-    necklaceSizes: NECKLACE_SIZES,
-  }
-}
-function bangleOptions() {
-  return {
-    metalPurities: ['18k Gold', '22k Gold'],
-    bangleSizes: BANGLE_SIZES,
-  }
-}
-function silverOptions(extra = {}) {
-  return { metalPurities: ['Sterling Silver'], ...extra }
-}
 
 /**
  * Demo catalog: five products per category.
@@ -156,7 +121,7 @@ const PRODUCTS = [
     rating: 4.8,
     reviewCount: 96,
     attributes: { grossWeight: '4.4 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '37', cts: '0.92' }] },
-    options: goldRingOptions({ sizes: ['6×6', '7×7', '7×5'] }),
+    purity: '18k Gold',
     photos: ['celeste-solitaire-ring-1.webp', 'celeste-solitaire-ring-2.webp'],
   },
   {
@@ -175,7 +140,7 @@ const PRODUCTS = [
     rating: 4.9,
     reviewCount: 64,
     attributes: { grossWeight: '4.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '1', cts: '1.05' }] },
-    options: goldRingOptions({ sizes: ['6×6', '7×7', '8×6'] }),
+    purity: '18k Gold',
     photos: ['celeste-solitaire-ring-1.webp'],
     tint: 'white',
   },
@@ -194,7 +159,7 @@ const PRODUCTS = [
     rating: 4.6,
     reviewCount: 22,
     attributes: { grossWeight: '5.2 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '29', cts: '0.36' }] },
-    options: goldRingOptions({ sizes: ['5×5', '6×6'] }),
+    purity: '18k Gold',
     photos: ['ring-2.jpg', 'ring-1.jpg'],
   },
   {
@@ -213,7 +178,7 @@ const PRODUCTS = [
     rating: 4.7,
     reviewCount: 41,
     attributes: { grossWeight: '5.6 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '24', cts: '0.48' }] },
-    options: goldRingOptions({ sizes: ['7×5', '8×6', '9×7'] }),
+    purity: '18k Gold',
     photos: ['verde-duet-ring-1.png', 'verde-duet-ring-2.png'],
   },
   {
@@ -231,7 +196,7 @@ const PRODUCTS = [
     rating: 4.4,
     reviewCount: 37,
     attributes: { grossWeight: '2.9 g' },
-    options: silverOptions({ ringSizes: RING_SIZES }),
+    purity: 'Sterling Silver',
     photos: ['ring-1.jpg'],
     tint: 'oxidised',
   },
@@ -253,7 +218,7 @@ const PRODUCTS = [
     rating: 4.8,
     reviewCount: 148,
     attributes: { grossWeight: '7.4 g' },
-    options: silverOptions(),
+    purity: 'Sterling Silver',
     photos: ['earring-er03525-2.png', 'earring-er03525-1.png'],
   },
   {
@@ -272,7 +237,7 @@ const PRODUCTS = [
     rating: 4.9,
     reviewCount: 211,
     attributes: { grossWeight: '2.1 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '14', cts: '0.60' }] },
-    options: earringOptions({ sizes: ['5×5', '6×6'] }),
+    purity: '18k Gold',
     photos: ['earring-1.jpg', 'earring-2.jpg'],
   },
   {
@@ -291,7 +256,7 @@ const PRODUCTS = [
     rating: 4.7,
     reviewCount: 58,
     attributes: { grossWeight: '5.8 g' },
-    options: silverOptions(),
+    purity: 'Sterling Silver',
     photos: ['isha-chandelier-1.png', 'isha-chandelier-2.png'],
   },
   {
@@ -309,7 +274,7 @@ const PRODUCTS = [
     rating: 4.8,
     reviewCount: 33,
     attributes: { grossWeight: '8.9 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '52', cts: '0.71' }] },
-    options: earringOptions({ sizes: ['8×6', '9×7'] }),
+    purity: '18k Gold',
     photos: ['earring-1.jpg'],
     tint: 'rose',
   },
@@ -328,7 +293,7 @@ const PRODUCTS = [
     rating: 4.5,
     reviewCount: 74,
     attributes: { grossWeight: '1.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '2', cts: '0.08' }] },
-    options: earringOptions({ sizes: ['5×5'] }),
+    purity: '18k Gold',
     photos: ['amara-hoop-earrings-2.png', 'amara-hoop-earrings-1.png'],
   },
 
@@ -349,7 +314,7 @@ const PRODUCTS = [
     rating: 4.8,
     reviewCount: 118,
     attributes: { grossWeight: '5.1 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '11', cts: '0.26' }] },
-    options: necklaceOptions({ sizes: ['7×5', '6×6'] }),
+    purity: '18k Gold',
     photos: ['pendant-1.jpg'],
   },
   {
@@ -368,7 +333,7 @@ const PRODUCTS = [
     rating: 4.7,
     reviewCount: 52,
     attributes: { grossWeight: '4.6 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '44', cts: '0.55' }] },
-    options: necklaceOptions({ sizes: ['6×6', '7×5'] }),
+    purity: '18k Gold',
     photos: ['pendant-1.jpg'],
     tint: 'white',
   },
@@ -387,7 +352,7 @@ const PRODUCTS = [
     rating: 4.9,
     reviewCount: 27,
     attributes: { grossWeight: '22.4 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '96', cts: '3.20' }] },
-    options: necklaceOptions({ sizes: ['5×5', '6×4'] }),
+    purity: '18k Gold',
     photos: ['ziya-silver-collar-2.png', 'ziya-silver-collar-1.png'],
   },
   {
@@ -406,7 +371,7 @@ const PRODUCTS = [
     rating: 4.6,
     reviewCount: 45,
     attributes: { grossWeight: '11.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '31', cts: '0.62' }] },
-    options: necklaceOptions({ sizes: ['8×6', '7×5'] }),
+    purity: '18k Gold',
     photos: ['pendant-2.jpg'],
   },
   {
@@ -424,7 +389,7 @@ const PRODUCTS = [
     rating: 4.4,
     reviewCount: 61,
     attributes: { grossWeight: '3.8 g' },
-    options: silverOptions({ necklaceSizes: NECKLACE_SIZES }),
+    purity: 'Sterling Silver',
     photos: ['pendant-1.jpg'],
     tint: 'oxidised',
   },
@@ -446,7 +411,7 @@ const PRODUCTS = [
     rating: 4.5,
     reviewCount: 67,
     attributes: { grossWeight: '4.9 g' },
-    options: { metalPurities: ['14k Gold', '18k Gold', '22k Gold'], bangleSizes: BANGLE_SIZES },
+    purity: '18k Gold',
     photos: ['bracelet-1.jpg'],
   },
   {
@@ -465,11 +430,7 @@ const PRODUCTS = [
     rating: 4.9,
     reviewCount: 39,
     attributes: { grossWeight: '7.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '42', cts: '2.10' }] },
-    options: {
-      metalPurities: ['14k Gold', '18k Gold'],
-      centerStoneSizes: ['5×5', '6×6'],
-      bangleSizes: BANGLE_SIZES,
-    },
+    purity: '18k Gold',
     photos: ['veda-silver-bracelet-1.jpg'],
   },
   {
@@ -487,10 +448,7 @@ const PRODUCTS = [
     rating: 4.7,
     reviewCount: 88,
     attributes: { grossWeight: '9.6 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '34', cts: '0.88' }] },
-    options: {
-      metalPurities: ['14k Gold', '18k Gold'],
-      bangleSizes: BANGLE_SIZES,
-    },
+    purity: '18k Gold',
     photos: ['indra-link-bracelet-1.jpg'],
   },
   {
@@ -508,7 +466,7 @@ const PRODUCTS = [
     rating: 4.6,
     reviewCount: 29,
     attributes: { grossWeight: '12.2 g' },
-    options: bangleOptions(),
+    purity: '18k Gold',
     photos: ['veer-gold-kada-1.png'],
     tint: 'rose',
   },
@@ -527,7 +485,7 @@ const PRODUCTS = [
     rating: 4.3,
     reviewCount: 52,
     attributes: { grossWeight: '8.1 g' },
-    options: silverOptions({ bangleSizes: BANGLE_SIZES }),
+    purity: 'Sterling Silver',
     photos: ['veda-silver-bracelet-1.jpg'],
     tint: 'oxidised',
   },
@@ -549,7 +507,7 @@ const PRODUCTS = [
     rating: 4.8,
     reviewCount: 54,
     attributes: { grossWeight: '18.6 g' },
-    options: bangleOptions(),
+    purity: '18k Gold',
     photos: ['veer-gold-kada-1.png', 'veer-gold-kada-2.png'],
   },
   {
@@ -568,7 +526,7 @@ const PRODUCTS = [
     rating: 4.9,
     reviewCount: 31,
     attributes: { grossWeight: '10.4 g' },
-    options: bangleOptions(),
+    purity: '18k Gold',
     photos: ['veer-gold-kada-2.png'],
     tint: 'white',
   },
@@ -587,7 +545,7 @@ const PRODUCTS = [
     rating: 4.7,
     reviewCount: 43,
     attributes: { grossWeight: '14.2 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '21', cts: '0.44' }] },
-    options: bangleOptions(),
+    purity: '18k Gold',
     photos: ['osiyan-yoga-bangles.jpg'],
   },
   {
@@ -605,7 +563,7 @@ const PRODUCTS = [
     rating: 4.6,
     reviewCount: 25,
     attributes: { grossWeight: '9.1 g' },
-    options: bangleOptions(),
+    purity: '18k Gold',
     photos: ['veer-gold-kada-1.png'],
     tint: 'rose',
   },
@@ -624,7 +582,7 @@ const PRODUCTS = [
     rating: 4.4,
     reviewCount: 58,
     attributes: { grossWeight: '11.3 g' },
-    options: silverOptions({ bangleSizes: BANGLE_SIZES }),
+    purity: 'Sterling Silver',
     photos: ['veer-gold-kada-2.png'],
     tint: 'oxidised',
   },
@@ -646,7 +604,7 @@ const PRODUCTS = [
     rating: 4.8,
     reviewCount: 72,
     attributes: { grossWeight: '4.2 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '13', cts: '0.22' }] },
-    options: { metalPurities: ['18k Gold', '22k Gold'], necklaceSizes: NECKLACE_SIZES },
+    purity: '18k Gold',
     photos: ['raaga-mangalsutra-1.png', 'raaga-mangalsutra-2.png'],
   },
   {
@@ -665,7 +623,7 @@ const PRODUCTS = [
     rating: 4.7,
     reviewCount: 49,
     attributes: { grossWeight: '3.4 g' },
-    options: { metalPurities: ['14k Gold', '18k Gold', '22k Gold'], necklaceSizes: NECKLACE_SIZES },
+    purity: '18k Gold',
     photos: ['necklace-1.jpg'],
   },
   {
@@ -683,10 +641,7 @@ const PRODUCTS = [
     rating: 4.6,
     reviewCount: 34,
     attributes: { grossWeight: '5.6 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '9', cts: '0.18' }] },
-    options: {
-      metalPurities: ['18k Gold', '22k Gold'],
-      necklaceSizes: NECKLACE_SIZES,
-    },
+    purity: '18k Gold',
     photos: ['raaga-mangalsutra-1.png', 'necklace-1.jpg'],
   },
   {
@@ -704,7 +659,7 @@ const PRODUCTS = [
     rating: 4.9,
     reviewCount: 21,
     attributes: { grossWeight: '8.8 g' },
-    options: { metalPurities: ['22k Gold'], necklaceSizes: NECKLACE_SIZES },
+    purity: '18k Gold',
     photos: ['raaga-mangalsutra-2.png', 'raaga-mangalsutra-1.png'],
   },
   {
@@ -723,10 +678,7 @@ const PRODUCTS = [
     rating: 4.5,
     reviewCount: 56,
     attributes: { grossWeight: '2.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '1', cts: '0.10' }] },
-    options: {
-      metalPurities: ['14k Gold', '18k Gold'],
-      necklaceSizes: NECKLACE_SIZES,
-    },
+    purity: '18k Gold',
     photos: ['necklace-1.jpg'],
     tint: 'rose',
   },
@@ -827,8 +779,7 @@ function productData(product) {
     material: product.material,
     color: product.color,
     description: product.description,
-    productAttributes: product.attributes || null,
-    customizationOptions: product.options || null,
+    productAttributes: product.attributes ? { ...product.attributes, metalPurity: product.purity || '' } : null,
     styleTags: product.styleTags || [],
     stoneTags: product.stoneTags || [],
     isNewArrival: Boolean(product.isNewArrival),

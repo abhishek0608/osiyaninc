@@ -197,7 +197,7 @@ function matches(p: any, exclude: string = '') {
   if (exclude !== 'material' && f.materials.length && !f.materials.includes(p.material)) return false
   if (exclude !== 'color' && f.colors.length && !f.colors.includes(p.color)) return false
   if (exclude !== 'shape' && f.centerShapes.length && !f.centerShapes.some((s) => productHasCenterShape(productStoneShapes(p), s))) return false
-  if (exclude !== 'size' && f.centerStoneSizes.length && !f.centerStoneSizes.some((s) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, s))) return false
+  if (exclude !== 'size' && f.centerStoneSizes.length && !f.centerStoneSizes.some((s) => productHasCenterStoneSize([p.productAttributes?.centerStoneSize], s))) return false
   if (exclude !== 'metal' && f.metals.length && !f.metals.some((id) => productHasMetal(p, id))) return false
   if (exclude !== 'stone' && f.stones.length && !f.stones.some((id) => productHasStone(p, id))) return false
   if (exclude !== 'type' && f.types.length && !f.types.some((id) => productHasPieceType(p, id))) return false
@@ -306,7 +306,7 @@ function countFor(facet: string, predicate: (p: any) => boolean) {
   return list.filter((p) => matches(p, facet) && predicate(p)).length
 }
 
-const sizeCount = (s: string) => countFor('size', (p) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, s))
+const sizeCount = (s: string) => countFor('size', (p) => productHasCenterStoneSize([p.productAttributes?.centerStoneSize], s))
 const availableCenterStoneSizes = computed(() => centerStoneSizesForShapes(local.value.centerShapes))
 
 // Applied selections rendered as removable chips at the top of the panel.
