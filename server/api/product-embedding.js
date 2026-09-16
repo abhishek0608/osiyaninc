@@ -83,18 +83,9 @@ export function buildCatalogEmbedText(product, visualOrTextBlock) {
     attrs.grossWeight ? `Gross weight: ${attrs.grossWeight}` : null,
     attrs.netWeight ? `Net weight: ${attrs.netWeight}` : null,
     attrs.styleNo ? `Style number: ${attrs.styleNo}` : null,
+    attrs.metalPurity ? `Metal purity: ${attrs.metalPurity}` : null,
+    attrs.centerStoneSize ? `Center stone size: ${attrs.centerStoneSize}` : null,
     stoneLinesText(attrs.stoneLines) || null,
-  ]
-    .filter(Boolean)
-    .join('. ')
-
-  const c = product.customizationOptions || {}
-  const customizationText = [
-    Array.isArray(c.metalPurities) && c.metalPurities.length ? `Metal purities: ${c.metalPurities.join(', ')}` : null,
-    Array.isArray(c.centerStoneSizes) && c.centerStoneSizes.length ? `Center stone sizes: ${c.centerStoneSizes.join(', ')}` : null,
-    Array.isArray(c.ringSizes) && c.ringSizes.length ? `Ring sizes: ${c.ringSizes.join(', ')}` : null,
-    Array.isArray(c.bangleSizes) && c.bangleSizes.length ? `Bangle sizes: ${c.bangleSizes.join(', ')}` : null,
-    Array.isArray(c.necklaceSizes) && c.necklaceSizes.length ? `Necklace sizes: ${c.necklaceSizes.join(', ')}` : null,
   ]
     .filter(Boolean)
     .join('. ')
@@ -110,7 +101,6 @@ export function buildCatalogEmbedText(product, visualOrTextBlock) {
     productAttributesText || null,
     Array.isArray(product.styleTags) && product.styleTags.length ? `Catalog style: ${product.styleTags.join(', ')}` : null,
     Array.isArray(product.stoneTags) && product.stoneTags.length ? `Catalog stones: ${product.stoneTags.join(', ')}` : null,
-    customizationText || null,
     'Appearance and details:',
     visualOrTextBlock,
   ]
@@ -172,7 +162,6 @@ const PRODUCT_SELECT = {
   productAttributes: true,
   styleTags: true,
   stoneTags: true,
-  customizationOptions: true,
   images: { where: { active: true }, orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
 }
 

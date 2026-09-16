@@ -136,14 +136,13 @@ export function normalizeMetalPurity(value: unknown): string {
 }
 
 /**
- * The purities a piece is recorded in. `customizationOptions.metalPurities` is
- * the merchandised field; where it is empty the copy is read instead, so a
- * legacy record described as "18k yellow gold" still files under 18K.
+ * The purities a piece is recorded in. `productAttributes.metalPurity` is the
+ * recorded field, off the packing list's Kt/Col column; where it is empty the
+ * copy is read instead, so a legacy record described as "18k yellow gold" still
+ * files under 18K.
  */
 export function productMetalPurities(product: any): string[] {
-  const recorded: unknown[] = Array.isArray(product?.customizationOptions?.metalPurities)
-    ? product.customizationOptions.metalPurities
-    : []
+  const recorded: unknown[] = [product?.productAttributes?.metalPurity].filter(Boolean)
   const keys = new Set<string>(recorded.map(normalizeMetalPurity).filter(Boolean))
   if (keys.size) return [...keys]
 

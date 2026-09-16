@@ -15,8 +15,7 @@ const COLUMNS = [
   'bagNo', 'styleNo', 'qty', 'grossWeight', 'netWeight', 'goldRate', 'goldValue', 'stoneLines',
   'styleTags', 'stoneTags',
   'isNewArrival', 'isBestSeller', 'active', 'rating', 'reviewCount',
-  'metalPurities', 'centerStoneSizes', 'ringSizes', 'bangleSizes', 'necklaceSizes',
-  'allowCustomCenterStoneSize',
+  'metalPurity', 'centerStoneSize',
 ]
 
 const STONE_LINE_GROUPS = ['D', 'F', 'C']
@@ -208,6 +207,8 @@ function toProduct(row: Record<string, string>) {
       goldRate: row.goldRate?.trim() || '',
       goldValue: row.goldValue?.trim() || '',
       stoneLines: parseStoneLines(row.stoneLines),
+      metalPurity: row.metalPurity?.trim() || '',
+      centerStoneSize: row.centerStoneSize?.trim() || '',
     },
     styleTags: multi('styleTags'),
     stoneTags: multi('stoneTags'),
@@ -216,14 +217,6 @@ function toProduct(row: Record<string, string>) {
     active: bool(row.active, true),
     rating: row.rating?.trim() ? Number(row.rating) : null,
     reviewCount: row.reviewCount?.trim() ? Number(row.reviewCount) : null,
-    customizationOptions: {
-      metalPurities: multi('metalPurities'),
-      centerStoneSizes: multi('centerStoneSizes'),
-      ringSizes: multi('ringSizes'),
-      bangleSizes: multi('bangleSizes'),
-      necklaceSizes: multi('necklaceSizes'),
-      allowCustomCenterStoneSize: bool(row.allowCustomCenterStoneSize, true),
-    },
   }
 }
 
@@ -236,9 +229,7 @@ function downloadTemplate() {
     stoneLines: 'D:ROUND:G-H/SI:2:0.02|D:ROUND:G-H/SI:32:0.16|F:BAGUETTE:G-H/SI:8:0.08',
     styleTags: 'modern|vintage', stoneTags: 'ruby|diamond',
     isNewArrival: 'true', isBestSeller: 'false', active: 'true', rating: '4.8', reviewCount: '24',
-    metalPurities: '18K|22K', centerStoneSizes: '6 mm|7 mm',
-    ringSizes: '6|7|8', bangleSizes: '', necklaceSizes: '',
-    allowCustomCenterStoneSize: 'true',
+    metalPurity: '18k Gold', centerStoneSize: '9X7',
   }
   const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
   const csv = COLUMNS.join(',') + '\n' + COLUMNS.map((c) => esc(example[c] ?? '')).join(',') + '\n'

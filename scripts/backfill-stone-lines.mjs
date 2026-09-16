@@ -7,9 +7,14 @@
  * without it, existing products lose their stone detail on the storefront.
  *
  * Only products that have no stone lines yet are touched, so a piece already
- * entered off a packing list is never overwritten. The retired customization
- * options go too; `centerStoneSizes` and `metalPurities` are kept, since the
- * packing list carries neither millimetres nor karat as a stone line.
+ * entered off a packing list is never overwritten.
+ *
+ * customizationOptions retires with it. Nothing on a one-off piece is chosen,
+ * and the only two fields anything still read were facts rather than options:
+ * metalPurities and centerStoneSizes move to productAttributes as the singular
+ * metalPurity and centerStoneSize, taking the first recorded value. The rest —
+ * ring, bangle and necklace sizes, and the allowCustom flag — had no readers
+ * left once the product page dropped its size selectors.
  *
  * Dry run by default — it prints what it would do and changes nothing:
  *   node --env-file=.env scripts/backfill-stone-lines.mjs
@@ -20,7 +25,6 @@ import { prisma } from '../server/api/db.js'
 
 const APPLY = process.argv.includes('--apply')
 const RETIRED_ATTRS = ['diamondCarats', 'diamondQuantity']
-const RETIRED_OPTIONS = ['diamondQualities', 'centerShapes', 'stoneTypes', 'allowCustomStoneType']
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
@@ -34,6 +38,11 @@ function omit(source, keys) {
   const next = { ...source }
   for (const key of keys) delete next[key]
   return next
+}
+
+/** First recorded value of a retired option list, as a plain string. */
+function firstOption(value) {
+  return Array.isArray(value) && value.length ? String(value[0] ?? '').trim() : ''
 }
 
 /**
@@ -63,19 +72,25 @@ async function backfill() {
 
     const hasStoneLines = Array.isArray(attrs.stoneLines) && attrs.stoneLines.length > 0
     const hasRetiredAttrs = RETIRED_ATTRS.some((key) => key in attrs)
-    const hasRetiredOptions = RETIRED_OPTIONS.some((key) => key in opts)
-    if (!hasRetiredAttrs && !hasRetiredOptions) continue
+    const hasOptions = Object.keys(opts).length > 0
+    if (!hasRetiredAttrs && !hasOptions) continue
     if (hasStoneLines) skippedExisting += 1
 
     const line = hasStoneLines ? null : stoneLineFromLegacy(attrs)
     const nextAttrs = omit(attrs, RETIRED_ATTRS)
     if (line) nextAttrs.stoneLines = [line]
 
-    const nextOpts = omit(opts, RETIRED_OPTIONS)
+    // The two options worth keeping become singular attributes; an existing
+    // attribute value wins, so re-running this never overwrites real data.
+    const purity = nextAttrs.metalPurity || firstOption(opts.metalPurities)
+    const stoneSize = nextAttrs.centerStoneSize || firstOption(opts.centerStoneSizes)
+    if (purity) nextAttrs.metalPurity = purity
+    if (stoneSize) nextAttrs.centerStoneSize = stoneSize
 
     console.log(
       `${product.slug}: ${line ? `+1 stone line (${line.pcs || '?'} pcs / ${line.cts || '?'} ct)` : 'stone lines kept'}` +
-        `, dropped ${RETIRED_ATTRS.filter((k) => k in attrs).length + RETIRED_OPTIONS.filter((k) => k in opts).length} retired key(s)`,
+        `${purity ? `, purity ${purity}` : ''}${stoneSize ? `, stone size ${stoneSize}` : ''}` +
+        `, dropped ${RETIRED_ATTRS.filter((k) => k in attrs).length} attr(s) and customizationOptions`,
     )
 
     if (APPLY) {
@@ -84,7 +99,7 @@ async function backfill() {
         where: { id: product.id },
         data: {
           productAttributes: Object.keys(nextAttrs).length ? nextAttrs : null,
-          customizationOptions: Object.keys(nextOpts).length ? nextOpts : null,
+          customizationOptions: null,
         },
       })
     }
