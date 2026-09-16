@@ -5,7 +5,7 @@ import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
 import { invalidateProductsCache } from '../composables/useProductsApi'
-import { BANGLE_SIZE_OPTIONS, CATEGORIES, CENTER_SHAPE_OPTIONS, CERT_LAB_OPTIONS, COLORS, DIAMOND_QUALITY_OPTIONS, METAL_PURITY_OPTIONS, NECKLACE_SIZE_OPTIONS, RING_SIZE_OPTIONS } from '../data/products'
+import { BANGLE_SIZE_OPTIONS, CATEGORIES, CERT_LAB_OPTIONS, COLORS, METAL_PURITY_OPTIONS, NECKLACE_SIZE_OPTIONS, RING_SIZE_OPTIONS } from '../data/products'
 
 // One photo in the product's S3 folder. `key` is the object key, which the
 // delete endpoint needs; display order comes from the "_<n>" filename suffix.
@@ -23,6 +23,19 @@ interface ProductCertificate {
   key: string
 }
 
+// One stone line as the form edits it. `group` mirrors the packing list's
+// three columns of stone data: D (round diamonds), F (fancy cuts) and C (the
+// coloured stone). A piece carries as many lines as the bench actually set.
+type StoneGroupValue = 'D' | 'F' | 'C'
+
+interface StoneLineForm {
+  group: StoneGroupValue
+  shape: string
+  quality: string
+  pcs: string
+  cts: string
+}
+
 interface ProductForm {
   slug: string
   title: string
@@ -33,15 +46,15 @@ interface ProductForm {
   description: string
   aiDescription: string
   grossWeight: string
-  diamondCarats: string
-  diamondQuantity: string
-  diamondQuality: string
+  bagNo: string
+  styleNo: string
+  netWeight: string
+  goldRate: string
+  goldValue: string
+  stoneLines: StoneLineForm[]
   metalPurity: string
-  centerShape: string
   centerStoneSizes: string
   allowCustomCenterStoneSize: boolean
-  stoneTypes: string
-  allowCustomStoneType: boolean
   ringSize: string
   bangleSize: string
   necklaceSize: string
@@ -49,6 +62,7 @@ interface ProductForm {
   certNumber: string
   certifiedAt: string
   variantPricePaise: string
+  quantity: string
   rating: string
   reviewCount: string
   isNewArrival: boolean
@@ -85,6 +99,11 @@ const fieldSkeletonRows = Array.from({ length: 9 }, (_, index) => index)
 const materialOptions = [
   { value: 'gold', label: 'Gold' },
   { value: 'silver', label: 'Silver' },
+]
+const stoneGroupOptions: { value: StoneGroupValue; label: string }[] = [
+  { value: 'D', label: 'Diamond (round)' },
+  { value: 'F', label: 'Fancy cut' },
+  { value: 'C', label: 'Colour stone' },
 ]
 const subtypeOptions = [
   { value: 'solitaire', label: 'Solitaire' },
@@ -157,15 +176,15 @@ function emptyProductForm(): ProductForm {
     description: '',
     aiDescription: '',
     grossWeight: '',
-    diamondCarats: '',
-    diamondQuantity: '',
-    diamondQuality: '',
+    bagNo: '',
+    styleNo: '',
+    netWeight: '',
+    goldRate: '',
+    goldValue: '',
+    stoneLines: [],
     metalPurity: '',
-    centerShape: '',
     centerStoneSizes: '',
     allowCustomCenterStoneSize: true,
-    stoneTypes: '',
-    allowCustomStoneType: true,
     ringSize: '',
     bangleSize: '',
     necklaceSize: '',
@@ -173,6 +192,7 @@ function emptyProductForm(): ProductForm {
     certNumber: '',
     certifiedAt: '',
     variantPricePaise: '',
+    quantity: '',
     rating: '',
     reviewCount: '',
     isNewArrival: false,
@@ -199,15 +219,15 @@ const form = ref<ProductForm>({
   description: '',
   aiDescription: '',
   grossWeight: '',
-  diamondCarats: '',
-  diamondQuantity: '',
-  diamondQuality: '',
+  bagNo: '',
+  styleNo: '',
+  netWeight: '',
+  goldRate: '',
+  goldValue: '',
+  stoneLines: [],
   metalPurity: '',
-  centerShape: '',
   centerStoneSizes: '',
   allowCustomCenterStoneSize: true,
-  stoneTypes: '',
-  allowCustomStoneType: true,
   ringSize: '',
   bangleSize: '',
   necklaceSize: '',
@@ -215,6 +235,7 @@ const form = ref<ProductForm>({
   certNumber: '',
   certifiedAt: '',
   variantPricePaise: '',
+  quantity: '',
   rating: '',
   reviewCount: '',
   isNewArrival: false,
@@ -260,23 +281,27 @@ const coreDisplayRows = computed(() => [
   { label: 'Material', value: displayValue(findOptionLabel(materialOptions, form.value.material)) },
   { label: 'Color', value: displayValue(COLORS.find((color) => color.id === form.value.color)?.label || form.value.color) },
   { label: 'Price (USD)', value: displayValue(form.value.variantPricePaise) },
+  { label: 'Stock quantity', value: displayValue(form.value.quantity) },
 ])
 
 const attributeDisplayRows = computed(() => [
+  { label: 'Bag no.', value: displayValue(form.value.bagNo) },
+  { label: 'Style no.', value: displayValue(form.value.styleNo) },
   { label: 'Gross weight', value: displayValue(form.value.grossWeight) },
-  { label: 'Diamond carats', value: displayValue(form.value.diamondCarats) },
-  { label: 'Diamond quantity', value: displayValue(form.value.diamondQuantity) },
+  { label: 'Net weight', value: displayValue(form.value.netWeight) },
+  { label: 'Gold rate', value: displayValue(form.value.goldRate) },
+  { label: 'Gold value', value: displayValue(form.value.goldValue) },
 ])
+
+function stoneGroupLabel(group: StoneGroupValue) {
+  return stoneGroupOptions.find((option) => option.value === group)?.label || group
+}
 
 const customizationDisplayRows = computed(() => {
   const rows = [
-    { label: 'Diamond quality', value: displayValue(form.value.diamondQuality) },
     { label: 'Metal purity', value: displayValue(form.value.metalPurity) },
     ...(supportsCenterStoneFields.value
       ? [
-          { label: 'Stone types', value: displayValue(form.value.stoneTypes) },
-          { label: 'Allow custom stone type', value: displayBoolean(form.value.allowCustomStoneType) },
-          { label: 'Center shape', value: displayValue(form.value.centerShape) },
           { label: 'Center stone sizes', value: displayValue(form.value.centerStoneSizes) },
           { label: 'Allow custom center stone size', value: displayBoolean(form.value.allowCustomCenterStoneSize) },
         ]
@@ -320,6 +345,17 @@ function handleSlugInput(event: Event) {
   form.value.slug = toSlug((event.target as HTMLInputElement).value)
 }
 
+function mapIncomingStoneLines(input: any): StoneLineForm[] {
+  if (!Array.isArray(input)) return []
+  return input.map((line: any) => ({
+    group: line?.group === 'F' || line?.group === 'C' ? line.group : 'D',
+    shape: String(line?.shape || ''),
+    quality: String(line?.quality || ''),
+    pcs: String(line?.pcs ?? ''),
+    cts: String(line?.cts ?? ''),
+  }))
+}
+
 function mapIncomingProduct(product: any): ProductForm {
   return {
     slug: String(product?.slug || ''),
@@ -331,15 +367,15 @@ function mapIncomingProduct(product: any): ProductForm {
     description: String(product?.description || ''),
     aiDescription: String(product?.aiDescription || ''),
     grossWeight: String(product?.productAttributes?.grossWeight || ''),
-    diamondCarats: String(product?.productAttributes?.diamondCarats || ''),
-    diamondQuantity: String(product?.productAttributes?.diamondQuantity || ''),
-    diamondQuality: Array.isArray(product?.customizationOptions?.diamondQualities) ? (product.customizationOptions.diamondQualities[0] || '') : '',
+    bagNo: String(product?.productAttributes?.bagNo || ''),
+    styleNo: String(product?.productAttributes?.styleNo || ''),
+    netWeight: String(product?.productAttributes?.netWeight || ''),
+    goldRate: String(product?.productAttributes?.goldRate || ''),
+    goldValue: String(product?.productAttributes?.goldValue || ''),
+    stoneLines: mapIncomingStoneLines(product?.productAttributes?.stoneLines),
     metalPurity: Array.isArray(product?.customizationOptions?.metalPurities) ? (product.customizationOptions.metalPurities[0] || '') : '',
-    centerShape: Array.isArray(product?.customizationOptions?.centerShapes) ? (product.customizationOptions.centerShapes[0] || '') : '',
     centerStoneSizes: Array.isArray(product?.customizationOptions?.centerStoneSizes) ? product.customizationOptions.centerStoneSizes.join(', ') : '',
     allowCustomCenterStoneSize: product?.customizationOptions?.allowCustomCenterStoneSize !== false,
-    stoneTypes: Array.isArray(product?.customizationOptions?.stoneTypes) ? product.customizationOptions.stoneTypes.join(', ') : '',
-    allowCustomStoneType: product?.customizationOptions?.allowCustomStoneType !== false,
     ringSize: Array.isArray(product?.customizationOptions?.ringSizes) ? (product.customizationOptions.ringSizes[0] || '') : '',
     bangleSize: Array.isArray(product?.customizationOptions?.bangleSizes) ? (product.customizationOptions.bangleSizes[0] || '') : '',
     necklaceSize: Array.isArray(product?.customizationOptions?.necklaceSizes) ? (product.customizationOptions.necklaceSizes[0] || '') : '',
@@ -348,6 +384,7 @@ function mapIncomingProduct(product: any): ProductForm {
     certifiedAt: toDateInputValue(product?.certifiedAt),
     variantPricePaise:
       typeof product?.variantPricePaise === 'number' ? String(product.variantPricePaise) : '',
+    quantity: typeof product?.quantity === 'number' ? String(product.quantity) : '',
     rating: typeof product?.rating === 'number' ? String(product.rating) : '',
     reviewCount: typeof product?.reviewCount === 'number' ? String(product.reviewCount) : '',
     isNewArrival: Boolean(product?.isNewArrival),
@@ -396,13 +433,9 @@ function wrapSingle(value: string) {
 
 function buildCustomizationOptionsPayload() {
   return {
-    diamondQualities: wrapSingle(form.value.diamondQuality),
     metalPurities: wrapSingle(form.value.metalPurity),
-    centerShapes: supportsCenterStoneFields.value ? wrapSingle(form.value.centerShape) : [],
     centerStoneSizes: supportsCenterStoneFields.value ? splitCommaSeparated(form.value.centerStoneSizes) : [],
     allowCustomCenterStoneSize: form.value.allowCustomCenterStoneSize,
-    stoneTypes: supportsCenterStoneFields.value ? splitCommaSeparated(form.value.stoneTypes) : [],
-    allowCustomStoneType: form.value.allowCustomStoneType,
     ringSizes: isRingCategory.value ? wrapSingle(form.value.ringSize) : [],
     bangleSizes: isBangleLikeProduct.value ? wrapSingle(form.value.bangleSize) : [],
     necklaceSizes: isNecklaceCategory.value ? wrapSingle(form.value.necklaceSize) : [],
@@ -412,9 +445,57 @@ function buildCustomizationOptionsPayload() {
 function buildProductAttributesPayload() {
   return {
     grossWeight: normalizeInputValue(form.value.grossWeight),
-    diamondCarats: normalizeInputValue(form.value.diamondCarats),
-    diamondQuantity: normalizeInputValue(form.value.diamondQuantity),
+    bagNo: normalizeInputValue(form.value.bagNo),
+    styleNo: normalizeInputValue(form.value.styleNo),
+    netWeight: normalizeInputValue(form.value.netWeight),
+    goldRate: normalizeInputValue(form.value.goldRate),
+    goldValue: normalizeInputValue(form.value.goldValue),
+    // Rows the user added but never filled are dropped here rather than in the
+    // API, so the form and what gets saved agree.
+    stoneLines: form.value.stoneLines
+      .map((line) => ({
+        group: line.group,
+        shape: normalizeInputValue(line.shape),
+        quality: normalizeInputValue(line.quality),
+        pcs: normalizeInputValue(line.pcs),
+        cts: normalizeInputValue(line.cts),
+      }))
+      .filter((line) => line.shape || line.quality || line.pcs || line.cts),
   }
+}
+
+// Every row of the packing list satisfies Gold Value = Net Wt x Gold Rate x 1.1,
+// the 1.1 being the making uplift. The field stays editable and a typed value is
+// never overwritten - this only fills a blank so the number doesn't have to be
+// re-keyed off a calculator.
+const GOLD_VALUE_MAKING_MULTIPLIER = 1.1
+
+const suggestedGoldValue = computed(() => {
+  const netWeight = Number(String(form.value.netWeight).replace(/[^0-9.]/g, ''))
+  const goldRate = Number(String(form.value.goldRate).replace(/[^0-9.]/g, ''))
+  if (!Number.isFinite(netWeight) || !Number.isFinite(goldRate)) return ''
+  if (netWeight <= 0 || goldRate <= 0) return ''
+  return (netWeight * goldRate * GOLD_VALUE_MAKING_MULTIPLIER).toFixed(2)
+})
+
+watch(suggestedGoldValue, (suggestion) => {
+  if (!fieldsEditable.value) return
+  if (!suggestion) return
+  if (form.value.goldValue.trim()) return
+  form.value.goldValue = suggestion
+})
+
+function applySuggestedGoldValue() {
+  if (!fieldsEditable.value || !suggestedGoldValue.value) return
+  form.value.goldValue = suggestedGoldValue.value
+}
+
+function addStoneLine(group: StoneGroupValue) {
+  form.value.stoneLines.push({ group, shape: '', quality: '', pcs: '', cts: '' })
+}
+
+function removeStoneLine(index: number) {
+  form.value.stoneLines.splice(index, 1)
 }
 
 function normalizeInputValue(input: unknown) {
@@ -675,6 +756,8 @@ async function saveProduct() {
     certNumber: normalizeInputValue(form.value.certNumber),
     certifiedAt: normalizeInputValue(form.value.certifiedAt),
     variantPricePaise: normalizeInputValue(form.value.variantPricePaise),
+    // Left blank means "don't touch the stock row" rather than "set it to zero".
+    quantity: normalizeInputValue(form.value.quantity),
     rating: normalizeInputValue(form.value.rating),
     reviewCount: normalizeInputValue(form.value.reviewCount),
     isNewArrival: form.value.isNewArrival,
@@ -1017,6 +1100,18 @@ watch(
                   :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
                 />
               </label>
+              <label class="ect-block">
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Stock quantity</span>
+                <input
+                  v-model="form.quantity"
+                  type="number"
+                  min="0"
+                  placeholder="1"
+                  :readonly="!fieldsEditable"
+                  :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                />
+                <span class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">Pieces on hand. Leave blank to keep the current stock unchanged.</span>
+              </label>
             </div>
 
             <section class="ect-mt-5 ect-rounded-lg ect-border ect-border-rose-100 ect-bg-white ect-p-4">
@@ -1026,6 +1121,26 @@ watch(
               </div>
 
               <div class="ect-grid md:ect-grid-cols-2 ect-gap-4">
+                <label class="ect-block">
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Bag no.</span>
+                  <input
+                    v-model="form.bagNo"
+                    type="text"
+                    placeholder="26/P/4362"
+                    :readonly="!fieldsEditable"
+                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                  />
+                </label>
+                <label class="ect-block">
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Style no.</span>
+                  <input
+                    v-model="form.styleNo"
+                    type="text"
+                    placeholder="RG0748_6"
+                    :readonly="!fieldsEditable"
+                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                  />
+                </label>
                 <label class="ect-block">
                   <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Gross weight</span>
                   <input
@@ -1037,25 +1152,112 @@ watch(
                   />
                 </label>
                 <label class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Diamond carats</span>
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Net weight</span>
                   <input
-                    v-model="form.diamondCarats"
+                    v-model="form.netWeight"
                     type="text"
-                    placeholder="0.725 cts"
+                    placeholder="2.522 gms"
                     :readonly="!fieldsEditable"
                     :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
                   />
                 </label>
                 <label class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Diamond quantity</span>
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Gold rate</span>
                   <input
-                    v-model="form.diamondQuantity"
+                    v-model="form.goldRate"
                     type="text"
-                    placeholder="86"
+                    placeholder="86.688"
                     :readonly="!fieldsEditable"
                     :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
                   />
                 </label>
+                <label class="ect-block">
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Gold value</span>
+                  <input
+                    v-model="form.goldValue"
+                    type="text"
+                    placeholder="240.49"
+                    :readonly="!fieldsEditable"
+                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                  />
+                  <span v-if="suggestedGoldValue" class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">
+                    Net weight x gold rate x 1.1 = {{ suggestedGoldValue }}.
+                    <button
+                      v-if="fieldsEditable && form.goldValue.trim() !== suggestedGoldValue"
+                      type="button"
+                      class="ect-font-semibold ect-text-charcoal/70 ect-underline hover:ect-text-charcoal"
+                      @click="applySuggestedGoldValue"
+                    >
+                      Use it
+                    </button>
+                  </span>
+                </label>
+              </div>
+              <div class="ect-mt-5 ect-border-t ect-border-rose-100 ect-pt-4">
+                <div class="ect-flex ect-flex-wrap ect-items-start ect-justify-between ect-gap-3 ect-mb-3">
+                  <div>
+                    <h4 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Stone lines</h4>
+                    <p class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-1">One row per stone line on the packing list. Add as many as the piece actually carries.</p>
+                  </div>
+                  <div v-if="fieldsEditable" class="ect-flex ect-flex-wrap ect-gap-2">
+                    <button
+                      v-for="option in stoneGroupOptions"
+                      :key="option.value"
+                      type="button"
+                      class="ect-rounded-lg ect-border ect-border-charcoal/15 ect-bg-white ect-px-3 ect-py-1.5 ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal hover:ect-border-rose-300"
+                      @click="addStoneLine(option.value)"
+                    >
+                      + {{ option.label }}
+                    </button>
+                  </div>
+                </div>
+
+                <p v-if="!form.stoneLines.length" class="ect-font-body ect-text-sm ect-text-charcoal/45">
+                  No stone lines recorded.
+                </p>
+
+                <div v-else class="ect-space-y-3">
+                  <div
+                    v-for="(line, index) in form.stoneLines"
+                    :key="index"
+                    class="ect-grid ect-gap-3 sm:ect-grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto] ect-items-end ect-rounded-lg ect-border ect-border-charcoal/10 ect-bg-white ect-p-3"
+                  >
+                    <label class="ect-block">
+                      <span class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-1.5">Group</span>
+                      <select
+                        v-model="line.group"
+                        :disabled="!fieldsEditable"
+                        :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                      >
+                        <option v-for="option in stoneGroupOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                      </select>
+                    </label>
+                    <label class="ect-block">
+                      <span class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-1.5">Shape</span>
+                      <input v-model="line.shape" type="text" placeholder="ROUND" :readonly="!fieldsEditable" :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']" />
+                    </label>
+                    <label class="ect-block">
+                      <span class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-1.5">Quality</span>
+                      <input v-model="line.quality" type="text" placeholder="G-H/SI" :readonly="!fieldsEditable" :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']" />
+                    </label>
+                    <label class="ect-block">
+                      <span class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-1.5">Pcs</span>
+                      <input v-model="line.pcs" type="text" placeholder="6" :readonly="!fieldsEditable" :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']" />
+                    </label>
+                    <label class="ect-block">
+                      <span class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-1.5">Cts</span>
+                      <input v-model="line.cts" type="text" placeholder="0.04" :readonly="!fieldsEditable" :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']" />
+                    </label>
+                    <button
+                      v-if="fieldsEditable"
+                      type="button"
+                      class="ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/70 hover:ect-border-rose-300 hover:ect-text-charcoal"
+                      @click="removeStoneLine(index)"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -1077,17 +1279,6 @@ watch(
 
               <div class="ect-grid md:ect-grid-cols-2 ect-gap-4">
                 <label class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Diamond quality</span>
-                  <select
-                    v-model="form.diamondQuality"
-                    :disabled="!fieldsEditable"
-                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : 'ect-bg-white']"
-                  >
-                    <option value="">None</option>
-                    <option v-for="quality in DIAMOND_QUALITY_OPTIONS" :key="quality" :value="quality">{{ quality }}</option>
-                  </select>
-                </label>
-                <label class="ect-block">
                   <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Metal purity</span>
                   <select
                     v-model="form.metalPurity"
@@ -1096,28 +1287,6 @@ watch(
                   >
                     <option value="">None</option>
                     <option v-for="purity in METAL_PURITY_OPTIONS" :key="purity" :value="purity">{{ purity }}</option>
-                  </select>
-                </label>
-                <label v-if="supportsCenterStoneFields" class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Stone types</span>
-                  <input
-                    v-model="form.stoneTypes"
-                    type="text"
-                    placeholder="Natural Diamond, Moissanite, Ruby"
-                    :readonly="!fieldsEditable"
-                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
-                  />
-                  <span class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">Comma-separated stone types, e.g. Natural Diamond, Moissanite, Ruby</span>
-                </label>
-                <label v-if="supportsCenterStoneFields" class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Center shape</span>
-                  <select
-                    v-model="form.centerShape"
-                    :disabled="!fieldsEditable"
-                    :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : 'ect-bg-white']"
-                  >
-                    <option value="">None</option>
-                    <option v-for="shape in CENTER_SHAPE_OPTIONS" :key="shape" :value="shape">{{ shape }}</option>
                   </select>
                 </label>
                 <label v-if="supportsCenterStoneFields" class="ect-block">
@@ -1169,11 +1338,6 @@ watch(
               <label v-if="supportsCenterStoneFields" class="ect-mt-4 ect-inline-flex ect-items-center ect-gap-2 ect-rounded-lg ect-border ect-border-charcoal/10 ect-bg-white ect-px-3 ect-py-2.5" :class="{ 'ect-opacity-80': !fieldsEditable }">
                 <input v-model="form.allowCustomCenterStoneSize" type="checkbox" class="ect-h-4 ect-w-4" :disabled="!fieldsEditable" />
                 <span class="ect-font-body ect-text-sm ect-text-charcoal">Allow manual center stone size entry</span>
-              </label>
-
-              <label v-if="supportsCenterStoneFields" class="ect-mt-4 ect-ml-0 sm:ect-ml-3 ect-inline-flex ect-items-center ect-gap-2 ect-rounded-lg ect-border ect-border-charcoal/10 ect-bg-white ect-px-3 ect-py-2.5" :class="{ 'ect-opacity-80': !fieldsEditable }">
-                <input v-model="form.allowCustomStoneType" type="checkbox" class="ect-h-4 ect-w-4" :disabled="!fieldsEditable" />
-                <span class="ect-font-body ect-text-sm ect-text-charcoal">Allow manual stone type entry</span>
               </label>
             </section>
 
@@ -1444,6 +1608,33 @@ watch(
                 <dd class="ect-font-body ect-text-sm ect-leading-6 ect-text-charcoal">{{ row.value }}</dd>
               </div>
             </dl>
+
+            <div class="ect-mt-5 ect-border-t ect-border-rose-100 ect-pt-4">
+              <h3 class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Stone lines</h3>
+              <p v-if="!form.stoneLines.length" class="ect-font-body ect-text-sm ect-text-charcoal/45">No stone lines recorded.</p>
+              <div v-else class="ect-overflow-x-auto">
+                <table class="ect-w-full ect-font-body ect-text-sm">
+                  <thead>
+                    <tr class="ect-text-left ect-text-charcoal/45">
+                      <th class="ect-font-semibold ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-pb-2 ect-pr-4">Group</th>
+                      <th class="ect-font-semibold ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-pb-2 ect-pr-4">Shape</th>
+                      <th class="ect-font-semibold ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-pb-2 ect-pr-4">Quality</th>
+                      <th class="ect-font-semibold ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-pb-2 ect-pr-4">Pcs</th>
+                      <th class="ect-font-semibold ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-pb-2">Cts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(line, index) in form.stoneLines" :key="index" class="ect-border-t ect-border-rose-100/70 ect-text-charcoal">
+                      <td class="ect-py-2 ect-pr-4">{{ stoneGroupLabel(line.group) }}</td>
+                      <td class="ect-py-2 ect-pr-4">{{ displayValue(line.shape) }}</td>
+                      <td class="ect-py-2 ect-pr-4">{{ displayValue(line.quality) }}</td>
+                      <td class="ect-py-2 ect-pr-4">{{ displayValue(line.pcs) }}</td>
+                      <td class="ect-py-2">{{ displayValue(line.cts) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </article>
 
           <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">

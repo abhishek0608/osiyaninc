@@ -273,8 +273,9 @@ function phraseHit(text: string, phrase: string, notWhen: readonly string[] = []
 /**
  * `stoneTags` is the merchandised field and is matched exactly, so a piece
  * tagged "pink sapphire" files under Pink Sapphire only.
- * `customizationOptions.stoneTypes` and the copy are phrase-matched, which
- * catches "Natural Diamond" and a description that names the stone.
+ * The stone lines' quality column and the copy are phrase-matched, which catches
+ * a packing list saying "TANZANITE" or "LAB GROWN" and a description that names
+ * the stone.
  */
 export function productHasStone(product: any, id: StoneId): boolean {
   const option = STONE_OPTIONS.find((o) => o.id === id)
@@ -283,8 +284,9 @@ export function productHasStone(product: any, id: StoneId): boolean {
   const tags = tagList(product?.stoneTags)
   if (tags.some((tag) => option.aliases.includes(tag))) return true
 
-  const types = tagList(product?.customizationOptions?.stoneTypes)
-  if (types.some((type) => option.aliases.some((alias) => phraseHit(type, alias, option.notWhen)))) return true
+  const stoneLines = product?.productAttributes?.stoneLines
+  const qualities = Array.isArray(stoneLines) ? tagList(stoneLines.map((line: any) => line?.quality)) : []
+  if (qualities.some((quality) => option.aliases.some((alias) => phraseHit(quality, alias, option.notWhen)))) return true
 
   // Only fall through to the copy when the piece carries no stone tags at all.
   // A tagged record has already given its answer, and re-reading its prose

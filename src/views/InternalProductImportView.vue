@@ -7,15 +7,40 @@ import { useAuth } from '../composables/useAuth'
 const { user, isInternalUser } = useAuth()
 
 // CSV schema. Multi-value columns are pipe (|) separated so commas stay safe.
+// `stoneLines` packs the packing list's repeating stone rows into one cell:
+// lines split on `|`, the five fields inside a line split on `:`, in the order
+// group:shape:quality:pcs:cts - e.g. `D:ROUND:G-H/SI:2:0.02|F:BAGUETTE:G-H/SI:8:0.08`.
 const COLUMNS = [
   'slug', 'title', 'category', 'subtype', 'material', 'color', 'price', 'description',
-  'grossWeight', 'diamondCarats', 'diamondQuantity',
+  'bagNo', 'styleNo', 'qty', 'grossWeight', 'netWeight', 'goldRate', 'goldValue', 'stoneLines',
   'styleTags', 'stoneTags',
   'isNewArrival', 'isBestSeller', 'active', 'rating', 'reviewCount',
-  'diamondQualities', 'metalPurities', 'centerShapes', 'centerStoneSizes',
-  'stoneTypes', 'ringSizes', 'bangleSizes', 'necklaceSizes',
-  'allowCustomCenterStoneSize', 'allowCustomStoneType',
+  'metalPurities', 'centerStoneSizes', 'ringSizes', 'bangleSizes', 'necklaceSizes',
+  'allowCustomCenterStoneSize',
 ]
+
+const STONE_LINE_GROUPS = ['D', 'F', 'C']
+
+// A malformed cell should cost you that stone line, not the whole upload, so
+// anything unparseable is dropped rather than thrown.
+function parseStoneLines(raw: string | undefined) {
+  return String(raw || '')
+    .split('|')
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const [group, shape, quality, pcs, cts] = chunk.split(':').map((v) => v.trim())
+      const upper = String(group || '').toUpperCase()
+      return {
+        group: STONE_LINE_GROUPS.includes(upper) ? upper : 'D',
+        shape: shape || '',
+        quality: quality || '',
+        pcs: pcs || '',
+        cts: cts || '',
+      }
+    })
+    .filter((line) => line.shape || line.quality || line.pcs || line.cts)
+}
 const REQUIRED = ['slug', 'title', 'category', 'material', 'color']
 const BATCH_SIZE = 25
 
@@ -174,10 +199,15 @@ function toProduct(row: Record<string, string>) {
     color: row.color?.trim(),
     variantPricePaise: row.price?.trim() ? Number(row.price) : null,
     description: row.description?.trim() || '',
+    quantity: row.qty?.trim() ? Number(row.qty) : null,
     productAttributes: {
       grossWeight: row.grossWeight?.trim() || '',
-      diamondCarats: row.diamondCarats?.trim() || '',
-      diamondQuantity: row.diamondQuantity?.trim() || '',
+      bagNo: row.bagNo?.trim() || '',
+      styleNo: row.styleNo?.trim() || '',
+      netWeight: row.netWeight?.trim() || '',
+      goldRate: row.goldRate?.trim() || '',
+      goldValue: row.goldValue?.trim() || '',
+      stoneLines: parseStoneLines(row.stoneLines),
     },
     styleTags: multi('styleTags'),
     stoneTags: multi('stoneTags'),
@@ -187,16 +217,12 @@ function toProduct(row: Record<string, string>) {
     rating: row.rating?.trim() ? Number(row.rating) : null,
     reviewCount: row.reviewCount?.trim() ? Number(row.reviewCount) : null,
     customizationOptions: {
-      diamondQualities: multi('diamondQualities'),
       metalPurities: multi('metalPurities'),
-      centerShapes: multi('centerShapes'),
       centerStoneSizes: multi('centerStoneSizes'),
-      stoneTypes: multi('stoneTypes'),
       ringSizes: multi('ringSizes'),
       bangleSizes: multi('bangleSizes'),
       necklaceSizes: multi('necklaceSizes'),
       allowCustomCenterStoneSize: bool(row.allowCustomCenterStoneSize, true),
-      allowCustomStoneType: bool(row.allowCustomStoneType, true),
     },
   }
 }
@@ -205,13 +231,14 @@ function downloadTemplate() {
   const example: Record<string, string> = {
     slug: 'ruby-ring', title: 'Ruby Solitaire Ring', category: 'Rings', subtype: 'solitaire',
     material: 'gold', color: 'rose-gold', price: '1499', description: 'A timeless ruby solitaire.',
-    grossWeight: '4.55 gms', diamondCarats: '0.72 cts', diamondQuantity: '86',
+    bagNo: '26/P/4362', styleNo: 'RG0748_6', qty: '1',
+    grossWeight: '4.55 gms', netWeight: '4.32', goldRate: '86.688', goldValue: '411.86',
+    stoneLines: 'D:ROUND:G-H/SI:2:0.02|D:ROUND:G-H/SI:32:0.16|F:BAGUETTE:G-H/SI:8:0.08',
     styleTags: 'modern|vintage', stoneTags: 'ruby|diamond',
     isNewArrival: 'true', isBestSeller: 'false', active: 'true', rating: '4.8', reviewCount: '24',
-    diamondQualities: 'VVS1|VVS2', metalPurities: '18K|22K', centerShapes: 'Round|Oval',
-    centerStoneSizes: '6 mm|7 mm', stoneTypes: 'Natural Diamond|Moissanite|Ruby',
+    metalPurities: '18K|22K', centerStoneSizes: '6 mm|7 mm',
     ringSizes: '6|7|8', bangleSizes: '', necklaceSizes: '',
-    allowCustomCenterStoneSize: 'true', allowCustomStoneType: 'true',
+    allowCustomCenterStoneSize: 'true',
   }
   const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
   const csv = COLUMNS.join(',') + '\n' + COLUMNS.map((c) => esc(example[c] ?? '')).join(',') + '\n'
@@ -283,6 +310,9 @@ function statusClass(status: string) {
       Upload a CSV or Excel file (.csv, .xls, .xlsx) to create many products at once. Images are not
       part of the file — each product's images are pulled automatically from its S3 folder (folder
       name must equal the product <strong>slug</strong>). Download the template to see every column.
+      Stone lines go in the single <strong>stoneLines</strong> column, one line per <code>|</code> and
+      its fields per <code>:</code> — <code>group:shape:quality:pcs:cts</code>, e.g.
+      <code>D:ROUND:G-H/SI:2:0.02|F:BAGUETTE:G-H/SI:8:0.08</code>.
       Apple Numbers files aren't read directly — in Numbers, use File → Export To → CSV first.
     </p>
 

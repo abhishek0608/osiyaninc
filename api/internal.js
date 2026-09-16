@@ -1103,13 +1103,9 @@ function normalizeCustomizationOptions(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
 
   const normalized = {
-    diamondQualities: normalizeOptionArray(input.diamondQualities),
     metalPurities: normalizeOptionArray(input.metalPurities),
-    centerShapes: normalizeOptionArray(input.centerShapes),
     centerStoneSizes: normalizeOptionArray(input.centerStoneSizes),
     allowCustomCenterStoneSize: input.allowCustomCenterStoneSize !== false,
-    stoneTypes: normalizeOptionArray(input.stoneTypes),
-    allowCustomStoneType: input.allowCustomStoneType !== false,
     ringSizes: normalizeOptionArray(input.ringSizes),
     bangleSizes: normalizeOptionArray(input.bangleSizes),
     necklaceSizes: normalizeOptionArray(input.necklaceSizes),
@@ -1117,12 +1113,8 @@ function normalizeCustomizationOptions(input) {
 
   const hasValues =
     normalized.allowCustomCenterStoneSize ||
-    normalized.allowCustomStoneType ||
-    normalized.diamondQualities.length ||
     normalized.metalPurities.length ||
-    normalized.centerShapes.length ||
     normalized.centerStoneSizes.length ||
-    normalized.stoneTypes.length ||
     normalized.ringSizes.length ||
     normalized.bangleSizes.length ||
     normalized.necklaceSizes.length
@@ -1130,16 +1122,48 @@ function normalizeCustomizationOptions(input) {
   return hasValues ? normalized : null
 }
 
+function normalizeStoneLines(input) {
+  if (!Array.isArray(input)) return []
+  return input
+    .map((line) => {
+      if (!line || typeof line !== 'object') return null
+      const group = String(line.group || '').trim().toUpperCase()
+      const normalized = {
+        group: group === 'F' || group === 'C' ? group : 'D',
+        shape: String(line.shape || '').trim(),
+        quality: String(line.quality || '').trim(),
+        pcs: String(line.pcs ?? '').trim(),
+        cts: String(line.cts ?? '').trim(),
+      }
+      // A line with nothing but its group carries no information - the bench
+      // either set stones or it didn't.
+      if (!normalized.shape && !normalized.quality && !normalized.pcs && !normalized.cts) return null
+      return normalized
+    })
+    .filter(Boolean)
+}
+
 function normalizeProductAttributes(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
 
   const normalized = {
     grossWeight: String(input.grossWeight || '').trim(),
-    diamondCarats: String(input.diamondCarats || '').trim(),
-    diamondQuantity: String(input.diamondQuantity || '').trim(),
+    bagNo: String(input.bagNo || '').trim(),
+    styleNo: String(input.styleNo || '').trim(),
+    netWeight: String(input.netWeight || '').trim(),
+    goldRate: String(input.goldRate || '').trim(),
+    goldValue: String(input.goldValue || '').trim(),
+    stoneLines: normalizeStoneLines(input.stoneLines),
   }
 
-  const hasValues = normalized.grossWeight || normalized.diamondCarats || normalized.diamondQuantity
+  const hasValues =
+    normalized.grossWeight ||
+    normalized.bagNo ||
+    normalized.styleNo ||
+    normalized.netWeight ||
+    normalized.goldRate ||
+    normalized.goldValue ||
+    normalized.stoneLines.length
   return hasValues ? normalized : null
 }
 
@@ -1168,6 +1192,27 @@ function toNumberOrNull(value) {
 
 // Shared by the bulk import. Builds the Prisma `data` for create/update.
 // Images are intentionally excluded — the portal pulls them from S3 by slug.
+// The packing list counts pieces, not warehouses, so an imported quantity lands
+// in one default location. Qty is fractional on the packing list (0.5 for a
+// single earring off a pair), and stock is whole pieces, so it is rounded up:
+// half a pair is still one thing on a shelf.
+const BULK_INVENTORY_LOCATION = 'MAIN'
+
+function bulkInventoryQuantity(row) {
+  const parsed = Number(row?.quantity)
+  if (!Number.isFinite(parsed) || parsed < 0) return null
+  return Math.ceil(parsed)
+}
+
+async function upsertBulkInventory(tx, productId, quantity) {
+  if (quantity == null) return
+  await tx.inventory.upsert({
+    where: { productId_locationCode: { productId, locationCode: BULK_INVENTORY_LOCATION } },
+    create: { productId, locationCode: BULK_INVENTORY_LOCATION, quantity },
+    update: { quantity },
+  })
+}
+
 function buildBulkProductData(row) {
   const data = {
     slug: String(row?.slug || '').trim(),
@@ -1220,10 +1265,13 @@ async function importOneBulkRow(row, mode) {
     return { slug, status: 'skipped', message: 'Already exists (skipped)' }
   }
 
+  const inventoryQuantity = bulkInventoryQuantity(row)
+
   try {
     if (existing) {
       await prisma.$transaction(async (tx) => {
         await tx.product.update({ where: { id: existing.id }, data })
+        await upsertBulkInventory(tx, existing.id, inventoryQuantity)
         if (listPricePaise > 0) {
           const primary = existing.variants[0]
           if (primary) {
@@ -1245,6 +1293,7 @@ async function importOneBulkRow(row, mode) {
 
     await prisma.$transaction(async (tx) => {
       const product = await tx.product.create({ data })
+      await upsertBulkInventory(tx, product.id, inventoryQuantity)
       await tx.productVariant.create({
         data: { productId: product.id, sku: createSkuFromSlug(slug), title: data.title, listPricePaise, currency: 'USD', active: true },
       })
@@ -1259,6 +1308,15 @@ async function importOneBulkRow(row, mode) {
   }
 }
 
+// The inverse of the importer's stone-line parser: one cell holding every stone
+// line, so an exported file can be edited and re-uploaded without loss.
+function encodeStoneLines(lines) {
+  if (!Array.isArray(lines) || !lines.length) return ''
+  return lines
+    .map((line) => [line?.group || 'D', line?.shape || '', line?.quality || '', line?.pcs ?? '', line?.cts ?? ''].join(':'))
+    .join('|')
+}
+
 // Export every product as rows matching the bulk-import column schema, so an
 // exported file can be edited and re-uploaded without creating duplicates
 // (the import upserts by slug). Returns JSON rows; the client builds the CSV
@@ -1268,6 +1326,7 @@ async function handleProductExport(res) {
     orderBy: { createdAt: 'asc' },
     include: {
       variants: { orderBy: { createdAt: 'asc' }, take: 1, select: { listPricePaise: true } },
+      inventories: { where: { locationCode: BULK_INVENTORY_LOCATION }, take: 1, select: { quantity: true } },
     },
   })
 
@@ -1285,9 +1344,14 @@ async function handleProductExport(res) {
       color: p.color,
       price: price != null ? String(price) : '',
       description: p.description || '',
+      bagNo: attrs.bagNo || '',
+      styleNo: attrs.styleNo || '',
+      qty: p.inventories?.[0]?.quantity != null ? String(p.inventories[0].quantity) : '',
       grossWeight: attrs.grossWeight || '',
-      diamondCarats: attrs.diamondCarats || '',
-      diamondQuantity: attrs.diamondQuantity || '',
+      netWeight: attrs.netWeight || '',
+      goldRate: attrs.goldRate || '',
+      goldValue: attrs.goldValue || '',
+      stoneLines: encodeStoneLines(attrs.stoneLines),
       styleTags: list(p.styleTags),
       stoneTags: list(p.stoneTags),
       isNewArrival: p.isNewArrival ? 'true' : 'false',
@@ -1295,16 +1359,12 @@ async function handleProductExport(res) {
       active: p.active ? 'true' : 'false',
       rating: p.rating != null ? String(p.rating) : '',
       reviewCount: p.reviewCount != null ? String(p.reviewCount) : '',
-      diamondQualities: list(opts.diamondQualities),
       metalPurities: list(opts.metalPurities),
-      centerShapes: list(opts.centerShapes),
       centerStoneSizes: list(opts.centerStoneSizes),
-      stoneTypes: list(opts.stoneTypes),
       ringSizes: list(opts.ringSizes),
       bangleSizes: list(opts.bangleSizes),
       necklaceSizes: list(opts.necklaceSizes),
       allowCustomCenterStoneSize: opts.allowCustomCenterStoneSize === false ? 'false' : 'true',
-      allowCustomStoneType: opts.allowCustomStoneType === false ? 'false' : 'true',
     }
   })
 
@@ -1529,6 +1589,7 @@ async function getProductPayload(slug) {
     include: {
       images: { orderBy: { sortOrder: 'asc' } },
       variants: { orderBy: { createdAt: 'asc' } },
+      inventories: { where: { locationCode: BULK_INVENTORY_LOCATION }, take: 1 },
     },
   })
   if (!product) return null
@@ -1591,6 +1652,7 @@ async function getProductPayload(slug) {
     updatedAt: product.updatedAt,
     variantPricePaise:
       typeof primaryVariant?.listPricePaise === 'number' ? primaryVariant.listPricePaise : null,
+    quantity: product.inventories?.[0]?.quantity ?? null,
     images: product.images.map((image) => ({
       id: image.id,
       url: image.url,
@@ -1662,6 +1724,15 @@ async function handleGenerateAiDescription(res, currentSlug) {
   invalidateCatalogProductsCache()
   const updated = await getProductPayload(currentSlug)
   return res.status(200).json({ product: updated })
+}
+
+// The form sends `quantity` only when the field was filled in; absent means
+// "leave the stock row alone" so an edit that never touched stock cannot zero it.
+function productInventoryQuantity(body) {
+  if (body?.quantity === undefined || body?.quantity === null || body?.quantity === '') return null
+  const parsed = Number(body.quantity)
+  if (!Number.isFinite(parsed) || parsed < 0) return null
+  return Math.ceil(parsed)
 }
 
 async function handleProductPatch(res, currentSlug, body, userId) {
@@ -1747,6 +1818,8 @@ async function handleProductPatch(res, currentSlug, body, userId) {
           updatedById: userId || null,
         },
       })
+
+      await upsertBulkInventory(tx, existing.id, productInventoryQuantity(body))
 
       if (managesImageRows) {
         await tx.productImage.deleteMany({ where: { productId: existing.id } })
@@ -1883,6 +1956,7 @@ async function handleProductPost(res, body, userId) {
           updatedById: userId || null,
         },
       })
+      await upsertBulkInventory(tx, product.id, productInventoryQuantity(body))
       await tx.productVariant.create({
         data: {
           productId: product.id,

@@ -7,14 +7,14 @@ export interface PriceBreakup {
   total: string
 }
 
+// What a shopper can still choose. Stone shape, quality and type used to live
+// here as their own lists; they are read off the piece's stone lines now, since
+// the packing list states what was actually set rather than what could be.
+// Centre-stone size stays: the packing list carries no millimetre dimensions.
 export interface ProductCustomizationOptions {
-  diamondQualities?: string[]
   metalPurities?: string[]
-  centerShapes?: string[]
   centerStoneSizes?: string[]
   allowCustomCenterStoneSize?: boolean
-  stoneTypes?: string[]
-  allowCustomStoneType?: boolean
   ringSizes?: string[]
   bangleSizes?: string[]
   necklaceSizes?: string[]
@@ -31,10 +31,33 @@ export interface ProductCertification {
   certifiedAt?: string
 }
 
+/**
+ * One stone line off the packing list. A piece carries as many of these as the
+ * bench actually set, grouped the way the packing list groups them: `D` are the
+ * round diamonds, `F` the fancy cuts (baguette, cushion, emerald cut) and `C`
+ * the coloured stone. Everything is kept as entered - `cts` and `pcs` stay
+ * strings so a hand-typed "0.001" or "" survives the round-trip unrounded.
+ */
+export type StoneGroup = 'D' | 'F' | 'C'
+
+export interface StoneLine {
+  group: StoneGroup
+  shape?: string
+  quality?: string
+  pcs?: string
+  cts?: string
+}
+
 export interface ProductAttributes {
   grossWeight?: string
-  diamondCarats?: string
-  diamondQuantity?: string
+  /** Bag number - identifies the one physical piece, e.g. "26/P/4362". */
+  bagNo?: string
+  /** Style number, shared by every piece cut from the same style, e.g. "RG0748_6". */
+  styleNo?: string
+  netWeight?: string
+  goldRate?: string
+  goldValue?: string
+  stoneLines?: StoneLine[]
 }
 
 export type Material = 'gold' | 'silver'
@@ -79,14 +102,6 @@ export const COLORS: { id: Color; label: string; hex: string }[] = [
   { id: 'rose', label: 'Rose Gold', hex: '#B76E79' },
   { id: 'oxidised', label: 'Oxidised Silver', hex: '#808080' },
 ]
-
-export const DIAMOND_QUALITY_OPTIONS = [
-  'VVS-VS / GH',
-  'VS / GH',
-  'VS-SI / GH',
-  'SI-I / GH',
-  'I2-I3 / GH',
-] as const
 
 export const METAL_PURITY_OPTIONS = [
   '9k Gold',
@@ -135,6 +150,11 @@ export function normalizeCenterShape(value: unknown): string {
     emraled: 'Emerald',
     emerlad: 'Emerald',
     emrald: 'Emerald',
+    // The packing list writes shapes long-hand and in caps.
+    'emerald cut': 'Emerald',
+    'cushion cut': 'Cushion',
+    'princess cut': 'Princess',
+    'round brilliant': 'Round',
   }
   if (aliases[key]) return aliases[key]
   return CENTER_SHAPE_OPTIONS.find((shape) => shape.toLowerCase() === key) || String(value || '').trim()
@@ -164,6 +184,22 @@ export function centerStoneSizeMatches(productSize: unknown, selectedSize: unkno
   return asSquare(productValue) === asSquare(selectedValue)
 }
 
+/**
+ * Every distinct stone shape a piece actually carries, read off its stone lines.
+ * This is what the stone-shape facet filters on now that products no longer
+ * keep a separate `centerShapes` list.
+ */
+export function productStoneShapes(product: { productAttributes?: ProductAttributes } | null | undefined): string[] {
+  const lines = product?.productAttributes?.stoneLines
+  if (!Array.isArray(lines)) return []
+  const shapes: string[] = []
+  for (const line of lines) {
+    const shape = String(line?.shape || '').trim()
+    if (shape && !shapes.includes(shape)) shapes.push(shape)
+  }
+  return shapes
+}
+
 export function productHasCenterShape(productShapes: unknown, selectedShape: unknown): boolean {
   if (!Array.isArray(productShapes)) return false
   const expected = normalizeCenterShape(selectedShape).toLowerCase()
@@ -182,11 +218,6 @@ export function centerStoneSizesForShapes(shapes: readonly string[]): string[] {
   }
   return [...values]
 }
-
-// Stone type (the kind of center stone) for product customization. Fallback
-// defaults for the picker; each product can offer its own subset via
-// customizationOptions.stoneTypes.
-export const CENTER_STONE_TYPE_OPTIONS = ['Natural Diamond', 'Lab-Grown Diamond', 'Moissanite', 'Ruby', 'Sapphire', 'Emerald'] as const
 
 export const RING_SIZE_OPTIONS = ['8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'] as const
 
