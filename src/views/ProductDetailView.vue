@@ -13,11 +13,7 @@ import { useProductsApi } from '../composables/useProductsApi'
 import { useSiteConfig } from '../composables/useSiteConfig'
 import { setPageMeta, setProductJsonLd } from '../composables/useSeo'
 import { SITE_SETTINGS } from '../config/site-settings'
-import { BANGLE_SIZE_OPTIONS, COLORS, formatProductPrice, getProductReviews, NECKLACE_SIZE_OPTIONS, RING_SIZE_OPTIONS, type Color, type Product, type ProductCustomizationOptions } from '../data/products'
-
-const RING_SIZES = RING_SIZE_OPTIONS
-const BANGLE_SIZES = BANGLE_SIZE_OPTIONS
-const NECKLACE_SIZES = NECKLACE_SIZE_OPTIONS
+import { COLORS, formatProductPrice, getProductReviews, type Color, type Product } from '../data/products'
 
 const route = useRoute()
 const router = useRouter()
@@ -107,10 +103,6 @@ const productColor = computed<Color>(() => product.value?.color || 'yellow')
 const productColorLabel = computed(
   () => COLORS.find((option) => option.id === productColor.value)?.label || productColor.value
 )
-
-const selectedRingSize = ref('')
-const selectedBangleSize = ref('')
-const selectedNecklaceSize = ref('')
 
 // Decode the metal color an image represents from its filename. Uploads follow
 // a "... <COLOR> (n)" convention where COLOR is a standalone R / W / Y letter
@@ -238,10 +230,7 @@ const technicalDetailRows = computed<Array<{ label: string; value: string }>>(()
   return [...attributeSpecs, ...specs]
 })
 
-// The spec sheet carries facts about the piece only. Size is already shown by its
-// own control, so mirroring that selection back here just doubles the page's
-// reading load; metal color has no control of its own — the piece exists in one
-// color — so it is stated here.
+// The spec sheet carries facts about the piece, including its fixed metal color.
 const specRows = computed<Array<{ label: string; value: string }>>(() => {
   const rows = [
     { label: 'Metal Color', value: product.value ? productColorLabel.value : '' },
@@ -278,55 +267,10 @@ function formatCertificationDate(iso?: string) {
 // Certification collapses because it is a follow-up question, not a first read.
 const certificationOpen = ref(false)
 
-const isRingProduct = computed(
-  () => product.value?.category === 'Rings' || !!(productCustomizationOptions.value.ringSizes?.length),
-)
-
-const isBangleProduct = computed(() => {
-  if (productCustomizationOptions.value.bangleSizes?.length) return true
-  const item = product.value
-  if (!item) return false
-  if (item.category === 'Bangles') return true
-  // Bangle-ish pieces still filed under Bracelets need the bangle size too.
-  if (item.category !== 'Bracelets') return false
-  const fingerprint = [item.title, item.subtype, ...(item.details || [])].join(' ').toLowerCase()
-  return /\b(bangle|kada|cuff)\b/.test(fingerprint)
-})
-
-const isNecklaceProduct = computed(() => {
-  if (productCustomizationOptions.value.necklaceSizes?.length) return true
-  const category = product.value?.category
-  return category === 'Necklaces' || category === 'Mangal Sutra'
-})
-
-const productCustomizationOptions = computed<ProductCustomizationOptions>(() => product.value?.customizationOptions || {})
-
-const availableRingSizes = computed((): string[] => [...RING_SIZES])
-const availableBangleSizes = computed((): string[] => [...BANGLE_SIZES])
-const availableNecklaceSizes = computed((): string[] => [...NECKLACE_SIZES])
-
-function firstProductOption(key: keyof ProductCustomizationOptions): string {
-  const arr = productCustomizationOptions.value[key]
-  if (Array.isArray(arr) && arr.length) return String(arr[0]).trim()
-  return ''
-}
-
-function resetSelections() {
-  selectedRingSize.value = firstProductOption('ringSizes')
-  selectedBangleSize.value = firstProductOption('bangleSizes')
-  selectedNecklaceSize.value = firstProductOption('necklaceSizes')
-}
-
-// Metal color and size describe how the piece is made and worn, not a bespoke
-// request: they ride along with the cart line so the order records them, but
-// `isCustomized` stays unset — that flag diverts an item into the quote-only
-// checkout, and we no longer take customisation orders.
+// Record the piece's fixed metal color without marking the order as customized.
 function buildSelectionPayload(): ProductCustomization {
   return {
     metalColor: productColorLabel.value,
-    ...(isRingProduct.value && selectedRingSize.value ? { ringSize: selectedRingSize.value } : {}),
-    ...(isBangleProduct.value && selectedBangleSize.value ? { bangleSize: selectedBangleSize.value } : {}),
-    ...(isNecklaceProduct.value && selectedNecklaceSize.value ? { necklaceSize: selectedNecklaceSize.value } : {}),
   }
 }
 
@@ -395,7 +339,6 @@ onMounted(async () => {
 watch(product, (item) => {
   activeImage.value = 0
   addedImages.value = []
-  resetSelections()
   if (item) {
     setPageMeta({ title: item.title, description: item.description })
     setProductJsonLd(item)
@@ -614,71 +557,6 @@ async function handleAddToCart() {
           >
             {{ product.description }}
           </p>
-
-          <!-- Size is the only variant choice: each piece is made in a single
-               metal color, stated in the spec sheet below. -->
-          <section v-if="isRingProduct" class="ect-mb-6 ect-max-w-[16rem] ect-space-y-2">
-            <label for="ring-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-              Ring Size
-            </label>
-            <div class="ect-relative">
-              <select
-                id="ring-size"
-                v-model="selectedRingSize"
-                class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-              >
-                <option value="">None</option>
-                <option v-for="size in availableRingSizes" :key="size" :value="size">{{ size }}</option>
-              </select>
-              <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                </svg>
-              </span>
-            </div>
-          </section>
-
-          <section v-if="isBangleProduct" class="ect-mb-6 ect-max-w-[16rem] ect-space-y-2">
-            <label for="bangle-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-              Bangle Size
-            </label>
-            <div class="ect-relative">
-              <select
-                id="bangle-size"
-                v-model="selectedBangleSize"
-                class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-              >
-                <option value="">None</option>
-                <option v-for="size in availableBangleSizes" :key="size" :value="size">{{ size }}</option>
-              </select>
-              <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                </svg>
-              </span>
-            </div>
-          </section>
-
-          <section v-if="isNecklaceProduct" class="ect-mb-6 ect-max-w-[16rem] ect-space-y-2">
-            <label for="necklace-size" class="ect-block ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48">
-              Necklace Size
-            </label>
-            <div class="ect-relative">
-              <select
-                id="necklace-size"
-                v-model="selectedNecklaceSize"
-                class="customization-control ect-w-full ect-appearance-none ect-cursor-pointer ect-rounded-xl ect-px-4 ect-py-3.5 ect-pr-12 ect-font-body ect-text-sm ect-font-medium ect-text-charcoal focus:ect-outline-none ect-transition-all"
-              >
-                <option value="">None</option>
-                <option v-for="size in availableNecklaceSizes" :key="size" :value="size">{{ size }}</option>
-              </select>
-              <span class="customization-chevron ect-pointer-events-none ect-absolute ect-right-2.5 ect-top-1/2 -ect-translate-y-1/2 ect-flex ect-items-center ect-justify-center ect-w-7 ect-h-7 ect-rounded-lg">
-                <svg class="ect-w-3.5 ect-h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-                </svg>
-              </span>
-            </div>
-          </section>
 
           <!-- Weight, carats and the certificate sit with the price, where they
                inform the decision. Two panels: the spec sheet is always open
@@ -971,40 +849,6 @@ async function handleAddToCart() {
   .product-detail-accordion-chevron {
     transition: none;
   }
-}
-
-.customization-control {
-  border: 1px solid rgba(235, 231, 226, 1);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: none;
-}
-
-.customization-control:hover {
-  border-color: rgba(201, 162, 39, 0.55);
-  background: rgba(255, 255, 255, 1);
-}
-
-.customization-control:focus {
-  border-color: rgba(201, 162, 39, 0.85);
-  box-shadow:
-    0 0 0 3px rgba(201, 162, 39, 0.16);
-}
-
-.customization-chevron {
-  background: rgba(241, 233, 218, 1);
-  color: rgb(138 107 25 / 0.85);
-}
-
-select {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  background-image: none;
-  background-repeat: no-repeat;
-}
-
-select::-ms-expand {
-  display: none;
 }
 
 .product-detail-hero {
