@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { CATALOG_CATEGORIES, CENTER_SHAPE_OPTIONS, centerStoneSizesForShapes, formatCenterStoneSize, productHasCenterShape, productHasCenterStoneSize, type Category, type Material, type Color } from '../data/products'
+import { CATALOG_CATEGORIES, CENTER_SHAPE_OPTIONS, centerStoneSizesForShapes, formatCenterStoneSize, productHasCenterShape, productHasCenterStoneSize, productStoneShapes, type Category, type Material, type Color } from '../data/products'
 import {
   DEFAULT_FACETS,
   FACET_HEADINGS,
@@ -123,7 +123,7 @@ function facetCount(facet: FacetId, id: string): number {
     case 'type': return countFor('type', (p) => productHasPieceType(p, id as PieceTypeId))
     case 'category': return countFor('category', (p) => p.category === id)
     case 'material': return countFor('material', (p) => p.material === id)
-    case 'stone-shape': return countFor('shape', (p) => productHasCenterShape(p.customizationOptions?.centerShapes, id))
+    case 'stone-shape': return countFor('shape', (p) => productHasCenterShape(productStoneShapes(p), id))
     default: return 0
   }
 }
@@ -196,7 +196,7 @@ function matches(p: any, exclude: string = '') {
   if (exclude !== 'category' && f.categories.length && !f.categories.includes(p.category)) return false
   if (exclude !== 'material' && f.materials.length && !f.materials.includes(p.material)) return false
   if (exclude !== 'color' && f.colors.length && !f.colors.includes(p.color)) return false
-  if (exclude !== 'shape' && f.centerShapes.length && !f.centerShapes.some((s) => productHasCenterShape(p.customizationOptions?.centerShapes, s))) return false
+  if (exclude !== 'shape' && f.centerShapes.length && !f.centerShapes.some((s) => productHasCenterShape(productStoneShapes(p), s))) return false
   if (exclude !== 'size' && f.centerStoneSizes.length && !f.centerStoneSizes.some((s) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, s))) return false
   if (exclude !== 'metal' && f.metals.length && !f.metals.some((id) => productHasMetal(p, id))) return false
   if (exclude !== 'stone' && f.stones.length && !f.stones.some((id) => productHasStone(p, id))) return false

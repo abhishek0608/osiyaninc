@@ -94,42 +94,34 @@ const METAL_TINT = {
 // Catalog
 // ---------------------------------------------------------------------------
 
-const DIAMOND_QUALITIES = ['VVS-VS / GH', 'VS / GH', 'VS-SI / GH', 'SI-I / GH']
 const RING_SIZES = ['10', '11', '12', '13', '14', '15', '16', '17', '18']
 const BANGLE_SIZES = ['2.2', '2.4', '2.6', '2.8']
 const NECKLACE_SIZES = ['16"', '18"', '20"', '22"']
 
-function goldRingOptions({ shapes, sizes }) {
+// Shape, quality and stone type are read off a piece's stone lines now, so the
+// only stone option left here is the centre-stone size.
+function goldRingOptions({ sizes } = {}) {
   return {
-    diamondQualities: DIAMOND_QUALITIES,
     metalPurities: ['14k Gold', '18k Gold', '22k Gold'],
-    centerShapes: shapes,
     centerStoneSizes: sizes,
-    stoneTypes: ['Natural Diamond', 'Lab-Grown Diamond', 'Moissanite'],
     ringSizes: RING_SIZES,
   }
 }
-function earringOptions({ shapes = [], sizes = [], stoneTypes } = {}) {
+function earringOptions({ sizes = [] } = {}) {
   return {
-    diamondQualities: DIAMOND_QUALITIES,
     metalPurities: ['14k Gold', '18k Gold'],
-    centerShapes: shapes,
     centerStoneSizes: sizes,
-    stoneTypes: stoneTypes || ['Natural Diamond', 'Lab-Grown Diamond'],
   }
 }
-function necklaceOptions({ shapes = [], sizes = [] } = {}) {
+function necklaceOptions({ sizes = [] } = {}) {
   return {
-    diamondQualities: DIAMOND_QUALITIES,
     metalPurities: ['14k Gold', '18k Gold', '22k Gold'],
-    centerShapes: shapes,
     centerStoneSizes: sizes,
     necklaceSizes: NECKLACE_SIZES,
   }
 }
 function bangleOptions() {
   return {
-    diamondQualities: DIAMOND_QUALITIES,
     metalPurities: ['18k Gold', '22k Gold'],
     bangleSizes: BANGLE_SIZES,
   }
@@ -163,8 +155,8 @@ const PRODUCTS = [
     isBestSeller: true,
     rating: 4.8,
     reviewCount: 96,
-    attributes: { grossWeight: '4.4 g', diamondCarats: '0.92 ct', diamondQuantity: '37' },
-    options: goldRingOptions({ shapes: ['Round', 'Oval', 'Cushion'], sizes: ['6×6', '7×7', '7×5'] }),
+    attributes: { grossWeight: '4.4 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '37', cts: '0.92' }] },
+    options: goldRingOptions({ sizes: ['6×6', '7×7', '7×5'] }),
     photos: ['celeste-solitaire-ring-1.webp', 'celeste-solitaire-ring-2.webp'],
   },
   {
@@ -182,8 +174,8 @@ const PRODUCTS = [
     isNewArrival: true,
     rating: 4.9,
     reviewCount: 64,
-    attributes: { grossWeight: '4.8 g', diamondCarats: '1.05 ct', diamondQuantity: '1' },
-    options: goldRingOptions({ shapes: ['Round', 'Princess', 'Pear'], sizes: ['6×6', '7×7', '8×6'] }),
+    attributes: { grossWeight: '4.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '1', cts: '1.05' }] },
+    options: goldRingOptions({ sizes: ['6×6', '7×7', '8×6'] }),
     photos: ['celeste-solitaire-ring-1.webp'],
     tint: 'white',
   },
@@ -201,8 +193,8 @@ const PRODUCTS = [
     stoneTags: ['diamond'],
     rating: 4.6,
     reviewCount: 22,
-    attributes: { grossWeight: '5.2 g', diamondCarats: '0.36 ct', diamondQuantity: '29' },
-    options: goldRingOptions({ shapes: ['Round'], sizes: ['5×5', '6×6'] }),
+    attributes: { grossWeight: '5.2 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '29', cts: '0.36' }] },
+    options: goldRingOptions({ sizes: ['5×5', '6×6'] }),
     photos: ['ring-2.jpg', 'ring-1.jpg'],
   },
   {
@@ -220,8 +212,8 @@ const PRODUCTS = [
     isNewArrival: true,
     rating: 4.7,
     reviewCount: 41,
-    attributes: { grossWeight: '5.6 g', diamondCarats: '0.48 ct', diamondQuantity: '24' },
-    options: goldRingOptions({ shapes: ['Emerald', 'Oval', 'Marquise'], sizes: ['7×5', '8×6', '9×7'] }),
+    attributes: { grossWeight: '5.6 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '24', cts: '0.48' }] },
+    options: goldRingOptions({ sizes: ['7×5', '8×6', '9×7'] }),
     photos: ['verde-duet-ring-1.png', 'verde-duet-ring-2.png'],
   },
   {
@@ -279,8 +271,8 @@ const PRODUCTS = [
     isBestSeller: true,
     rating: 4.9,
     reviewCount: 211,
-    attributes: { grossWeight: '2.1 g', diamondCarats: '0.60 ct', diamondQuantity: '14' },
-    options: earringOptions({ shapes: ['Round', 'Princess'], sizes: ['5×5', '6×6'] }),
+    attributes: { grossWeight: '2.1 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '14', cts: '0.60' }] },
+    options: earringOptions({ sizes: ['5×5', '6×6'] }),
     photos: ['earring-1.jpg', 'earring-2.jpg'],
   },
   {
@@ -316,8 +308,8 @@ const PRODUCTS = [
     stoneTags: ['diamond'],
     rating: 4.8,
     reviewCount: 33,
-    attributes: { grossWeight: '8.9 g', diamondCarats: '0.71 ct', diamondQuantity: '52' },
-    options: earringOptions({ shapes: ['Pear', 'Oval'], sizes: ['8×6', '9×7'] }),
+    attributes: { grossWeight: '8.9 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '52', cts: '0.71' }] },
+    options: earringOptions({ sizes: ['8×6', '9×7'] }),
     photos: ['earring-1.jpg'],
     tint: 'rose',
   },
@@ -335,8 +327,8 @@ const PRODUCTS = [
     stoneTags: ['diamond'],
     rating: 4.5,
     reviewCount: 74,
-    attributes: { grossWeight: '1.8 g', diamondCarats: '0.08 ct', diamondQuantity: '2' },
-    options: earringOptions({ shapes: ['Round'], sizes: ['5×5'] }),
+    attributes: { grossWeight: '1.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '2', cts: '0.08' }] },
+    options: earringOptions({ sizes: ['5×5'] }),
     photos: ['amara-hoop-earrings-2.png', 'amara-hoop-earrings-1.png'],
   },
 
@@ -356,8 +348,8 @@ const PRODUCTS = [
     isBestSeller: true,
     rating: 4.8,
     reviewCount: 118,
-    attributes: { grossWeight: '5.1 g', diamondCarats: '0.26 ct', diamondQuantity: '11' },
-    options: necklaceOptions({ shapes: ['Pear', 'Round'], sizes: ['7×5', '6×6'] }),
+    attributes: { grossWeight: '5.1 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '11', cts: '0.26' }] },
+    options: necklaceOptions({ sizes: ['7×5', '6×6'] }),
     photos: ['pendant-1.jpg'],
   },
   {
@@ -375,8 +367,8 @@ const PRODUCTS = [
     isNewArrival: true,
     rating: 4.7,
     reviewCount: 52,
-    attributes: { grossWeight: '4.6 g', diamondCarats: '0.55 ct', diamondQuantity: '44' },
-    options: necklaceOptions({ shapes: ['Round', 'Pear'], sizes: ['6×6', '7×5'] }),
+    attributes: { grossWeight: '4.6 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '44', cts: '0.55' }] },
+    options: necklaceOptions({ sizes: ['6×6', '7×5'] }),
     photos: ['pendant-1.jpg'],
     tint: 'white',
   },
@@ -394,8 +386,8 @@ const PRODUCTS = [
     stoneTags: ['diamond'],
     rating: 4.9,
     reviewCount: 27,
-    attributes: { grossWeight: '22.4 g', diamondCarats: '3.20 ct', diamondQuantity: '96' },
-    options: necklaceOptions({ shapes: ['Round', 'Oval'], sizes: ['5×5', '6×4'] }),
+    attributes: { grossWeight: '22.4 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '96', cts: '3.20' }] },
+    options: necklaceOptions({ sizes: ['5×5', '6×4'] }),
     photos: ['ziya-silver-collar-2.png', 'ziya-silver-collar-1.png'],
   },
   {
@@ -413,8 +405,8 @@ const PRODUCTS = [
     isNewArrival: true,
     rating: 4.6,
     reviewCount: 45,
-    attributes: { grossWeight: '11.8 g', diamondCarats: '0.62 ct', diamondQuantity: '31' },
-    options: necklaceOptions({ shapes: ['Pear', 'Oval'], sizes: ['8×6', '7×5'] }),
+    attributes: { grossWeight: '11.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '31', cts: '0.62' }] },
+    options: necklaceOptions({ sizes: ['8×6', '7×5'] }),
     photos: ['pendant-2.jpg'],
   },
   {
@@ -472,11 +464,9 @@ const PRODUCTS = [
     isNewArrival: true,
     rating: 4.9,
     reviewCount: 39,
-    attributes: { grossWeight: '7.8 g', diamondCarats: '2.10 ct', diamondQuantity: '42' },
+    attributes: { grossWeight: '7.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '42', cts: '2.10' }] },
     options: {
-      diamondQualities: DIAMOND_QUALITIES,
       metalPurities: ['14k Gold', '18k Gold'],
-      centerShapes: ['Round'],
       centerStoneSizes: ['5×5', '6×6'],
       bangleSizes: BANGLE_SIZES,
     },
@@ -496,9 +486,8 @@ const PRODUCTS = [
     stoneTags: ['diamond'],
     rating: 4.7,
     reviewCount: 88,
-    attributes: { grossWeight: '9.6 g', diamondCarats: '0.88 ct', diamondQuantity: '34' },
+    attributes: { grossWeight: '9.6 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '34', cts: '0.88' }] },
     options: {
-      diamondQualities: DIAMOND_QUALITIES,
       metalPurities: ['14k Gold', '18k Gold'],
       bangleSizes: BANGLE_SIZES,
     },
@@ -597,7 +586,7 @@ const PRODUCTS = [
     stoneTags: ['emerald', 'diamond'],
     rating: 4.7,
     reviewCount: 43,
-    attributes: { grossWeight: '14.2 g', diamondCarats: '0.44 ct', diamondQuantity: '21' },
+    attributes: { grossWeight: '14.2 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '21', cts: '0.44' }] },
     options: bangleOptions(),
     photos: ['osiyan-yoga-bangles.jpg'],
   },
@@ -656,7 +645,7 @@ const PRODUCTS = [
     isBestSeller: true,
     rating: 4.8,
     reviewCount: 72,
-    attributes: { grossWeight: '4.2 g', diamondCarats: '0.22 ct', diamondQuantity: '13' },
+    attributes: { grossWeight: '4.2 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '13', cts: '0.22' }] },
     options: { metalPurities: ['18k Gold', '22k Gold'], necklaceSizes: NECKLACE_SIZES },
     photos: ['raaga-mangalsutra-1.png', 'raaga-mangalsutra-2.png'],
   },
@@ -693,9 +682,8 @@ const PRODUCTS = [
     stoneTags: ['black-beads', 'diamond'],
     rating: 4.6,
     reviewCount: 34,
-    attributes: { grossWeight: '5.6 g', diamondCarats: '0.18 ct', diamondQuantity: '9' },
+    attributes: { grossWeight: '5.6 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '9', cts: '0.18' }] },
     options: {
-      diamondQualities: DIAMOND_QUALITIES,
       metalPurities: ['18k Gold', '22k Gold'],
       necklaceSizes: NECKLACE_SIZES,
     },
@@ -734,9 +722,8 @@ const PRODUCTS = [
     isNewArrival: true,
     rating: 4.5,
     reviewCount: 56,
-    attributes: { grossWeight: '2.8 g', diamondCarats: '0.10 ct', diamondQuantity: '1' },
+    attributes: { grossWeight: '2.8 g', stoneLines: [{ group: 'D', shape: 'Round', quality: 'G-H/SI', pcs: '1', cts: '0.10' }] },
     options: {
-      diamondQualities: DIAMOND_QUALITIES,
       metalPurities: ['14k Gold', '18k Gold'],
       necklaceSizes: NECKLACE_SIZES,
     },

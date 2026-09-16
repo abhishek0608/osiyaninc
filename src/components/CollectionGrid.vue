@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import ProductCard from './ProductCard.vue'
 import FilterModal from './FilterModal.vue'
-import { CATALOG_CATEGORIES, CENTER_SHAPE_OPTIONS, centerStoneSizesForShapes, formatCenterStoneSize, productHasCenterShape, productHasCenterStoneSize, type Category, type Material, type Color, type ProductSubtype } from '../data/products'
+import { CATALOG_CATEGORIES, CENTER_SHAPE_OPTIONS, centerStoneSizesForShapes, formatCenterStoneSize, productHasCenterShape, productHasCenterStoneSize, productStoneShapes, type Category, type Material, type Color, type ProductSubtype } from '../data/products'
 import {
   DEFAULT_FACETS,
   FACET_HEADINGS,
@@ -393,7 +393,7 @@ function applyClientFacets(list: any[], f: Filters): any[] {
   let out = Array.isArray(list) ? list : []
   if (f.subtypes?.length) out = out.filter((p) => f.subtypes.includes(p.subtype))
   if (f.centerShapes?.length) {
-    out = out.filter((p) => f.centerShapes.some((shape) => productHasCenterShape(p.customizationOptions?.centerShapes, shape)))
+    out = out.filter((p) => f.centerShapes.some((shape) => productHasCenterShape(productStoneShapes(p), shape)))
   }
   if (f.centerStoneSizes?.length) {
     out = out.filter((p) => f.centerStoneSizes.some((size) => productHasCenterStoneSize(p.customizationOptions?.centerStoneSizes, size)))

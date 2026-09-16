@@ -321,14 +321,8 @@ function inferSubtypeFromFreeText(text, category = null) {
 function customizationText(product) {
   const options = product?.customizationOptions || {}
   const parts = [
-    Array.isArray(options?.diamondQualities) && options.diamondQualities.length
-      ? `diamond qualities ${options.diamondQualities.join(', ')}`
-      : '',
     Array.isArray(options?.metalPurities) && options.metalPurities.length
       ? `metal purities ${options.metalPurities.join(', ')}`
-      : '',
-    Array.isArray(options?.centerShapes) && options.centerShapes.length
-      ? `center shapes ${options.centerShapes.join(', ')}`
       : '',
     Array.isArray(options?.centerStoneSizes) && options.centerStoneSizes.length
       ? `center stone sizes ${options.centerStoneSizes.join(', ')}`
@@ -348,10 +342,14 @@ function customizationText(product) {
 
 function productAttributesText(product) {
   const attrs = product?.productAttributes || {}
+  const stones = Array.isArray(attrs.stoneLines)
+    ? [...new Set(attrs.stoneLines.map((line) => [line?.shape, line?.quality].filter(Boolean).join(' ')).filter(Boolean))]
+    : []
   const parts = [
     attrs.grossWeight ? `gross weight ${attrs.grossWeight}` : '',
-    attrs.diamondCarats ? `diamond carats ${attrs.diamondCarats}` : '',
-    attrs.diamondQuantity ? `diamond quantity ${attrs.diamondQuantity}` : '',
+    attrs.netWeight ? `net weight ${attrs.netWeight}` : '',
+    attrs.styleNo ? `style number ${attrs.styleNo}` : '',
+    stones.length ? `stones ${stones.join(', ')}` : '',
   ]
   return parts.filter(Boolean).join('. ')
 }

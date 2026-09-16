@@ -13,7 +13,7 @@ import { useProductsApi } from '../composables/useProductsApi'
 import { useSiteConfig } from '../composables/useSiteConfig'
 import { setPageMeta, setProductJsonLd } from '../composables/useSeo'
 import { SITE_SETTINGS } from '../config/site-settings'
-import { COLORS, formatProductPrice, getProductReviews, type Color, type Product } from '../data/products'
+import { COLORS, formatProductPrice, getProductReviews, type Color, type Product, type StoneLine } from '../data/products'
 
 const route = useRoute()
 const router = useRouter()
@@ -209,13 +209,75 @@ const reviewSummary = computed(() => {
   return `${product.value.rating.toFixed(1)} · ${product.value.reviewCount} reviews`
 })
 
+// Stone lines as the spec sheet shows them: one row per group rather than one
+// per line, because a piece can carry a dozen lines and the sheet is a summary,
+// not the packing list. Shapes and qualities are de-duplicated, pcs and cts
+// added up; anything that isn't a number is skipped rather than guessed at.
+const STONE_GROUP_LABELS: Record<'D' | 'F' | 'C', string> = {
+  D: 'Diamonds',
+  F: 'Fancy Cut Stones',
+  C: 'Colour Stones',
+}
+
+function sumStoneField(lines: StoneLine[], field: 'pcs' | 'cts') {
+  let total = 0
+  let sawNumber = false
+  for (const line of lines) {
+    const parsed = Number(String(line[field] ?? '').trim())
+    if (!Number.isFinite(parsed)) continue
+    sawNumber = true
+    total += parsed
+  }
+  return sawNumber ? total : null
+}
+
+function distinctStoneField(lines: StoneLine[], field: 'shape' | 'quality') {
+  const seen: string[] = []
+  for (const line of lines) {
+    const value = String(line[field] ?? '').trim()
+    if (value && !seen.includes(value)) seen.push(value)
+  }
+  return seen.join(' / ')
+}
+
+const stoneLineRows = computed<Array<{ label: string; value: string }>>(() => {
+  const lines = product.value?.productAttributes?.stoneLines
+  if (!Array.isArray(lines) || !lines.length) return []
+
+  return (['D', 'F', 'C'] as const)
+    .map((group) => {
+      const groupLines = lines.filter((line) => line?.group === group)
+      if (!groupLines.length) return { label: STONE_GROUP_LABELS[group], value: '' }
+
+      const descriptor = [distinctStoneField(groupLines, 'shape'), distinctStoneField(groupLines, 'quality')]
+        .filter(Boolean)
+        .join(', ')
+      const pcs = sumStoneField(groupLines, 'pcs')
+      const cts = sumStoneField(groupLines, 'cts')
+      const totals = [
+        pcs != null ? `${pcs} pcs` : '',
+        // Carats are quoted to two places the way the trade writes them, but
+        // only after summing, so a pile of 0.001 lines still adds up.
+        cts != null ? `${cts.toFixed(2)} ct` : '',
+      ]
+        .filter(Boolean)
+        .join(' / ')
+
+      return {
+        label: STONE_GROUP_LABELS[group],
+        value: [descriptor, totals].filter(Boolean).join(' — '),
+      }
+    })
+    .filter((row) => Boolean(row.value))
+})
+
 const technicalDetailRows = computed<Array<{ label: string; value: string }>>(() => {
   const desc = product.value?.description?.trim() || ''
   const specs: Array<{ label: string; value: string }> = []
   const attributeSpecs = [
     { label: 'Gross Weight', value: product.value?.productAttributes?.grossWeight || '' },
-    { label: 'Diamond Carats', value: product.value?.productAttributes?.diamondCarats || '' },
-    { label: 'Diamond Quantity', value: product.value?.productAttributes?.diamondQuantity || '' },
+    { label: 'Net Weight', value: product.value?.productAttributes?.netWeight || '' },
+    ...stoneLineRows.value,
   ].filter((spec) => spec.value)
   const seenLabels = new Set(attributeSpecs.map((spec) => spec.label.toLowerCase()))
 

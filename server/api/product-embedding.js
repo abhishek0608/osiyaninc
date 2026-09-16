@@ -59,6 +59,19 @@ export function visionToSearchText(v) {
   return parts.filter(Boolean).join('. ')
 }
 
+// Stone lines flattened for the embedding: shape and quality are what a shopper
+// types ("baguette", "emerald cut tanzanite"), so those carry the weight. Bag
+// number, gold rate and gold value are deliberately left out - they are
+// commercial data, not something anyone searches by.
+function stoneLinesText(lines) {
+  if (!Array.isArray(lines) || !lines.length) return ''
+  const described = lines
+    .map((line) => [line?.shape, line?.quality].filter(Boolean).join(' '))
+    .filter(Boolean)
+  const distinct = [...new Set(described)]
+  return distinct.length ? `Stones: ${distinct.join(', ')}` : ''
+}
+
 /**
  * Fuse authoritative catalog fields with the vision/appearance block. Vision
  * often mislabels (e.g. Mangal Sutra as "Necklaces"); DB category/tags/title
@@ -68,17 +81,16 @@ export function buildCatalogEmbedText(product, visualOrTextBlock) {
   const attrs = product.productAttributes || {}
   const productAttributesText = [
     attrs.grossWeight ? `Gross weight: ${attrs.grossWeight}` : null,
-    attrs.diamondCarats ? `Diamond carats: ${attrs.diamondCarats}` : null,
-    attrs.diamondQuantity ? `Diamond quantity: ${attrs.diamondQuantity}` : null,
+    attrs.netWeight ? `Net weight: ${attrs.netWeight}` : null,
+    attrs.styleNo ? `Style number: ${attrs.styleNo}` : null,
+    stoneLinesText(attrs.stoneLines) || null,
   ]
     .filter(Boolean)
     .join('. ')
 
   const c = product.customizationOptions || {}
   const customizationText = [
-    Array.isArray(c.diamondQualities) && c.diamondQualities.length ? `Diamond qualities: ${c.diamondQualities.join(', ')}` : null,
     Array.isArray(c.metalPurities) && c.metalPurities.length ? `Metal purities: ${c.metalPurities.join(', ')}` : null,
-    Array.isArray(c.centerShapes) && c.centerShapes.length ? `Center shapes: ${c.centerShapes.join(', ')}` : null,
     Array.isArray(c.centerStoneSizes) && c.centerStoneSizes.length ? `Center stone sizes: ${c.centerStoneSizes.join(', ')}` : null,
     Array.isArray(c.ringSizes) && c.ringSizes.length ? `Ring sizes: ${c.ringSizes.join(', ')}` : null,
     Array.isArray(c.bangleSizes) && c.bangleSizes.length ? `Bangle sizes: ${c.bangleSizes.join(', ')}` : null,

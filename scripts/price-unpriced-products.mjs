@@ -13,9 +13,17 @@ const DIAMOND_PER_CT = 500 // USD/ct (small melee)
 const MAKING_CHARGE = 120 // USD flat (rings)
 const round5 = (n) => Math.round(n / 5) * 5
 
+// Total carats across every stone line the piece carries. Products used to keep
+// one `diamondCarats` string; the packing list gives a line per stone instead.
+function totalCarats(attrs) {
+  const lines = attrs?.stoneLines
+  if (!Array.isArray(lines)) return 0
+  return lines.reduce((sum, line) => sum + (Number(String(line?.cts ?? '').trim()) || 0), 0)
+}
+
 function priceFromAttrs(attrs) {
   const g = Number(attrs?.grossWeight) || 0
-  const ct = Number(attrs?.diamondCarats) || 0
+  const ct = totalCarats(attrs)
   const gold = g * GOLD_PER_GRAM
   const diamonds = ct * DIAMOND_PER_CT
   const raw = gold + diamonds + MAKING_CHARGE
@@ -53,7 +61,7 @@ async function run() {
     rows.push({
       slug: p.slug,
       g: Number(attrs.grossWeight),
-      ct: Number(attrs.diamondCarats) || 0,
+      ct: totalCarats(attrs),
       gold: Math.round(calc.gold),
       diamonds: Math.round(calc.diamonds),
       making: calc.making,

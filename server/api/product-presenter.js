@@ -87,13 +87,9 @@ function normalizeCustomizationOptions(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
 
   const normalized = {
-    diamondQualities: normalizeOptionArray(input.diamondQualities),
     metalPurities: normalizeOptionArray(input.metalPurities),
-    centerShapes: normalizeOptionArray(input.centerShapes),
     centerStoneSizes: normalizeOptionArray(input.centerStoneSizes),
     allowCustomCenterStoneSize: input.allowCustomCenterStoneSize !== false,
-    stoneTypes: normalizeOptionArray(input.stoneTypes),
-    allowCustomStoneType: input.allowCustomStoneType !== false,
     ringSizes: normalizeOptionArray(input.ringSizes),
     bangleSizes: normalizeOptionArray(input.bangleSizes),
     necklaceSizes: normalizeOptionArray(input.necklaceSizes),
@@ -101,12 +97,8 @@ function normalizeCustomizationOptions(input) {
 
   const hasValues =
     normalized.allowCustomCenterStoneSize ||
-    normalized.allowCustomStoneType ||
-    normalized.diamondQualities.length ||
     normalized.metalPurities.length ||
-    normalized.centerShapes.length ||
     normalized.centerStoneSizes.length ||
-    normalized.stoneTypes.length ||
     normalized.ringSizes.length ||
     normalized.bangleSizes.length ||
     normalized.necklaceSizes.length
@@ -114,17 +106,110 @@ function normalizeCustomizationOptions(input) {
   return hasValues ? normalized : undefined
 }
 
+function normalizeStoneLines(input) {
+  if (!Array.isArray(input)) return []
+  return input
+    .map((line) => {
+      if (!line || typeof line !== 'object') return null
+      const group = String(line.group || '').trim().toUpperCase()
+      const normalized = {
+        group: group === 'F' || group === 'C' ? group : 'D',
+        shape: String(line.shape || '').trim(),
+        quality: String(line.quality || '').trim(),
+        pcs: String(line.pcs ?? '').trim(),
+        cts: String(line.cts ?? '').trim(),
+      }
+      // A line with nothing but its group carries no information - the bench
+      // either set stones or it didn't.
+      if (!normalized.shape && !normalized.quality && !normalized.pcs && !normalized.cts) return null
+      return normalized
+    })
+    .filter(Boolean)
+}
+
 function normalizeProductAttributes(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
 
   const normalized = {
     grossWeight: String(input.grossWeight || '').trim(),
-    diamondCarats: String(input.diamondCarats || '').trim(),
-    diamondQuantity: String(input.diamondQuantity || '').trim(),
+    bagNo: String(input.bagNo || '').trim(),
+    styleNo: String(input.styleNo || '').trim(),
+    netWeight: String(input.netWeight || '').trim(),
+    goldRate: String(input.goldRate || '').trim(),
+    goldValue: String(input.goldValue || '').trim(),
+    stoneLines: normalizeStoneLines(input.stoneLines),
   }
 
-  const hasValues = normalized.grossWeight || normalized.diamondCarats || normalized.diamondQuantity
+  const hasValues =
+    normalized.grossWeight ||
+    normalized.bagNo ||
+    normalized.styleNo ||
+    normalized.netWeight ||
+    normalized.goldRate ||
+    normalized.goldValue ||
+    normalized.stoneLines.length
   return hasValues ? normalized : undefined
+}
+
+/**
+ * The price breakup the cart tooltip shows. It is built from the packing list:
+ * gold weight and value come straight off the piece, stone weight is the sum of
+ * its stone lines, and stone value is what the price leaves over once the gold
+ * is paid for - which is exactly how the packing list itself adds up (PRICE =
+ * Gold Value + stone value, with making already folded into the gold value).
+ *
+ * That residual only holds while the sale price is the packing-list price. If a
+ * piece is marked up, the markup lands in the stone line, so the whole breakup
+ * is withheld rather than shown wrong: anything short of a positive residual
+ * falls back to the placeholder row.
+ */
+function buildPriceBreakup(attributes, price, priceValue) {
+  const placeholder = {
+    goldWeight: '\u2014',
+    goldValue: '\u2014',
+    stoneWeight: '\u2014',
+    stoneValue: '\u2014',
+    labour: price || '\u2014',
+    total: price || '\u2014',
+  }
+  if (!attributes) return placeholder
+
+  const goldValue = Number(String(attributes.goldValue || '').trim())
+  if (!Number.isFinite(goldValue) || goldValue <= 0) return placeholder
+
+  const stoneValue = priceValue - goldValue
+  if (!Number.isFinite(stoneValue) || stoneValue < 0) return placeholder
+
+  // Weights are entered by hand, so "2.522" and "2.522 g" both turn up.
+  const goldWeight = String(attributes.netWeight || attributes.grossWeight || '')
+    .trim()
+    .replace(/\s*(?:g|gm|gms|gram|grams)$/i, '')
+    .trim()
+  const carats = sumStoneCarats(attributes.stoneLines)
+
+  return {
+    goldWeight: goldWeight ? `${goldWeight} g` : '\u2014',
+    goldValue: formatUsd(Math.round(goldValue)),
+    stoneWeight: carats != null ? `${carats.toFixed(2)} ct` : '\u2014',
+    stoneValue: formatUsd(Math.round(stoneValue)),
+    // The packing list has no separate labour line - making is already inside
+    // the gold value - so there is nothing honest to put here.
+    labour: '\u2014',
+    total: price || '\u2014',
+  }
+}
+
+function sumStoneCarats(lines) {
+  if (!Array.isArray(lines) || !lines.length) return null
+  let total = 0
+  let sawNumber = false
+  for (const line of lines) {
+    const parsed = Number(String(line?.cts ?? '').trim())
+    if (!Number.isFinite(parsed)) continue
+    sawNumber = true
+    total += parsed
+  }
+  return sawNumber ? total : null
 }
 
 // Certification as the storefront consumes it. certLab is the switch: without a
@@ -166,6 +251,7 @@ export function toApiProduct(dbProduct, preferredVariant = null) {
   const priceValue =
     priceBookPrice != null && priceBookPrice > 0 ? priceBookPrice : variantPrice
   const price = formatUsd(priceValue)
+  const productAttributes = normalizeProductAttributes(dbProduct.productAttributes)
   const images = Array.isArray(dbProduct?.images)
     ? dbProduct.images
         .filter((img) => img?.active !== false && typeof img?.url === 'string' && img.url.trim())
@@ -188,21 +274,14 @@ export function toApiProduct(dbProduct, preferredVariant = null) {
     details: [],
     styleTags: Array.isArray(dbProduct.styleTags) ? dbProduct.styleTags : inferStyleTags(dbProduct),
     stoneTags: Array.isArray(dbProduct.stoneTags) ? dbProduct.stoneTags : inferStoneTags(dbProduct),
-    breakup: {
-      goldWeight: '—',
-      goldValue: '—',
-      stoneWeight: '—',
-      stoneValue: '—',
-      labour: price || '—',
-      total: price || '—',
-    },
+    breakup: buildPriceBreakup(productAttributes, price, priceValue),
     images,
     isNewArrival: Boolean(dbProduct.isNewArrival),
     isBestSeller: Boolean(dbProduct.isBestSeller),
     rating: typeof dbProduct.rating === 'number' ? dbProduct.rating : 0,
     reviewCount: typeof dbProduct.reviewCount === 'number' ? dbProduct.reviewCount : 0,
     customizationOptions: normalizeCustomizationOptions(dbProduct.customizationOptions),
-    productAttributes: normalizeProductAttributes(dbProduct.productAttributes),
+    productAttributes,
     certification: normalizeCertification(dbProduct),
   }
 }

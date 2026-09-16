@@ -547,12 +547,11 @@ const aiResults = ref<{ slug: string; status: string; message: string }[]>([])
 // edited and re-uploaded without creating duplicates (import upserts by slug).
 const EXPORT_COLUMNS = [
   'slug', 'title', 'category', 'subtype', 'material', 'color', 'price', 'description',
-  'grossWeight', 'diamondCarats', 'diamondQuantity',
+  'bagNo', 'styleNo', 'qty', 'grossWeight', 'netWeight', 'goldRate', 'goldValue', 'stoneLines',
   'styleTags', 'stoneTags',
   'isNewArrival', 'isBestSeller', 'active', 'rating', 'reviewCount',
-  'diamondQualities', 'metalPurities', 'centerShapes', 'centerStoneSizes',
-  'stoneTypes', 'ringSizes', 'bangleSizes', 'necklaceSizes',
-  'allowCustomCenterStoneSize', 'allowCustomStoneType',
+  'metalPurities', 'centerStoneSizes', 'ringSizes', 'bangleSizes', 'necklaceSizes',
+  'allowCustomCenterStoneSize',
 ]
 
 const exporting = ref(false)
