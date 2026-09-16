@@ -1164,6 +1164,133 @@ async function handleMemoCreateResource(req, res, body) {
 }
 
 // ---------------------------------------------------------------------------
+// Product lookup (resource=product-lookup) — resolve a scanned tag to a piece
+// ---------------------------------------------------------------------------
+
+/**
+ * Bag numbers become slugs the same way the packing-list import makes them:
+ * "25/P/1406" → "25-p-1406". Kept in step with the import so a tag printed
+ * with the bag number resolves to the piece the import created.
+ */
+function slugFromCode(code) {
+  return String(code || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+/**
+ * A tag's QR code may carry the storefront URL, the internal product URL, the
+ * bare slug, a SKU, or the supplier's bag/style number. Pull a slug out of a
+ * URL when there is one; otherwise hand back the raw text for the DB lookups.
+ */
+function normalizeScannedCode(raw) {
+  const code = String(raw || '').trim()
+  if (!code) return { code: '', slugFromUrl: '' }
+  const urlMatch = code.match(/^https?:\/\/[^/]+\/(?:internal\/products|product)\/([^/?#]+)/i)
+  if (urlMatch) {
+    return { code, slugFromUrl: decodeURIComponent(urlMatch[1]).trim().toLowerCase() }
+  }
+  return { code, slugFromUrl: '' }
+}
+
+async function findProductForScannedCode(raw) {
+  const { code, slugFromUrl } = normalizeScannedCode(raw)
+  if (!code) return null
+
+  const include = { variants: { where: { active: true } } }
+  const findBySlug = (slug) =>
+    slug ? prisma.product.findFirst({ where: { slug: { equals: slug, mode: 'insensitive' } }, include }) : null
+
+  // Most specific first: a URL names the piece outright, then the bare slug,
+  // then the slugified bag number the import would have produced.
+  let product = await findBySlug(slugFromUrl)
+  if (!product) product = await findBySlug(code)
+  if (!product) {
+    const slug = slugFromCode(code)
+    if (slug && slug !== code.toLowerCase()) product = await findBySlug(slug)
+  }
+  if (!product) {
+    const variant = await prisma.productVariant.findFirst({
+      where: { sku: { equals: code, mode: 'insensitive' } },
+      select: { productId: true },
+    })
+    if (variant) product = await prisma.product.findUnique({ where: { id: variant.productId }, include })
+  }
+  if (!product) {
+    // Bag/style numbers live in the productAttributes JSON, matched exactly —
+    // they are copied verbatim from the packing list, so case is stable.
+    product = await prisma.product.findFirst({
+      where: {
+        OR: [
+          { productAttributes: { path: ['bagNo'], equals: code } },
+          { productAttributes: { path: ['styleNo'], equals: code } },
+        ],
+      },
+      include,
+    })
+  }
+  return product
+}
+
+async function handleProductLookupResource(req, res, body) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET,OPTIONS')
+    return res.status(405).json({ message: 'Method not allowed' })
+  }
+
+  const userId = String(req?.query?.userId || body?.userId || '').trim()
+  const code = String(req?.query?.code || '').trim()
+
+  try {
+    const internalUser = await assertInternalUser(userId)
+    if (!internalUser) return res.status(403).json({ message: 'Internal access required.' })
+    if (!code) return res.status(400).json({ message: 'Scan or enter a code to look up.' })
+
+    const product = await findProductForScannedCode(code)
+    if (!product) {
+      return res.status(404).json({ message: `No piece matches "${code}".`, code: 'NOT_FOUND' })
+    }
+
+    const variant = pickVariantForPricing(product.variants || [])
+    const attrs = product.productAttributes && typeof product.productAttributes === 'object' ? product.productAttributes : {}
+
+    // Tell staff up front when the piece is already out — createMemo would
+    // refuse it anyway, but at the scanner is where they can still put it back.
+    let outOnMemo = null
+    if (variant) {
+      const clashes = await prisma.memoItem.findMany({
+        where: { variantId: variant.id, memo: { status: { in: OPEN_MEMO_STATUSES } } },
+        select: { qty: true, returnedQty: true, convertedQty: true, memo: { select: { id: true, memoNo: true } } },
+      })
+      const blocking = clashes.find((item) => item.qty - item.returnedQty - item.convertedQty > 0)
+      if (blocking) outOnMemo = { id: blocking.memo.id, memoNo: blocking.memo.memoNo }
+    }
+
+    return res.status(200).json({
+      product: {
+        id: product.id,
+        slug: product.slug,
+        title: product.title,
+        category: product.category,
+        active: product.active,
+        bagNo: attrs.bagNo || '',
+        styleNo: attrs.styleNo || '',
+        sku: variant?.sku || null,
+        pricePaise: variant?.listPricePaise ?? null,
+        price: variant ? formatMoney(variant.listPricePaise, variant.currency || 'USD') : null,
+        purchasable: Boolean(variant),
+        outOnMemo,
+      },
+    })
+  } catch (err) {
+    console.error('Internal product lookup failed:', err)
+    return res.status(500).json({ message: 'Unable to look up that code.' })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Product (resource=product)
 // ---------------------------------------------------------------------------
 
@@ -2760,6 +2887,7 @@ export default async function handler(req, res) {
   if (resource === 'memo-create') return handleMemoCreateResource(req, res, body)
   if (resource === 'memos-list') return handleMemosListResource(req, res, body)
   if (resource === 'memo') return handleMemoResource(req, res, body)
+  if (resource === 'product-lookup') return handleProductLookupResource(req, res, body)
   if (resource === 'product') return handleProductResource(req, res, body)
   if (resource === 'homepage-slides') return handleSlidesResource(req, res, body)
   if (resource === 'site-config') return handleSiteConfigResource(req, res, body)

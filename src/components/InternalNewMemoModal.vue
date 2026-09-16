@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
+import InternalQrScanner, { type ScanFeedback } from './InternalQrScanner.vue'
 
 // Staff-side memo issue: the same consignment the customer can raise from the
 // checkout, but started from the internal Memos tab — for a showroom visit or a
@@ -55,6 +56,13 @@ let productDebounce: ReturnType<typeof setTimeout> | undefined
 
 const lines = ref<LineDraft[]>([])
 const notes = ref('')
+
+// Tag scanner: the same "add a piece" step as the search box, driven by the QR
+// code on the tag instead of typing. It stays open between reads so a tray of
+// pieces can be scanned one after another.
+const scannerOpen = ref(false)
+const scanBusy = ref(false)
+const scanFeedback = ref<ScanFeedback | null>(null)
 const saving = ref(false)
 const errorMsg = ref('')
 
@@ -202,6 +210,58 @@ function removeLine(index: number) {
   lines.value.splice(index, 1)
 }
 
+function toggleScanner() {
+  scannerOpen.value = !scannerOpen.value
+  scanFeedback.value = null
+}
+
+interface LookupHit extends ProductHit {
+  active: boolean
+  bagNo: string
+  purchasable: boolean
+  outOnMemo: { id: string; memoNo: string } | null
+}
+
+// Resolve whatever the tag encodes (URL, slug, SKU, bag or style number) to a
+// piece and add it. Pieces are one-offs, so a second read of the same tag is
+// reported rather than bumping the quantity the way a repeat search pick does.
+async function onScanned(code: string) {
+  if (!user.value?.id || scanBusy.value) return
+  scanBusy.value = true
+  scanFeedback.value = { tone: 'info', text: `Looking up ${code}…` }
+  try {
+    const params = new URLSearchParams({ resource: 'product-lookup', userId: user.value.id, code })
+    const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || 'Unable to look up that code.')
+    const hit = data.product as LookupHit
+    if (!hit.purchasable) {
+      scanFeedback.value = { tone: 'error', text: `"${hit.title}" has no active variant, so it cannot go out on memo.` }
+      return
+    }
+    if (hit.outOnMemo) {
+      scanFeedback.value = {
+        tone: 'error',
+        text: `"${hit.title}" is already out on memo ${hit.outOnMemo.memoNo}. It has to come back before it can go out again.`,
+      }
+      return
+    }
+    if (lines.value.some((line) => line.slug === hit.slug)) {
+      scanFeedback.value = { tone: 'info', text: `"${hit.title}" is already on this memo.` }
+      return
+    }
+    lines.value.push({ slug: hit.slug, title: hit.title, price: hit.price, pricePaise: hit.pricePaise, qty: 1 })
+    scanFeedback.value = {
+      tone: 'ok',
+      text: `Added ${hit.title}${hit.price ? ` · ${hit.price}` : ''}${hit.active ? '' : ' (hidden from the storefront)'}.`,
+    }
+  } catch (e) {
+    scanFeedback.value = { tone: 'error', text: e instanceof Error ? e.message : 'Unable to look up that code.' }
+  } finally {
+    scanBusy.value = false
+  }
+}
+
 async function submit() {
   errorMsg.value = ''
   if (!selectedCustomer.value) {
@@ -308,7 +368,29 @@ async function submit() {
 
       <!-- Pieces -->
       <div class="ect-mt-5">
-        <p class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">Pieces *</p>
+        <div class="ect-flex ect-items-center ect-justify-between ect-gap-3">
+          <p class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">Pieces *</p>
+          <button
+            type="button"
+            class="ect-inline-flex ect-items-center ect-gap-1.5 ect-rounded-full ect-border ect-border-charcoal/15 ect-px-3 ect-py-1 ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors"
+            :aria-pressed="scannerOpen"
+            @click="toggleScanner"
+          >
+            <svg class="ect-h-3.5 ect-w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
+              <rect x="7" y="7" width="4" height="4" /><rect x="13" y="7" width="4" height="4" /><rect x="7" y="13" width="4" height="4" /><path d="M13 13h4v4" />
+            </svg>
+            {{ scannerOpen ? 'Hide scanner' : 'Scan tag' }}
+          </button>
+        </div>
+        <InternalQrScanner
+          v-if="scannerOpen"
+          class="ect-mt-2"
+          :feedback="scanFeedback"
+          :busy="scanBusy"
+          @scan="onScanned"
+          @close="toggleScanner"
+        />
         <div class="ect-relative ect-mt-1">
           <input
             v-model="productQuery"

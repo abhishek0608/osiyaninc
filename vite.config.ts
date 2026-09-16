@@ -86,6 +86,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [vue(), localApiPlugin(!proxyTarget)],
     server: {
+      // The desktop app's preview assigns a port through PORT when the default
+      // one is taken; Vite does not read it on its own.
+      port: Number(process.env.PORT) || undefined,
       proxy: proxyTarget
         ? {
             '/api': {
