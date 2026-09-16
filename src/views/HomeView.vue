@@ -62,7 +62,7 @@ function subscribe() {
         <p class="high-intro">For those who appreciate the finer things in life.</p>
         <p>Unveil a spectrum of meticulously chosen gemstones, from rare diamonds to vivid gemstones, each sourced and selected with the utmost care.</p>
         <p>Our commitment to quality ensures that every piece emanates an aura of exclusivity and prestige, making each acquisition a testament to discerning taste.</p>
-        <RouterLink to="/collections" class="explore-button">Explore</RouterLink>
+        <RouterLink to="/high-jewelry" class="explore-button">Explore</RouterLink>
       </article>
     </section>
 

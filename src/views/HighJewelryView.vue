@@ -7,9 +7,10 @@
 // story page.
 //
 // Section heights are fixed pixels because the live page's are: Wix sizes these
-// strips in the editor and only the photograph widens with the viewport. The
-// per-band `gap` is the live distance from the title's last line to the Explore
-// button, which the editor left different in every band.
+// strips in the editor and only the photograph widens with the viewport. For the
+// same reason `titleTop` and `gap` are carried per band rather than derived —
+// the strips are near enough centred to look like a rule, but the editor left
+// every one of them nudged by a different amount.
 //
 // The live Explore buttons point at /jewel-garden, /jade-forest, /osiyanic-blues
 // and /fiery — all four sit behind the Wix guest-area password — while the
@@ -26,6 +27,8 @@ interface Suite {
   media: 'left' | 'right'
   /** Live band height in px. */
   height: number
+  /** Live distance from the band's top edge to the title, in px. */
+  titleTop: number
   /** Live gap from the title to the Explore button, in px. */
   gap: number
   /** object-position for the photograph's crop. */
@@ -40,6 +43,7 @@ const SUITES: Suite[] = [
     alt: 'Carved tourmaline butterfly pendant on a gold chain strung with emerald and pink tourmaline beads',
     media: 'right',
     height: 689,
+    titleTop: 221,
     gap: 80,
     focus: '50% 100%',
   },
@@ -50,6 +54,7 @@ const SUITES: Suite[] = [
     alt: 'Emerald and diamond drop earrings in white gold',
     media: 'left',
     height: 660,
+    titleTop: 185,
     gap: 74,
     focus: '50% 50%',
   },
@@ -60,6 +65,7 @@ const SUITES: Suite[] = [
     alt: 'Aquamarine and diamond chandelier earrings in white gold',
     media: 'right',
     height: 713,
+    titleTop: 221,
     gap: 49,
     focus: '50% 50%',
   },
@@ -70,6 +76,7 @@ const SUITES: Suite[] = [
     alt: 'Fire opal and diamond drop earrings in yellow gold',
     media: 'left',
     height: 747,
+    titleTop: 221,
     gap: 90,
     focus: '50% 50%',
   },
@@ -80,6 +87,7 @@ const SUITES: Suite[] = [
     alt: 'Three yellow gold rings set with Brazilian alexandrite and diamonds',
     media: 'right',
     height: 747,
+    titleTop: 281,
     gap: 49,
     focus: '50% 50%',
   },
@@ -130,7 +138,11 @@ const SUITES: Suite[] = [
       :key="suite.key"
       class="hj-suite"
       :class="`media-${suite.media}`"
-      :style="{ '--hj-band-height': `${suite.height}px`, '--hj-gap': `${suite.gap}px` }"
+      :style="{
+        '--hj-band-height': `${suite.height}px`,
+        '--hj-title-top': `${suite.titleTop}px`,
+        '--hj-gap': `${suite.gap}px`,
+      }"
     >
       <div class="hj-suite-media">
         <img :src="suite.image" :alt="suite.alt" :style="{ objectPosition: suite.focus }" loading="lazy" />
@@ -182,7 +194,7 @@ const SUITES: Suite[] = [
    437px into the live page's 980px content column. */
 .hj-precision { position: relative; height: 1011px; overflow: hidden; }
 .hj-precision > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.hj-precision-copy { position: relative; max-width: 980px; margin-inline: auto; padding: 428px 24px 0; }
+.hj-precision-copy { position: relative; max-width: 980px; margin-inline: auto; padding-top: 428px; }
 .hj-precision-copy > div { width: 304px; margin-left: 437px; }
 .hj-precision h2 { font-size: 40px; font-weight: 600; line-height: 49px; letter-spacing: .03em; }
 .hj-precision p { margin-top: 46px; font-size: 25px; font-weight: 300; line-height: 30px; }
@@ -195,7 +207,7 @@ const SUITES: Suite[] = [
 .media-left .hj-suite-copy { grid-column: 2; }
 .media-right .hj-suite-media { grid-column: 2; }
 .media-right .hj-suite-copy { grid-column: 1; grid-row: 1; }
-.hj-suite-copy { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 24px; }
+.hj-suite-copy { display: flex; flex-direction: column; align-items: center; padding: var(--hj-title-top) 24px 0; }
 .hj-suite-copy h2 { font-family: var(--font-body); font-size: 56px; font-weight: 700; line-height: 67px; text-align: center; }
 .hj-explore {
   margin-top: var(--hj-gap);
