@@ -209,21 +209,23 @@ const reviewSummary = computed(() => {
   return `${product.value.rating.toFixed(1)} · ${product.value.reviewCount} reviews`
 })
 
-// Stone lines as the spec sheet shows them: one row per group rather than one
-// per line, because a piece can carry a dozen lines and the sheet is a summary,
-// not the packing list. Shapes and qualities are de-duplicated, pcs and cts
-// added up; anything that isn't a number is skipped rather than guessed at.
+// Stone lines as the spec sheet shows them: one row per group (diamond, fancy
+// shape, colour stone) rather than one per line, because a piece can carry a
+// dozen lines and the sheet is a summary, not the packing list. Each row states
+// the group's total carat weight and its quality — pieces and shapes stay on
+// the packing list. Carats are summed first so a pile of 0.001 lines still
+// adds up; anything that isn't a number is skipped rather than guessed at.
 const STONE_GROUP_LABELS: Record<'D' | 'F' | 'C', string> = {
-  D: 'Diamonds',
-  F: 'Fancy Cut Stones',
-  C: 'Colour Stones',
+  D: 'Diamond',
+  F: 'Fancy Shape',
+  C: 'Colour Stone',
 }
 
-function sumStoneField(lines: StoneLine[], field: 'pcs' | 'cts') {
+function sumStoneCarats(lines: StoneLine[]) {
   let total = 0
   let sawNumber = false
   for (const line of lines) {
-    const parsed = Number(String(line[field] ?? '').trim())
+    const parsed = Number(String(line.cts ?? '').trim())
     if (!Number.isFinite(parsed)) continue
     sawNumber = true
     total += parsed
@@ -231,10 +233,10 @@ function sumStoneField(lines: StoneLine[], field: 'pcs' | 'cts') {
   return sawNumber ? total : null
 }
 
-function distinctStoneField(lines: StoneLine[], field: 'shape' | 'quality') {
+function distinctStoneQuality(lines: StoneLine[]) {
   const seen: string[] = []
   for (const line of lines) {
-    const value = String(line[field] ?? '').trim()
+    const value = String(line.quality ?? '').trim()
     if (value && !seen.includes(value)) seen.push(value)
   }
   return seen.join(' / ')
@@ -249,23 +251,14 @@ const stoneLineRows = computed<Array<{ label: string; value: string }>>(() => {
       const groupLines = lines.filter((line) => line?.group === group)
       if (!groupLines.length) return { label: STONE_GROUP_LABELS[group], value: '' }
 
-      const descriptor = [distinctStoneField(groupLines, 'shape'), distinctStoneField(groupLines, 'quality')]
-        .filter(Boolean)
-        .join(', ')
-      const pcs = sumStoneField(groupLines, 'pcs')
-      const cts = sumStoneField(groupLines, 'cts')
-      const totals = [
-        pcs != null ? `${pcs} pcs` : '',
-        // Carats are quoted to two places the way the trade writes them, but
-        // only after summing, so a pile of 0.001 lines still adds up.
-        cts != null ? `${cts.toFixed(2)} ct` : '',
-      ]
-        .filter(Boolean)
-        .join(' / ')
-
+      const cts = sumStoneCarats(groupLines)
       return {
         label: STONE_GROUP_LABELS[group],
-        value: [descriptor, totals].filter(Boolean).join(' — '),
+        // Weight first, quality after — "0.42 ct, G-H/SI" — the order the
+        // trade quotes a parcel.
+        value: [cts != null ? `${cts.toFixed(2)} ct` : '', distinctStoneQuality(groupLines)]
+          .filter(Boolean)
+          .join(', '),
       }
     })
     .filter((row) => Boolean(row.value))
@@ -274,10 +267,11 @@ const stoneLineRows = computed<Array<{ label: string; value: string }>>(() => {
 const technicalDetailRows = computed<Array<{ label: string; value: string }>>(() => {
   const desc = product.value?.description?.trim() || ''
   const specs: Array<{ label: string; value: string }> = []
+  // Gross weight is the only weight the storefront quotes — net (gold) weight
+  // stays internal, where it drives the gold value.
   const attributeSpecs = [
-    { label: 'Gross Weight', value: product.value?.productAttributes?.grossWeight || '' },
-    { label: 'Net Weight', value: product.value?.productAttributes?.netWeight || '' },
     ...stoneLineRows.value,
+    { label: 'Gross Weight', value: product.value?.productAttributes?.grossWeight || '' },
   ].filter((spec) => spec.value)
   const seenLabels = new Set(attributeSpecs.map((spec) => spec.label.toLowerCase()))
 
@@ -294,7 +288,8 @@ const technicalDetailRows = computed<Array<{ label: string; value: string }>>(()
 
 // The spec sheet carries facts about the piece: the metal it is cut from (purity
 // and its fixed color as one line, e.g. "14k Yellow Gold"), the centre stone's
-// size when the style number records one, then weights and stone groups.
+// size when the style number records one, then the stone groups' weight and
+// quality and the gross weight.
 const specRows = computed<Array<{ label: string; value: string }>>(() => {
   const attrs = product.value?.productAttributes
   const metal = product.value ? [attrs?.metalPurity || '', productColorLabel.value].filter(Boolean).join(' ') : ''
