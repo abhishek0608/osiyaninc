@@ -125,12 +125,14 @@ function subscribe() {
 .high-section { display: grid; grid-template-columns: 2fr 1.18fr; min-height: 867px; }
 .high-image-wrap { display: grid; place-items: center; background: #fff; overflow: hidden; }
 .high-image-wrap img { width: 100%; height: 100%; object-fit: contain; }
-.high-section article { padding: 68px clamp(32px, 4.7vw, 60px); display: flex; flex-direction: column; justify-content: center; }
-.high-section h2 { margin: 0 0 12px; font-family: var(--font-accent); font-style: italic; font-size: 49px; line-height: 1.25; font-weight: 400; letter-spacing: .04em; }
-.high-section p { margin: 0 0 28px; font-size: 23px; line-height: 1.5; }
-.high-section .high-intro { margin-bottom: 33px; font-size: 16px; line-height: 1.4; }
-.explore-button { align-self: center; width: 142px; height: 40px; margin-top: 50px; display: grid; place-items: center; border: 1px solid #000; color: #000; text-decoration: none; font-size: 16px; }
-.explore-button:hover { background: #000; color: #fff; }
+/* Mirrors the plum panel on osiyaninc.com: white Futura Light copy on #5d4a62,
+   Didot italic heading tracked at .15em. Jost stands in for Futura here. */
+.high-section article { padding: 68px clamp(32px, 4.7vw, 60px); display: flex; flex-direction: column; justify-content: center; background: #5d4a62; color: #fff; font-family: var(--font-display); }
+.high-section h2 { margin: 0 0 12px; font-family: var(--font-accent); font-style: italic; font-size: 49px; line-height: 1.25; font-weight: 400; letter-spacing: .15em; }
+.high-section p { margin: 0 0 28px; font-size: 23px; line-height: 1.5; font-weight: 300; letter-spacing: .05em; }
+.high-section .high-intro { margin-bottom: 33px; font-size: 16px; line-height: 1.4; font-weight: 400; letter-spacing: 0; }
+.explore-button { align-self: center; width: 142px; height: 40px; margin-top: 50px; display: grid; place-items: center; color: #fff; text-decoration: none; font-size: 19px; letter-spacing: .05em; }
+.explore-button:hover { text-decoration: underline; text-underline-offset: 4px; }
 /* Shop by Category — four category tiles that each link to their collection
    page and only name themselves on hover. Gutters, gaps and the caption are the
    live site's fixed pixel values; the tiles scale with the page. */

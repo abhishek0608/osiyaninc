@@ -28,7 +28,6 @@ body {
   margin: 0;
   overflow-x: hidden;
   font-family: var(--font-body);
-  font-feature-settings: 'ss01' 1, 'ss02' 1;
   letter-spacing: 0;
 }
 
