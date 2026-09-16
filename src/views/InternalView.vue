@@ -18,6 +18,7 @@ import {
   type SignupRequestStatus,
 } from '../composables/useSignupRequests'
 import { COLLECTION_LINKS } from '../data/collections'
+import { CATEGORIES } from '../data/products'
 
 
 interface AuditFields {
@@ -439,6 +440,13 @@ const productStatusOptions = [
   { value: 'active', label: 'Active products' },
   { value: 'hidden', label: 'Hidden products' },
 ]
+// Category filter mirrors the canonical list the product editor writes, so
+// every value here is one the database can actually hold.
+const productCategoryFilter = ref<string>('all')
+const productCategoryOptions = [
+  { value: 'all', label: 'All categories' },
+  ...CATEGORIES.map((category) => ({ value: category, label: category })),
+]
 const productVectorFilter = ref<'all' | 'synced' | 'missing'>('all')
 const productVectorOptions = [
   { value: 'all', label: 'All photo vectors' },
@@ -464,6 +472,7 @@ async function loadProducts(reset = true) {
     })
     if (productSearch.value.trim()) params.set('search', productSearch.value.trim())
     if (productStatusFilter.value !== 'all') params.set('status', productStatusFilter.value)
+    if (productCategoryFilter.value !== 'all') params.set('category', productCategoryFilter.value)
     if (productVectorFilter.value !== 'all') params.set('vectors', productVectorFilter.value)
     const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
     const data = await res.json().catch(() => ({}))
@@ -2458,6 +2467,12 @@ onBeforeUnmount(() => {
               <UiSelect
                 v-model="productStatusFilter"
                 :options="productStatusOptions"
+                class="ect-w-full sm:ect-w-44"
+                @update:model-value="onProductStatusChange"
+              />
+              <UiSelect
+                v-model="productCategoryFilter"
+                :options="productCategoryOptions"
                 class="ect-w-full sm:ect-w-44"
                 @update:model-value="onProductStatusChange"
               />
