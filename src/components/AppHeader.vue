@@ -106,6 +106,21 @@ const localeLabel = LOCALE_LABEL
 const openItem = computed(() => navItems.find((item) => item.key === openCategory.value) ?? null)
 const openSubmenu = computed(() => openItem.value?.submenu ?? null)
 
+/**
+ * A fully illustrated run — every link carrying a thumbnail, which `styleColumn`
+ * guarantees is all-or-nothing — is drawn as a 2×2 tile grid rather than a list.
+ * A run where only some links have images stays a list, so a half-finished set
+ * of thumbnails degrades instead of tearing the grid apart.
+ */
+function isGallery(group: NavGroup): boolean {
+  return group.links.length > 1 && group.links.every((link) => Boolean(link.image))
+}
+
+/** The tile grid needs a wider first column than a plain list of links does. */
+const submenuHasGallery = computed(
+  () => openSubmenu.value?.columns.some((column) => column.some(isGallery)) ?? false,
+)
+
 /** The drawer stacks the desktop menu's three columns into one flow. */
 function drawerGroups(item: NavItem): NavGroup[] {
   return item.submenu ? item.submenu.columns.flat() : []
@@ -611,11 +626,11 @@ onBeforeUnmount(() => {
         @mouseleave="requestClose"
         @keydown="onSubmenuKeydown"
       >
-        <div class="submenu-inner">
+        <div class="submenu-inner" :class="{ 'has-gallery': submenuHasGallery }">
           <div v-for="(column, columnIndex) in openSubmenu.columns" :key="columnIndex" class="submenu-column">
             <div v-for="group in column" :key="group.heading" class="submenu-group">
               <p class="submenu-heading">{{ group.heading }}</p>
-              <div class="submenu-links">
+              <div class="submenu-links" :class="{ 'is-gallery': isGallery(group) }">
                 <RouterLink
                   v-for="link in group.links"
                   :key="link.label"
@@ -624,7 +639,6 @@ onBeforeUnmount(() => {
                 >
                   <img v-if="link.image" :src="link.image" :alt="link.imageAlt" class="submenu-thumb" loading="lazy" decoding="async" />
                   {{ link.label }}
-                  <span v-if="link.emphasis" class="submenu-arrow" aria-hidden="true">&rarr;</span>
                 </RouterLink>
               </div>
             </div>
@@ -1048,6 +1062,9 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   padding: 36px var(--gutter) 42px;
 }
+/* The Shop-by-style tiles need a wider first column than a list of links —
+   this is where the width freed by dropping a featured card goes. */
+.submenu-inner.has-gallery { grid-template-columns: 330px 190px 190px 1fr; }
 .submenu-column { display: flex; flex-direction: column; gap: 14px; }
 .submenu-group { display: flex; flex-direction: column; gap: 14px; }
 .submenu-group + .submenu-group { margin-top: 10px; }
@@ -1065,6 +1082,29 @@ onBeforeUnmount(() => {
   object-fit: cover;
   background: var(--surface-pill);
 }
+/* A fully illustrated run becomes a 2x2 gallery: the piece is the thing being
+   chosen, so it gets a tile the shopper can actually read, with the style name
+   beneath it. */
+.submenu-links.is-gallery {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px 26px;
+}
+.submenu-links.is-gallery a {
+  width: auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+}
+.submenu-links.is-gallery a.has-thumb + a.has-thumb { margin-top: 0; }
+.submenu-links.is-gallery .submenu-thumb {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  transition: opacity 0.15s ease;
+}
+.submenu-links.is-gallery a:hover .submenu-thumb { opacity: 0.85; }
 .submenu-links a {
   display: inline-flex;
   align-items: center;
@@ -1078,10 +1118,19 @@ onBeforeUnmount(() => {
 }
 .submenu-links a:hover { color: var(--plum-ink); }
 .submenu-links a.is-emphasis { color: var(--gold-text); }
-.submenu-arrow { font-size: 15px; line-height: 1; }
 .submenu-links a:focus-visible, .submenu-feature:focus-visible { outline: 2px solid var(--plum); outline-offset: 3px; border-radius: 2px; }
 
-.submenu-features { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+/* One or two cards: tracks are added per feature and capped, so a lone card
+   keeps a card's proportions at the panel's right edge instead of stretching
+   across the space the style tiles just gained. */
+.submenu-features {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 290px);
+  justify-content: end;
+  align-content: start;
+  gap: 22px;
+}
 .submenu-feature { display: flex; flex-direction: column; gap: 9px; text-decoration: none; }
 .submenu-feature img { width: 100%; height: 158px; display: block; object-fit: cover; background: var(--border-soft); }
 .feature-title { color: var(--plum); font-size: 13.5px; letter-spacing: 0.04em; }
@@ -1090,6 +1139,13 @@ onBeforeUnmount(() => {
 
 .submenu-enter-active, .submenu-leave-active { transition: opacity 0.18s ease-out, transform 0.18s ease-out; }
 .submenu-enter-from, .submenu-leave-to { opacity: 0; transform: translateY(-4px); }
+
+/* Laptop widths: the tile grid still leads, but it and the link columns give
+   back enough width that a two-card feature run keeps card proportions. */
+@media (max-width: 1320px) {
+  .submenu-inner { gap: 34px; }
+  .submenu-inner.has-gallery { grid-template-columns: 284px 176px 176px 1fr; }
+}
 
 /* --- Account dropdown --- */
 .account-menu-root { position: relative; display: flex; }
@@ -1282,7 +1338,7 @@ onBeforeUnmount(() => {
   }
   .drawer-group-links a.is-emphasis { border-color: rgba(201, 162, 39, 0.4); color: var(--gold-text); }
   .drawer-group-links a:focus-visible { outline: 2px solid var(--plum); outline-offset: 2px; }
-  .drawer-features { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 22px; }
+  .drawer-features { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 14px; margin-top: 22px; }
   .drawer-feature { display: flex; flex-direction: column; gap: 8px; text-decoration: none; }
   .drawer-feature img { width: 100%; height: 120px; display: block; object-fit: cover; background: var(--border-soft); }
 
@@ -1295,7 +1351,7 @@ onBeforeUnmount(() => {
 @media (max-width: 420px) {
   .osiyan-header { --logo-scale: 0.58; }
   .drawer-link { font-size: 19px; }
-  .drawer-features { grid-template-columns: 1fr; }
+  .drawer-features { grid-auto-flow: row; }
 }
 
 @media (prefers-reduced-motion: reduce) {

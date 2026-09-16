@@ -43,7 +43,7 @@ export interface NavSubLink {
   exact: boolean
   /** Renders in gold as a column's closing "shop all" line. */
   emphasis?: boolean
-  /** Square thumbnail shown to the left of the label, in `public/`. */
+  /** Square thumbnail for the style tile, in `public/`. */
   image?: string
   /** Required alongside `image`; the label alone is not a description. */
   imageAlt?: string
@@ -64,7 +64,12 @@ export interface NavFeature {
 }
 
 export interface NavSubmenu {
-  /** Three link columns, then the two-up featured grid. */
+  /**
+   * Three link columns, then the featured run. A category carries one or two
+   * features: the illustrated Shop-by-style grid is the panel's own hero, so
+   * the piece categories keep only the card that says something the columns
+   * don't — what's new — and give the width back to the styles.
+   */
   columns: NavGroup[][]
   features: NavFeature[]
 }
@@ -129,7 +134,8 @@ function filterLink(label: string, slug: string, query?: CollectionQuery): NavSu
 
 /**
  * A style link carrying a thumbnail. Only the Shop-by-style runs use one, and
- * only where every link in the run has one — a half-illustrated column reads as
+ * only where every link in the run has one — the header draws a fully
+ * illustrated run as a 2×2 tile grid, and a half-illustrated one reads as
  * missing images rather than a deliberate mix.
  */
 function styleLink(
@@ -293,16 +299,9 @@ export const NAV_ITEMS: NavItem[] = [
       ],
       features: [
         {
-          image: '/earring-1.jpg',
-          alt: 'Diamond drop earrings on model',
-          title: 'The Bridal Edit',
-          caption: 'Chandeliers and drops for the aisle',
-          to: '/collections/earrings',
-        },
-        {
           image: '/earring-2.jpg',
           alt: 'Gold earrings still life',
-          title: 'New in gold',
+          title: 'New collection',
           caption: 'Fresh silhouettes, just landed',
           to: collectionUrl('earrings', { tab: 'new' }),
         },
@@ -321,16 +320,9 @@ export const NAV_ITEMS: NavItem[] = [
       ],
       features: [
         {
-          image: '/ring-1.jpg',
-          alt: 'Solitaire engagement ring',
-          title: 'The Engagement Edit',
-          caption: 'Solitaires set for the moment',
-          to: collectionUrl('rings', { style: 'solitaire' }),
-        },
-        {
           image: '/ring-2.jpg',
           alt: 'Gold rings still life',
-          title: 'New in gold',
+          title: 'New collection',
           caption: 'Everyday bands, reworked',
           to: collectionUrl('rings', { tab: 'new' }),
         },
@@ -343,36 +335,15 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/collections/necklaces',
     submenu: {
       columns: [
-        [
-          ...styleColumn('necklaces'),
-          {
-            // Pendants, statement necklaces and mangal sutras are forms rather
-            // than styles, so they sit below the gallery's four Types instead of
-            // inside them — the Shop-by-style run names the page's Types and
-            // nothing else. Each still filters, by subtype.
-            heading: 'Shop by piece',
-            links: [
-              siteLink('Pendants', '/collections/pendants'),
-              filterLink('Statement necklaces', 'necklaces', { style: 'statement-necklace' }),
-              filterLink('Mangal sutra', 'necklaces', { style: 'mangal-sutra' }),
-            ],
-          },
-        ],
+        styleColumn('necklaces'),
         metalAndPrice('necklaces'),
         collectionsColumn('necklaces', 'Shop all necklaces'),
       ],
       features: [
         {
-          image: '/pendant-1.jpg',
-          alt: 'Diamond pendant on model',
-          title: 'The Bridal Edit',
-          caption: 'Necklaces made for the aisle',
-          to: '/collections/necklaces',
-        },
-        {
           image: '/pendant-2.jpg',
           alt: 'Gold pendant still life',
-          title: 'New in gold',
+          title: 'New collection',
           caption: 'Chains to layer or wear solo',
           to: collectionUrl('necklaces', { tab: 'new' }),
         },
@@ -400,7 +371,7 @@ export const NAV_ITEMS: NavItem[] = [
         {
           image: '/bracelet-1.jpg',
           alt: 'Gold bracelet still life',
-          title: 'New in gold',
+          title: 'New collection',
           caption: 'Cuffs and links, just landed',
           to: collectionUrl('bracelets', { tab: 'new' }),
         },
@@ -412,7 +383,7 @@ export const NAV_ITEMS: NavItem[] = [
     // submenu points across the site instead of into one collection's filters.
     label: 'High Jewelry',
     key: 'high-jewelry',
-    to: '/collections',
+    to: '/high-jewelry',
     submenu: {
       columns: [
         [
@@ -455,7 +426,7 @@ export const NAV_ITEMS: NavItem[] = [
           alt: 'Emerald and diamond high jewelry earrings',
           title: 'High Jewelry',
           caption: 'Rare stones, singular settings',
-          to: '/collections',
+          to: '/high-jewelry',
         },
         {
           image: '/osiyan-luxury-1.jpeg',
