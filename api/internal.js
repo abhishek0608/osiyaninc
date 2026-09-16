@@ -1317,22 +1317,26 @@ async function upsertBulkInventory(tx, productId, quantity) {
   })
 }
 
+// Optional fields are only written when the row carries them, so a packing
+// list (which has no description, tags or flags) refreshes a piece's specs on
+// overwrite without blanking what was entered by hand.
 function buildBulkProductData(row) {
+  const has = (key) => row && row[key] !== undefined
   const data = {
     slug: String(row?.slug || '').trim(),
     title: String(row?.title || '').trim(),
     category: String(row?.category || '').trim(),
-    subtype: String(row?.subtype || '').trim() || null,
     material: String(row?.material || '').trim(),
     color: String(row?.color || '').trim(),
-    description: String(row?.description || '').trim() || null,
     productAttributes: normalizeProductAttributes(row?.productAttributes),
-    isNewArrival: Boolean(row?.isNewArrival),
-    isBestSeller: Boolean(row?.isBestSeller),
-    active: row?.active !== false,
-    rating: toNumberOrNull(row?.rating),
-    reviewCount: toNumberOrNull(row?.reviewCount),
   }
+  if (has('subtype')) data.subtype = String(row.subtype || '').trim() || null
+  if (has('description')) data.description = String(row.description || '').trim() || null
+  if (has('isNewArrival')) data.isNewArrival = Boolean(row.isNewArrival)
+  if (has('isBestSeller')) data.isBestSeller = Boolean(row.isBestSeller)
+  if (has('active')) data.active = row.active !== false
+  if (has('rating')) data.rating = toNumberOrNull(row.rating)
+  if (has('reviewCount')) data.reviewCount = toNumberOrNull(row.reviewCount)
   if (Array.isArray(row?.styleTags)) data.styleTags = normalizeTags(row.styleTags)
   if (Array.isArray(row?.stoneTags)) data.stoneTags = normalizeTags(row.stoneTags)
   return data

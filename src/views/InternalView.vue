@@ -6,6 +6,7 @@ import InternalNewOrderModal from '../components/InternalNewOrderModal.vue'
 import InternalNewMemoModal from '../components/InternalNewMemoModal.vue'
 import InternalNewUserModal from '../components/InternalNewUserModal.vue'
 import UiSelect from '../components/UiSelect.vue'
+import { PACKING_LIST_COLUMNS, piecesToGrid } from '../data/packingList'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
 import { invalidateHomepageSlides } from '../composables/useHomepageSlides'
@@ -566,16 +567,6 @@ const aiProgress = ref({ done: 0, total: 0 })
 const aiTotals = ref<Record<string, number>>({ generated: 0, empty: 0, skipped: 0, error: 0 })
 const aiResults = ref<{ slug: string; status: string; message: string }[]>([])
 
-// CSV column order must match the bulk-import schema so an exported file can be
-// edited and re-uploaded without creating duplicates (import upserts by slug).
-const EXPORT_COLUMNS = [
-  'slug', 'title', 'category', 'subtype', 'material', 'color', 'price', 'description',
-  'bagNo', 'styleNo', 'qty', 'grossWeight', 'netWeight', 'goldRate', 'goldValue', 'stoneLines',
-  'styleTags', 'stoneTags',
-  'isNewArrival', 'isBestSeller', 'active', 'rating', 'reviewCount',
-  'metalPurity', 'centerStoneSize',
-]
-
 const exporting = ref(false)
 const exportError = ref('')
 
@@ -589,6 +580,9 @@ function closeProductMoreOnOutsideClick(e: MouseEvent) {
   }
 }
 
+// Exports every product as the supplier's packing list (.xlsx): one row per
+// BAG NO, continuation rows for extra stone lines, Kt/Col for the metal. The
+// same layout the import reads, so an edited export re-uploads without loss.
 async function exportProducts() {
   if (!user.value?.id || exporting.value) return
   exporting.value = true
@@ -601,17 +595,18 @@ async function exportProducts() {
     if (!res.ok) throw new Error(data?.message || 'Export request failed.')
     const records = (data.rows || []) as Record<string, string>[]
     if (!records.length) { exportError.value = 'No products to export.'; return }
-    const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
-    const csv =
-      EXPORT_COLUMNS.join(',') + '\n' +
-      records.map((r) => EXPORT_COLUMNS.map((c) => esc(r[c] ?? '')).join(',')).join('\n') + '\n'
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `products-export-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    const XLSX = await import('xlsx')
+    const grid = piecesToGrid(records.map((r) => ({
+      bagNo: r.bagNo, slug: r.slug ?? '', styleNo: r.styleNo, title: r.title ?? '', category: r.category ?? '',
+      styleTags: r.styleTags, qty: r.qty, grossWeight: r.grossWeight, metalPurity: r.metalPurity,
+      color: r.color, netWeight: r.netWeight, goldRate: r.goldRate, goldValue: r.goldValue,
+      stoneLines: r.stoneLines, price: r.price,
+    })))
+    const sheet = XLSX.utils.aoa_to_sheet(grid)
+    sheet['!cols'] = PACKING_LIST_COLUMNS.map((name) => ({ wch: Math.max(8, name.length + 4) }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, sheet, 'Worksheet')
+    XLSX.writeFile(wb, `packing-list-${new Date().toISOString().slice(0, 10)}.xlsx`)
   } catch (e) {
     exportError.value = e instanceof Error ? e.message : 'Export failed.'
   } finally {
@@ -2566,7 +2561,7 @@ onBeforeUnmount(() => {
                   class="ect-block ect-w-full ect-px-4 ect-py-2.5 ect-text-left ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/70 hover:ect-bg-cream hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-50 disabled:ect-cursor-not-allowed"
                   @click="productMoreOpen = false; exportProducts()"
                 >
-                  {{ exporting ? 'Exporting…' : 'Export products' }}
+                  {{ exporting ? 'Exporting…' : 'Export packing list' }}
                 </button>
               </div>
             </div>

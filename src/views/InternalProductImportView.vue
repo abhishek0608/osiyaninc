@@ -3,48 +3,25 @@ import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
+import {
+  PACKING_LIST_COLUMNS,
+  colorLabel,
+  formatKtCol,
+  gridToImportRows,
+  piecesToGrid,
+  type ImportRow,
+} from '../data/packingList'
 
 const { user, isInternalUser } = useAuth()
 
-// CSV schema. Multi-value columns are pipe (|) separated so commas stay safe.
-// `stoneLines` packs the packing list's repeating stone rows into one cell:
-// lines split on `|`, the five fields inside a line split on `:`, in the order
-// group:shape:quality:pcs:cts - e.g. `D:ROUND:G-H/SI:2:0.02|F:BAGUETTE:G-H/SI:8:0.08`.
-const COLUMNS = [
-  'slug', 'title', 'category', 'subtype', 'material', 'color', 'price', 'description',
-  'bagNo', 'styleNo', 'qty', 'grossWeight', 'netWeight', 'goldRate', 'goldValue', 'stoneLines',
-  'styleTags', 'stoneTags',
-  'isNewArrival', 'isBestSeller', 'active', 'rating', 'reviewCount',
-  'metalPurity', 'centerStoneSize',
-]
-
-const STONE_LINE_GROUPS = ['D', 'F', 'C']
-
-// A malformed cell should cost you that stone line, not the whole upload, so
-// anything unparseable is dropped rather than thrown.
-function parseStoneLines(raw: string | undefined) {
-  return String(raw || '')
-    .split('|')
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-    .map((chunk) => {
-      const [group, shape, quality, pcs, cts] = chunk.split(':').map((v) => v.trim())
-      const upper = String(group || '').toUpperCase()
-      return {
-        group: STONE_LINE_GROUPS.includes(upper) ? upper : 'D',
-        shape: shape || '',
-        quality: quality || '',
-        pcs: pcs || '',
-        cts: cts || '',
-      }
-    })
-    .filter((line) => line.shape || line.quality || line.pcs || line.cts)
-}
-const REQUIRED = ['slug', 'title', 'category', 'material', 'color']
+// The upload is the supplier's packing list as-is: one row per BAG NO, extra
+// stone lines on continuation rows, D/F/C stone columns, Kt/Col for the metal.
+// Column matching, the Kt/Col split and the Type → category mapping live in
+// data/packingList.ts, shared with the export so the two stay symmetrical.
 const BATCH_SIZE = 25
 
 const fileName = ref('')
-const rows = ref<Record<string, string>[]>([])
+const rows = ref<ImportRow[]>([])
 const parseError = ref('')
 const mode = ref<'skip' | 'overwrite'>('skip')
 
@@ -89,22 +66,22 @@ function bool(value: string | undefined, fallback = false): boolean {
   return ['true', '1', 'yes', 'y'].includes(v)
 }
 
-// Turn a parsed 2D grid (headers + data rows) into validated row objects.
-// Shared by the CSV and spreadsheet (.xls/.xlsx) code paths.
+// Turn a parsed 2D grid into validated piece rows. Shared by the CSV and
+// spreadsheet (.xls/.xlsx) code paths.
 function gridToRows(grid: string[][]): boolean {
-  if (grid.length < 2) { parseError.value = 'File has no data rows.'; rows.value = []; return false }
-  const headers = (grid[0] ?? []).map((h) => String(h).trim())
-  const missingCols = REQUIRED.filter((c) => !headers.includes(c))
-  if (missingCols.length) {
-    parseError.value = `File is missing required column(s): ${missingCols.join(', ')}. Download the template.`
+  const parsed = gridToImportRows(grid)
+  if (!parsed) {
+    parseError.value =
+      'Could not find the header row. The sheet needs a BAG NO column (plus Style No, Type and Kt/Col). Download the template to see the layout.'
     rows.value = []
     return false
   }
-  rows.value = grid.slice(1).map((cells) => {
-    const obj: Record<string, string> = {}
-    headers.forEach((h, i) => { obj[h] = String(cells[i] ?? '').trim() })
-    return obj
-  })
+  if (!parsed.rows.length) {
+    parseError.value = 'File has no piece rows under the header.'
+    rows.value = []
+    return false
+  }
+  rows.value = parsed.rows
   return true
 }
 
@@ -152,7 +129,7 @@ async function onFile(event: Event) {
   try {
     if (ext === 'numbers') {
       parseError.value =
-        'Apple Numbers files can’t be read directly. In Numbers, choose File → Export To → CSV (or Excel), then upload that file.'
+        'Apple Numbers files can’t be read directly. In Numbers, choose File → Export To → Excel, then upload that .xlsx file.'
       rows.value = []
       return
     }
@@ -170,81 +147,92 @@ async function onFile(event: Event) {
   }
 }
 
-function rowErrors(row: Record<string, string>): string[] {
-  return REQUIRED.filter((c) => !String(row[c] || '').trim())
-}
-
-const validCount = computed(() => rows.value.filter((r) => rowErrors(r).length === 0).length)
+const validCount = computed(() => rows.value.filter((r) => r.missing.length === 0).length)
 const invalidCount = computed(() => rows.value.length - validCount.value)
 
-const duplicateSlugs = computed(() => {
+const duplicateBagNos = computed(() => {
   const seen = new Map<string, number>()
   for (const r of rows.value) {
-    const s = String(r.slug || '').trim()
-    if (s) seen.set(s, (seen.get(s) || 0) + 1)
+    if (r.slug) seen.set(r.slug, (seen.get(r.slug) || 0) + 1)
   }
-  return new Set([...seen.entries()].filter(([, n]) => n > 1).map(([s]) => s))
+  return new Set(
+    rows.value.filter((r) => r.slug && (seen.get(r.slug) || 0) > 1).map((r) => r.bagNo || r.slug),
+  )
 })
 
-function toProduct(row: Record<string, string>) {
-  const multi = (key: string) =>
-    String(row[key] || '').split('|').map((v) => v.trim()).filter(Boolean)
-  return {
-    slug: row.slug?.trim(),
-    title: row.title?.trim(),
-    category: row.category?.trim(),
-    subtype: row.subtype?.trim() || '',
-    material: row.material?.trim(),
-    color: row.color?.trim(),
-    variantPricePaise: row.price?.trim() ? Number(row.price) : null,
-    description: row.description?.trim() || '',
-    quantity: row.qty?.trim() ? Number(row.qty) : null,
-    productAttributes: {
-      grossWeight: row.grossWeight?.trim() || '',
-      bagNo: row.bagNo?.trim() || '',
-      styleNo: row.styleNo?.trim() || '',
-      netWeight: row.netWeight?.trim() || '',
-      goldRate: row.goldRate?.trim() || '',
-      goldValue: row.goldValue?.trim() || '',
-      stoneLines: parseStoneLines(row.stoneLines),
-      metalPurity: row.metalPurity?.trim() || '',
-      centerStoneSize: row.centerStoneSize?.trim() || '',
-    },
-    styleTags: multi('styleTags'),
-    stoneTags: multi('stoneTags'),
-    isNewArrival: bool(row.isNewArrival),
-    isBestSeller: bool(row.isBestSeller),
-    active: bool(row.active, true),
-    rating: row.rating?.trim() ? Number(row.rating) : null,
-    reviewCount: row.reviewCount?.trim() ? Number(row.reviewCount) : null,
-  }
+function metalLabel(row: ImportRow) {
+  return [row.metalPurity, colorLabel(row.color)].filter(Boolean).join(' · ') || formatKtCol(row.metalPurity, row.color)
 }
 
-function downloadTemplate() {
-  const example: Record<string, string> = {
-    slug: 'ruby-ring', title: 'Ruby Solitaire Ring', category: 'Rings', subtype: 'solitaire',
-    material: 'gold', color: 'rose-gold', price: '1499', description: 'A timeless ruby solitaire.',
-    bagNo: '26/P/4362', styleNo: 'RG0748_6', qty: '1',
-    grossWeight: '4.55 gms', netWeight: '4.32', goldRate: '86.688', goldValue: '411.86',
-    stoneLines: 'D:ROUND:G-H/SI:2:0.02|D:ROUND:G-H/SI:32:0.16|F:BAGUETTE:G-H/SI:8:0.08',
-    styleTags: 'modern|vintage', stoneTags: 'ruby|diamond',
-    isNewArrival: 'true', isBestSeller: 'false', active: 'true', rating: '4.8', reviewCount: '24',
-    metalPurity: '18k Gold', centerStoneSize: '9X7',
+// Only the columns present in the file are sent, so re-importing an exported
+// packing list with "Overwrite" refreshes the specs without blanking the
+// description, tags or flags the sheet never carried.
+function toProduct(row: ImportRow) {
+  const numberOrNull = (value: string | undefined) => (value?.trim() ? Number(value) : null)
+  const product: Record<string, unknown> = {
+    slug: row.slug,
+    title: row.title,
+    category: row.category,
+    material: row.material,
+    color: row.color,
+    productAttributes: {
+      bagNo: row.bagNo,
+      styleNo: row.styleNo,
+      grossWeight: row.grossWeight,
+      netWeight: row.netWeight,
+      goldRate: row.goldRate,
+      goldValue: row.goldValue,
+      metalPurity: row.metalPurity,
+      centerStoneSize: row.centerStoneSize ?? '',
+      stoneLines: row.stoneLines,
+    },
   }
-  const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
-  const csv = COLUMNS.join(',') + '\n' + COLUMNS.map((c) => esc(example[c] ?? '')).join(',') + '\n'
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'product-import-template.csv'
-  a.click()
-  URL.revokeObjectURL(url)
+  if (row.subtype !== undefined) product.subtype = row.subtype
+  if (row.price !== undefined) product.variantPricePaise = numberOrNull(row.price)
+  if (row.description !== undefined) product.description = row.description
+  if (row.qty !== undefined) product.quantity = numberOrNull(row.qty)
+  if (row.styleTags !== undefined) product.styleTags = row.styleTags
+  if (row.stoneTags !== undefined) product.stoneTags = row.stoneTags
+  if (row.isNewArrival !== undefined) product.isNewArrival = bool(row.isNewArrival)
+  if (row.isBestSeller !== undefined) product.isBestSeller = bool(row.isBestSeller)
+  if (row.active !== undefined) product.active = bool(row.active, true)
+  if (row.rating !== undefined) product.rating = numberOrNull(row.rating)
+  if (row.reviewCount !== undefined) product.reviewCount = numberOrNull(row.reviewCount)
+  return product
+}
+
+// The template is a two-piece packing list in the exact layout the export
+// produces, so the same file works in both directions.
+async function downloadTemplate() {
+  const XLSX = await import('xlsx')
+  const grid = piecesToGrid([
+    {
+      bagNo: '25/P/1406', slug: '25-p-1406', styleNo: 'RG6228', title: 'RG6228', category: 'Rings',
+      qty: 1, grossWeight: '2.89', metalPurity: '14k Gold', color: 'yellow', netWeight: '2.794',
+      goldRate: '74.185', goldValue: '228.00', price: 1162,
+      stoneLines: [
+        { group: 'D', shape: 'Round', quality: 'G-H/I2', pcs: '8', cts: '0.08' },
+        { group: 'D', shape: 'Round', quality: 'G-H/I2', pcs: '54', cts: '0.21' },
+        { group: 'C', shape: 'ROUND', quality: 'EMERALD', pcs: '9', cts: '0.19' },
+      ],
+    },
+    {
+      bagNo: '25/P/557', slug: '25-p-557', styleNo: 'RG7973_9.5X7', title: 'RG7973_9.5X7', category: 'Rings',
+      qty: 1, grossWeight: '3.53', metalPurity: '18k Gold', color: 'rose', netWeight: '3.032',
+      goldRate: '93.318', goldValue: '311.23', price: 1352,
+      stoneLines: [{ group: 'C', shape: 'EMERALD', quality: 'TOURMALINE', pcs: '1', cts: '2.49' }],
+    },
+  ])
+  const sheet = XLSX.utils.aoa_to_sheet(grid)
+  sheet['!cols'] = PACKING_LIST_COLUMNS.map((name) => ({ wch: Math.max(8, name.length + 4) }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, sheet, 'Worksheet')
+  XLSX.writeFile(wb, 'packing-list-template.xlsx')
 }
 
 async function startImport() {
   if (!user.value?.id || importing.value) return
-  const valid = rows.value.filter((r) => rowErrors(r).length === 0).map(toProduct)
+  const valid = rows.value.filter((r) => r.missing.length === 0).map(toProduct)
   if (!valid.length) return
 
   importing.value = true
@@ -296,15 +284,16 @@ function statusClass(status: string) {
       ← Back to products
     </RouterLink>
 
-    <h1 class="ect-mt-3 ect-font-display ect-text-2xl ect-text-charcoal">Mass upload products</h1>
+    <h1 class="ect-mt-3 ect-font-display ect-text-2xl ect-text-charcoal">Upload packing list</h1>
     <p class="ect-mt-1 ect-font-body ect-text-sm ect-text-charcoal/55 ect-max-w-2xl">
-      Upload a CSV or Excel file (.csv, .xls, .xlsx) to create many products at once. Images are not
-      part of the file — each product's images are pulled automatically from its S3 folder (folder
-      name must equal the product <strong>slug</strong>). Download the template to see every column.
-      Stone lines go in the single <strong>stoneLines</strong> column, one line per <code>|</code> and
-      its fields per <code>:</code> — <code>group:shape:quality:pcs:cts</code>, e.g.
-      <code>D:ROUND:G-H/SI:2:0.02|F:BAGUETTE:G-H/SI:8:0.08</code>.
-      Apple Numbers files aren't read directly — in Numbers, use File → Export To → CSV first.
+      Upload the packing list as an Excel or CSV file (.xlsx, .xls, .csv) to create or update many pieces
+      at once. Each <strong>BAG NO</strong> becomes one product: the bag number is its web address
+      and its S3 image folder (<code>25/P/1406</code> → <code>25-p-1406</code>), <strong>Style No</strong>
+      is its name, <strong>Type</strong> its category, and <strong>Kt/Col</strong> its metal
+      (<code>14KTYG</code> = 14 karat yellow gold; <code>W</code> white, <code>P</code>/<code>R</code> rose).
+      Rows with only stone columns filled continue the piece above them, and Total rows are ignored.
+      Images are not part of the file — they are pulled from each piece's S3 folder.
+      Apple Numbers files aren't read directly — in Numbers, use File → Export To → Excel first.
     </p>
 
     <div v-if="!isInternalUser" class="ect-mt-6 ect-rounded-lg ect-bg-red-50 ect-p-4 ect-font-body ect-text-sm ect-text-red-700">
@@ -316,7 +305,7 @@ function statusClass(status: string) {
       <div class="ect-mt-6 ect-flex ect-flex-wrap ect-items-center ect-gap-3">
         <button type="button" @click="downloadTemplate"
           class="ect-rounded-full ect-border ect-border-charcoal/15 ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/70 hover:ect-border-rose-300 hover:ect-text-rose-700">
-          Download CSV template
+          Download Excel template
         </button>
         <label class="ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-rose-700 ect-cursor-pointer">
           Choose file
@@ -335,14 +324,14 @@ function statusClass(status: string) {
       <div v-if="rows.length" class="ect-mt-6">
         <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-4 ect-mb-3">
           <span class="ect-font-body ect-text-sm ect-text-charcoal/70">
-            {{ rows.length }} rows · <strong class="ect-text-green-700">{{ validCount }} valid</strong>
+            {{ rows.length }} pieces · <strong class="ect-text-green-700">{{ validCount }} ready</strong>
             <template v-if="invalidCount"> · <strong class="ect-text-red-600">{{ invalidCount }} with errors</strong></template>
           </span>
-          <span v-if="duplicateSlugs.size" class="ect-font-body ect-text-sm ect-text-amber-700">
-            ⚠ Duplicate slugs in file: {{ [...duplicateSlugs].join(', ') }}
+          <span v-if="duplicateBagNos.size" class="ect-font-body ect-text-sm ect-text-amber-700">
+            ⚠ Duplicate bag numbers in file: {{ [...duplicateBagNos].join(', ') }}
           </span>
           <label class="ect-flex ect-items-center ect-gap-2 ect-font-body ect-text-sm ect-text-charcoal/70 ect-ml-auto">
-            Existing products:
+            Existing pieces:
             <select v-model="mode" class="ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-2 ect-py-1.5 ect-text-sm">
               <option value="skip">Skip</option>
               <option value="overwrite">Overwrite</option>
@@ -351,24 +340,26 @@ function statusClass(status: string) {
         </div>
 
         <div class="ect-overflow-x-auto ect-rounded-lg ect-border ect-border-rose-100">
-          <table class="ect-w-full ect-min-w-[700px] ect-border-collapse">
+          <table class="ect-w-full ect-min-w-[760px] ect-border-collapse">
             <thead class="ect-bg-rose-50">
               <tr>
-                <th class="ect-px-3 ect-py-2 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-wide ect-text-charcoal/45">Slug</th>
-                <th class="ect-px-3 ect-py-2 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-wide ect-text-charcoal/45">Title</th>
-                <th class="ect-px-3 ect-py-2 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-wide ect-text-charcoal/45">Category</th>
-                <th class="ect-px-3 ect-py-2 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-wide ect-text-charcoal/45">Price</th>
-                <th class="ect-px-3 ect-py-2 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-wide ect-text-charcoal/45">Status</th>
+                <th v-for="h in ['Bag No', 'Style No', 'Type', 'Kt/Col', 'Stones', 'Price', 'Status']" :key="h"
+                  class="ect-px-3 ect-py-2 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-wide ect-text-charcoal/45">{{ h }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(row, i) in rows" :key="i" class="ect-border-t ect-border-rose-100">
-                <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/80">{{ row.slug }}</td>
+              <tr v-for="row in rows" :key="row.sheetRow" class="ect-border-t ect-border-rose-100">
+                <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/80">
+                  {{ row.bagNo }}
+                  <span v-if="row.slug && row.slug !== row.bagNo" class="ect-block ect-text-[11px] ect-text-charcoal/40">{{ row.slug }}</span>
+                </td>
                 <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/80">{{ row.title }}</td>
                 <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/60">{{ row.category }}</td>
+                <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/60">{{ metalLabel(row) }}</td>
+                <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/60">{{ row.stoneLines.length }}</td>
                 <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/60">{{ row.price }}</td>
                 <td class="ect-px-3 ect-py-2 ect-font-body ect-text-xs">
-                  <span v-if="rowErrors(row).length" class="ect-text-red-600">Missing: {{ rowErrors(row).join(', ') }}</span>
+                  <span v-if="row.missing.length" class="ect-text-red-600">Row {{ row.sheetRow }} — missing: {{ row.missing.join(', ') }}</span>
                   <span v-else class="ect-text-green-700">Ready</span>
                 </td>
               </tr>
@@ -379,7 +370,7 @@ function statusClass(status: string) {
         <div class="ect-mt-4 ect-flex ect-items-center ect-gap-3">
           <button type="button" :disabled="importing || !validCount" @click="startImport"
             class="ect-rounded-full ect-bg-charcoal ect-px-5 ect-py-2.5 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-rose-700 disabled:ect-opacity-50 disabled:ect-cursor-not-allowed">
-            {{ importing ? `Importing ${progress.done}/${progress.total}…` : `Import ${validCount} product${validCount === 1 ? '' : 's'}` }}
+            {{ importing ? `Importing ${progress.done}/${progress.total}…` : `Import ${validCount} piece${validCount === 1 ? '' : 's'}` }}
           </button>
         </div>
       </div>

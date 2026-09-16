@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
+import { formatKtCol, parseKtCol } from '../data/packingList'
 import { invalidateProductsCache } from '../composables/useProductsApi'
 import { CATEGORIES, CERT_LAB_OPTIONS, COLORS, METAL_PURITY_OPTIONS } from '../data/products'
 
@@ -95,6 +96,7 @@ const fieldSkeletonRows = Array.from({ length: 9 }, (_, index) => index)
 const materialOptions = [
   { value: 'gold', label: 'Gold' },
   { value: 'silver', label: 'Silver' },
+  { value: 'platinum', label: 'Platinum' },
 ]
 const stoneGroupOptions: { value: StoneGroupValue; label: string }[] = [
   { value: 'D', label: 'Diamond (round)' },
@@ -258,19 +260,20 @@ function displayBoolean(value: boolean) {
 }
 
 const coreDisplayRows = computed(() => [
-  { label: 'Title', value: displayValue(form.value.title) },
-  { label: 'Slug', value: displayValue(form.value.slug) },
-  { label: 'Category', value: displayValue(form.value.category) },
+  { label: 'Style No', value: displayValue(form.value.title) },
+  { label: 'Bag No (web address)', value: displayValue(form.value.slug) },
+  { label: 'Type', value: displayValue(form.value.category) },
+  { label: 'Kt/Col', value: displayValue(formatKtCol(form.value.metalPurity, form.value.color)) },
   { label: 'Subtype', value: displayValue(findOptionLabel(subtypeOptions, form.value.subtype)) },
   { label: 'Material', value: displayValue(findOptionLabel(materialOptions, form.value.material)) },
-  { label: 'Color', value: displayValue(COLORS.find((color) => color.id === form.value.color)?.label || form.value.color) },
+  { label: 'Metal colour', value: displayValue(COLORS.find((color) => color.id === form.value.color)?.label || form.value.color) },
   { label: 'Price (USD)', value: displayValue(form.value.variantPricePaise) },
   { label: 'Stock quantity', value: displayValue(form.value.quantity) },
 ])
 
 const attributeDisplayRows = computed(() => [
-  { label: 'Bag no.', value: displayValue(form.value.bagNo) },
-  { label: 'Style no.', value: displayValue(form.value.styleNo) },
+  { label: 'Bag no. (as printed)', value: displayValue(form.value.bagNo) },
+  { label: 'Style no. (as printed)', value: displayValue(form.value.styleNo) },
   { label: 'Gross weight', value: displayValue(form.value.grossWeight) },
   { label: 'Net weight', value: displayValue(form.value.netWeight) },
   { label: 'Metal purity', value: displayValue(form.value.metalPurity) },
@@ -310,6 +313,22 @@ function toSlug(input: string) {
     .replace(/&/g, ' and ')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+// The Kt/Col cell is how the packing list records the metal; typing it here
+// sets purity, material and colour together. It is shown as the form's values
+// recombined until the user is mid-edit, so a half-typed code is not rewritten.
+const ktColDraft = ref<string | null>(null)
+const ktColInput = computed(() => ktColDraft.value ?? formatKtCol(form.value.metalPurity, form.value.color))
+function handleKtColInput(event: Event) {
+  const raw = (event.target as HTMLInputElement).value
+  ktColDraft.value = raw
+  const parsed = parseKtCol(raw)
+  if (!parsed) return
+  form.value.metalPurity = parsed.metalPurity
+  form.value.material = parsed.material
+  form.value.color = parsed.color
+  ktColDraft.value = null
 }
 
 function handleSlugInput(event: Event) {
@@ -797,10 +816,10 @@ watch(
 )
 
 watch(
-  () => form.value.title,
-  (title) => {
+  () => [form.value.bagNo, form.value.title] as const,
+  ([bagNo, title]) => {
     if (!isNewProduct.value || slugManuallyEdited.value) return
-    form.value.slug = toSlug(title)
+    form.value.slug = toSlug(bagNo || title)
   },
 )
 </script>
@@ -976,7 +995,7 @@ watch(
             <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mb-4">Core fields</h2>
             <div class="ect-grid md:ect-grid-cols-2 ect-gap-4">
               <label class="ect-block">
-                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Title</span>
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Style No</span>
                 <input
                   v-model="form.title"
                   type="text"
@@ -985,19 +1004,19 @@ watch(
                 />
               </label>
               <label class="ect-block">
-                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Slug</span>
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Bag No (web address)</span>
                 <input
                   v-model="form.slug"
                   type="text"
                   :readonly="!fieldsEditable"
-                  placeholder="auto-generated-from-title"
+                  placeholder="25-p-1406"
                   @input="handleSlugInput"
                   :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
                 />
-                <span v-if="isNewProduct && !slugManuallyEdited" class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">Auto-generated from title.</span>
+                <span v-if="isNewProduct && !slugManuallyEdited" class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">Auto-generated from the Style No until you type a bag number.</span>
               </label>
               <label class="ect-block">
-                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Category</span>
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Type</span>
                 <select
                   v-model="form.category"
                   :disabled="!fieldsEditable"
@@ -1019,6 +1038,20 @@ watch(
                 </select>
               </label>
               <label class="ect-block">
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Kt/Col</span>
+                <input
+                  :value="ktColInput"
+                  type="text"
+                  placeholder="14KTYG"
+                  :readonly="!fieldsEditable"
+                  @input="handleKtColInput"
+                  :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm ect-uppercase focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                />
+                <span class="ect-mt-1 ect-block ect-font-body ect-text-[11px] ect-text-charcoal/40">
+                  As the packing list writes it — karat then colour (YG yellow, WG white, PG/RG rose; PT platinum, SLV silver). Fills the three fields below.
+                </span>
+              </label>
+              <label class="ect-block">
                 <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Material</span>
                 <select
                   v-model="form.material"
@@ -1030,7 +1063,7 @@ watch(
                 </select>
               </label>
               <label class="ect-block">
-                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Color</span>
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Metal colour</span>
                 <select
                   v-model="form.color"
                   :disabled="!fieldsEditable"
@@ -1072,7 +1105,7 @@ watch(
 
               <div class="ect-grid md:ect-grid-cols-2 ect-gap-4">
                 <label class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Bag no.</span>
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Bag no. (as printed)</span>
                   <input
                     v-model="form.bagNo"
                     type="text"
@@ -1082,7 +1115,7 @@ watch(
                   />
                 </label>
                 <label class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Style no.</span>
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Style no. (as printed)</span>
                   <input
                     v-model="form.styleNo"
                     type="text"
@@ -1112,7 +1145,7 @@ watch(
                   />
                 </label>
                 <label class="ect-block">
-                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Metal purity</span>
+                  <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Metal purity (Kt)</span>
                   <select
                     v-model="form.metalPurity"
                     :disabled="!fieldsEditable"
