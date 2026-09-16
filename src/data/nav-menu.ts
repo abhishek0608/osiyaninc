@@ -85,6 +85,7 @@ const SUBTYPES: readonly ProductSubtype[] = [
   'bangle', 'gemstone-bracelet', 'tennis-bracelet', 'chain',
   'hoops', 'dangle-drop', 'statement-earring',
   'stackable', 'statement-ring', 'bridal', 'gemstone-ring',
+  'everyday-necklace', 'chain-necklace', 'tennis-necklace', 'gemstone-necklace',
 ]
 const METALS: readonly Color[] = ['yellow', 'white', 'rose', 'oxidised']
 const MATERIALS: readonly Material[] = ['gold', 'silver']
@@ -214,6 +215,10 @@ const TYPE_STYLE: Record<PieceTypeId, ProductSubtype> = {
   'statement-ring': 'statement-ring',
   bridal: 'bridal',
   'gemstone-ring': 'gemstone-ring',
+  'everyday-necklace': 'everyday-necklace',
+  'chain-necklace': 'chain-necklace',
+  'tennis-necklace': 'tennis-necklace',
+  'gemstone-necklace': 'gemstone-necklace',
 }
 
 /**
@@ -221,7 +226,7 @@ const TYPE_STYLE: Record<PieceTypeId, ProductSubtype> = {
  *
  * Every image is the shot the live site's own "Shop by Style" gallery uses for
  * that style, square-cropped to its subject — so the menu shows the shopper the
- * same piece osiyaninc.com does. Stays `Partial` even though all twelve Types
+ * same piece osiyaninc.com does. Stays `Partial` even though all sixteen Types
  * are filled: it is what keeps `styleColumn`'s all-or-nothing guard honest for
  * the next Type added.
  */
@@ -238,6 +243,10 @@ const TYPE_THUMB: Partial<Record<PieceTypeId, { image: string; alt: string }>> =
   chain: { image: '/bracelet-type-chain.jpg', alt: 'Rose gold slider bracelet with diamond halos' },
   'tennis-bracelet': { image: '/bracelet-type-tennis.jpg', alt: 'White gold diamond tennis bracelet' },
   'gemstone-bracelet': { image: '/bracelet-type-gemstone.jpg', alt: 'Multi-gemstone and diamond link bracelet' },
+  'everyday-necklace': { image: '/necklace-type-everyday.jpg', alt: 'Fine white gold necklace hung with diamond trios' },
+  'chain-necklace': { image: '/necklace-type-chain.jpg', alt: 'Yellow gold paperclip chains with pavé diamond links' },
+  'tennis-necklace': { image: '/necklace-type-tennis.jpg', alt: 'Graduated white gold diamond tennis necklaces' },
+  'gemstone-necklace': { image: '/necklace-type-gemstone.jpg', alt: 'Yellow gold necklaces set with emerald and diamond halos' },
 }
 
 /**
@@ -335,12 +344,13 @@ export const NAV_ITEMS: NavItem[] = [
     submenu: {
       columns: [
         [
+          ...styleColumn('necklaces'),
           {
-            // Necklaces is the one category with no Type facet, so `styleColumn`
-            // has nothing to read and this column stays hand-written. It holds
-            // only styles the catalogue can filter for; it becomes a
-            // `styleColumn('necklaces')` the day that page gets its Types.
-            heading: 'Shop by style',
+            // Pendants, statement necklaces and mangal sutras are forms rather
+            // than styles, so they sit below the gallery's four Types instead of
+            // inside them — the Shop-by-style run names the page's Types and
+            // nothing else. Each still filters, by subtype.
+            heading: 'Shop by piece',
             links: [
               siteLink('Pendants', '/collections/pendants'),
               filterLink('Statement necklaces', 'necklaces', { style: 'statement-necklace' }),

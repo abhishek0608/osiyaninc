@@ -17,8 +17,8 @@ import type { Color } from './products'
  * rail and the mobile panel render from that, so a page's filter list is a
  * merchandising edit rather than a component change. Bracelets & Bangles wants
  * Price, Metal, Stone, Type over five stones; Earrings wants Price, Stone,
- * Metal, Type over 24 stones and its own four Types; Rings wants only Price and
- * Type.
+ * Metal, Type over 24 stones and its own four Types; Rings and Necklaces want
+ * only Price and Type.
  */
 
 export type FacetId =
@@ -314,6 +314,11 @@ export type PieceTypeId =
   | 'statement-ring'
   | 'bridal'
   | 'gemstone-ring'
+  // Necklaces
+  | 'everyday-necklace'
+  | 'chain-necklace'
+  | 'tennis-necklace'
+  | 'gemstone-necklace'
 
 interface TypeContext {
   category: string
@@ -352,6 +357,10 @@ const isTennis = (c: TypeContext) => hasWord(c.text, 'tennis')
 const isBraceletCategory = (c: TypeContext) => c.category.startsWith('bracelet')
 const hasColouredStone = (c: TypeContext) =>
   COLOURED_STONES.some((gem) => c.stones.includes(gem) || hasWord(c.text, gem))
+
+const isEverydayish = (c: TypeContext) =>
+  c.styles.includes('everyday') || hasWord(c.text, 'everyday') ||
+  hasWord(c.text, 'every day') || hasWord(c.text, 'daily')
 
 const isStatementish = (c: TypeContext) => c.styles.includes('statement') || hasWord(c.text, 'statement')
 const isHoopish = (c: TypeContext) => hasWord(c.text, 'hoops?') || hasWord(c.text, 'huggies?') || hasWord(c.text, 'creoles?')
@@ -453,6 +462,34 @@ export const PIECE_TYPE_OPTIONS: PieceTypeOption[] = [
     label: 'Gemstone',
     infer: hasColouredStone,
   },
+  {
+    id: 'everyday-necklace',
+    label: 'Everyday Wear',
+    infer: isEverydayish,
+  },
+  {
+    // "Chain" is read off the title only. Almost every necklace's details line
+    // names the chain it hangs on — "18-inch Chain" — without the piece being
+    // one, so the prose cannot be trusted here the way it can on a bracelet.
+    id: 'chain-necklace',
+    label: 'Chain',
+    infer: (c) =>
+      (hasWord(c.title, 'chains?') || hasWord(c.title, 'links?') || hasWord(c.text, 'chain necklace')) &&
+      !isTennis(c),
+  },
+  {
+    id: 'tennis-necklace',
+    label: 'Tennis',
+    infer: isTennis,
+  },
+  {
+    // Unlike its bracelet counterpart this one does *not* exclude tennis: the
+    // live site's own Gemstone tile is a run of emerald line necklaces, so a
+    // coloured-stone tennis necklace has to answer to both.
+    id: 'gemstone-necklace',
+    label: 'Gemstone',
+    infer: hasColouredStone,
+  },
 ]
 
 /** Types are only offered on the categories that have them. */
@@ -469,6 +506,10 @@ const TYPE_CATEGORIES: Record<PieceTypeId, string[]> = {
   'statement-ring': ['ring', 'rings'],
   bridal: ['ring', 'rings'],
   'gemstone-ring': ['ring', 'rings'],
+  'everyday-necklace': ['necklace', 'necklaces'],
+  'chain-necklace': ['necklace', 'necklaces'],
+  'tennis-necklace': ['necklace', 'necklaces'],
+  'gemstone-necklace': ['necklace', 'necklaces'],
 }
 
 export const PIECE_TYPE_IDS: PieceTypeId[] = PIECE_TYPE_OPTIONS.map((option) => option.id)

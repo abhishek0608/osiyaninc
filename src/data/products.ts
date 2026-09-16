@@ -74,6 +74,11 @@ export type ProductSubtype =
   | 'gemstone-ring'
   | 'pendant'
   | 'statement-necklace'
+  // Necklace Types the storefront filters and the mega menu links by.
+  | 'everyday-necklace'
+  | 'chain-necklace'
+  | 'tennis-necklace'
+  | 'gemstone-necklace'
   | 'cuff'
   | 'chain-bracelet'
   // Bangle/bracelet Types the storefront filters and the mega menu links by.

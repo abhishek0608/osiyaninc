@@ -71,7 +71,23 @@ export const COLLECTION_LINKS: CollectionLink[] = [
       typeOptions: ['bangle', 'gemstone-bracelet', 'tennis-bracelet', 'chain'],
     },
   },
-  { slug: 'necklaces', label: 'Necklace', title: 'Necklaces', description: 'Statement necklaces and timeless chains.', icon: 'necklace', preset: { category: 'Necklaces' } },
+  // Necklaces carries the four styles the live site's own "Shop by Style"
+  // gallery names, in its order — Everyday Wear, Chain, Tennis, Gemstone. It
+  // narrows on Price and Type alone, as Rings does: Material and the centre-stone
+  // facets say little about a necklace, and Type is the question a shopper who
+  // came off that gallery is already asking.
+  {
+    slug: 'necklaces',
+    label: 'Necklace',
+    title: 'Necklaces',
+    description: 'Statement necklaces and timeless chains.',
+    icon: 'necklace',
+    preset: {
+      category: 'Necklaces',
+      facets: ['price', 'type'],
+      typeOptions: ['everyday-necklace', 'chain-necklace', 'tennis-necklace', 'gemstone-necklace'],
+    },
+  },
 ]
 
 export function findCollectionBySlug(slug: string): CollectionLink | null {
