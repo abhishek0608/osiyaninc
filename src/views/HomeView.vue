@@ -183,9 +183,16 @@ function subscribe() {
   .yoga-section article { min-height: 600px; padding: 75px 28px; }
   .yoga-image-wrap { min-height: 100vw; }
   .catalog-button { margin: 75px 0 0; }
+  /* osiyaninc.com's mobile layout drops the earrings image and shows only the
+     plum panel, set on a 320px canvas that scales with the screen — hence vw. */
   .high-section { min-height: 0; }
-  .high-image-wrap { min-height: 110vw; }
-  .high-section article { padding: 70px 28px 90px; }
+  .high-image-wrap { display: none; }
+  .high-section article { padding: 6.25vw; justify-content: flex-start; }
+  .high-section h2 { margin-bottom: 3vw; font-size: clamp(26px, 8.125vw, 44px); letter-spacing: 0; }
+  .high-section .high-intro { margin-bottom: 3vw; font-size: clamp(16px, 5vw, 22px); line-height: 1.35; }
+  .high-section p { margin-bottom: 8.4vw; font-size: clamp(18px, 5.625vw, 26px); }
+  .high-section p:last-of-type { margin-bottom: 6.25vw; }
+  .explore-button { width: auto; height: auto; margin-top: 0; font-size: clamp(15px, 4.7vw, 20px); }
   .category-section { padding: 5px 16px 14px; }
   .category-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
   .tile-earrings, .tile-rings, .tile-bracelets, .tile-necklaces { grid-area: auto; }
@@ -201,7 +208,5 @@ function subscribe() {
   .home-hero { height: 76vw; min-height: 300px; }
   .unseen-copy h1 { font-size: 44px; }
   .yoga-section h2, .little-section h2 { font-size: 76px; }
-  .high-section h2 { font-size: 42px; }
-  .high-section p { font-size: 19px; }
 }
 </style>
