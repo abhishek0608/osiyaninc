@@ -420,8 +420,12 @@ async function handleProductsListResource(req, res, body) {
     const skip = Math.max(Number(req?.query?.skip) || 0, 0)
     // Status filter: 'active' → active only, 'hidden' → hidden only, anything else → all.
     const status = String(req?.query?.status || '').trim().toLowerCase()
-    // Category filter: exact category name (case-insensitive), e.g. 'Rings'.
-    const category = String(req?.query?.category || '').trim()
+    // Category filter: one or more exact category names, comma-separated and
+    // matched case-insensitively, e.g. 'Rings' or 'Bracelets,Bangles'.
+    const categories = String(req?.query?.category || '')
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean)
     // Photo-vector filter: 'synced' → has ≥1 image embedding, 'missing' → none.
     const vectors = String(req?.query?.vectors || '').trim().toLowerCase()
 
@@ -437,7 +441,7 @@ async function handleProductsListResource(req, res, body) {
     }
     if (status === 'active') where.active = true
     else if (status === 'hidden') where.active = false
-    if (category) where.category = { equals: category, mode: 'insensitive' }
+    if (categories.length) where.category = { in: categories, mode: 'insensitive' }
 
     // Per-product embedded-photo counts, also used for the synced/missing
     // filter. Raw SQL because Prisma cannot touch Unsupported("vector") columns.

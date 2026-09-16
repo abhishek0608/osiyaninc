@@ -18,7 +18,6 @@ import {
   type SignupRequestStatus,
 } from '../composables/useSignupRequests'
 import { COLLECTION_LINKS } from '../data/collections'
-import { CATEGORIES } from '../data/products'
 
 
 interface AuditFields {
@@ -440,12 +439,17 @@ const productStatusOptions = [
   { value: 'active', label: 'Active products' },
   { value: 'hidden', label: 'Hidden products' },
 ]
-// Category filter mirrors the canonical list the product editor writes, so
-// every value here is one the database can actually hold.
+// Category filter. Values are the exact category strings the product editor
+// writes, comma-joined when one option spans several: bangles and bracelets are
+// merchandised together, so one option covers both. Mangal Sutra is retired
+// from the catalogue and deliberately left off.
 const productCategoryFilter = ref<string>('all')
 const productCategoryOptions = [
   { value: 'all', label: 'All categories' },
-  ...CATEGORIES.map((category) => ({ value: category, label: category })),
+  { value: 'Rings', label: 'Rings' },
+  { value: 'Earrings', label: 'Earrings' },
+  { value: 'Necklaces', label: 'Necklaces' },
+  { value: 'Bracelets,Bangles', label: 'Bracelets & Bangles' },
 ]
 const productVectorFilter = ref<'all' | 'synced' | 'missing'>('all')
 const productVectorOptions = [
