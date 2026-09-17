@@ -210,86 +210,92 @@ const reviewSummary = computed(() => {
   return `${product.value.rating.toFixed(1)} · ${product.value.reviewCount} reviews`
 })
 
-// Stone lines as the spec sheet shows them: one row per group (diamond, fancy
-// shape, colour stone) and, within a group, one row per quality — a piece can
-// carry a dozen lines and the sheet is a summary, not the packing list, but
-// lumping a G-H/SI parcel in with a VVS one would misquote both. Each row
-// states that quality's piece count and total carat weight — shapes stay on
-// the packing list. Both are summed first so a pile of 0.001 lines still adds
-// up; anything that isn't a number is skipped rather than guessed at.
+// A row of the Details sheet: one label and the lines stated under it. Most
+// rows carry a single line; a stone group's row carries one per parcel of that
+// quality, so "Diamond" names itself once per quality rather than once per
+// parcel.
+interface SpecRow {
+  label: string
+  values: string[]
+}
+
+// Stone lines as the spec sheet shows them. Two things decide how they fall:
+// the group (diamond, fancy shape, colour stone) and, inside it, the quality.
+// Parcels of one quality stack under a single heading rather than repeating
+// "Diamond" down the sheet, but a different quality starts its own row — a
+// G-H/SI parcel and a VVS one are different goods and the trade quotes them
+// apart, so lumping them under one heading would misread both. Parcels are
+// never summed: a bench sets several into one piece and each is its own quote,
+// so rolling a 23 pc line into a 99 pc one would hide four of the five behind a
+// single count. Each line states that parcel's piece count and carat weight —
+// shapes and stone sizes stay on the packing list. Anything that isn't a
+// number is skipped rather than guessed at.
 const STONE_GROUP_LABELS: Record<'D' | 'F' | 'C', string> = {
   D: 'Diamond',
   F: 'Fancy Shape',
   C: 'Colour Stone',
 }
 
-// Sums one numeric column of a bucket's lines. Null when no line states a
-// usable number, so the row can leave that half of the quote out rather than
-// claim a confident zero.
-function sumStoneColumn(lines: StoneLine[], column: 'cts' | 'pcs') {
-  let total = 0
-  let sawNumber = false
-  for (const line of lines) {
-    const parsed = Number(String(line[column] ?? '').trim())
-    if (!Number.isFinite(parsed)) continue
-    sawNumber = true
-    total += parsed
-  }
-  return sawNumber ? total : null
+// Reads one numeric column off a line. Null when the cell states no usable
+// number, so the line can leave that half of the quote out rather than claim a
+// confident zero. A blank cell has to be caught before `Number`, which reads
+// '' as 0 and would quote a parcel of unstated count as "0 pcs".
+function stoneColumn(line: StoneLine, column: 'cts' | 'pcs') {
+  const raw = String(line[column] ?? '').trim()
+  if (!raw) return null
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
-// Lines of the same quality collapse into one bucket, in the order the packing
-// list first names each quality. Lines with no quality stated bucket together
-// under '' — they still carry weight worth quoting.
-function groupLinesByQuality(lines: StoneLine[]) {
-  const buckets = new Map<string, StoneLine[]>()
-  for (const line of lines) {
-    const quality = String(line?.quality ?? '').trim()
-    const bucket = buckets.get(quality)
-    if (bucket) bucket.push(line)
-    else buckets.set(quality, [line])
-  }
-  return [...buckets.entries()]
+// One parcel as the sheet states it: count, then weight, then quality —
+// "23 pcs, 0.59 ct, G-H/SI" — the order the trade quotes a parcel. Empty when
+// the line states nothing usable, so it can be dropped rather than shown blank.
+function stoneLineValue(line: StoneLine) {
+  const pcs = stoneColumn(line, 'pcs')
+  const cts = stoneColumn(line, 'cts')
+  return [
+    pcs != null ? `${pcs} ${pcs === 1 ? 'pc' : 'pcs'}` : '',
+    cts != null ? `${cts.toFixed(2)} ct` : '',
+    String(line?.quality ?? '').trim(),
+  ]
+    .filter(Boolean)
+    .join(', ')
 }
 
-const stoneLineRows = computed<Array<{ label: string; value: string }>>(() => {
+function stoneRowsFromLines(lines: StoneLine[]): SpecRow[] {
+  return (['D', 'F', 'C'] as const).flatMap((group) => {
+    // Qualities keep the order the packing list first names them, so the sheet
+    // reads in the order the piece was written up. Lines with no quality stated
+    // bucket together under '' — they still carry weight worth quoting.
+    const byQuality = new Map<string, string[]>()
+    for (const line of lines) {
+      if (line?.group !== group) continue
+      const value = stoneLineValue(line)
+      if (!value) continue
+      const quality = String(line?.quality ?? '').trim()
+      const bucket = byQuality.get(quality)
+      if (bucket) bucket.push(value)
+      else byQuality.set(quality, [value])
+    }
+    return [...byQuality.values()].map((values) => ({ label: STONE_GROUP_LABELS[group], values }))
+  })
+}
+
+const stoneLineRows = computed<SpecRow[]>(() => {
   const lines = product.value?.productAttributes?.stoneLines
   if (!Array.isArray(lines) || !lines.length) return []
-
-  return (['D', 'F', 'C'] as const).flatMap((group) => {
-    const groupLines = lines.filter((line) => line?.group === group)
-    if (!groupLines.length) return []
-
-    return groupLinesByQuality(groupLines)
-      .map(([quality, qualityLines]) => {
-        const pcs = sumStoneColumn(qualityLines, 'pcs')
-        const cts = sumStoneColumn(qualityLines, 'cts')
-        return {
-          label: STONE_GROUP_LABELS[group],
-          // Count, then weight, then quality — "23 pcs, 0.42 ct, G-H/SI" — the
-          // order the trade quotes a parcel.
-          value: [
-            pcs != null ? `${pcs} ${pcs === 1 ? 'pc' : 'pcs'}` : '',
-            cts != null ? `${cts.toFixed(2)} ct` : '',
-            quality,
-          ]
-            .filter(Boolean)
-            .join(', '),
-        }
-      })
-      .filter((row) => Boolean(row.value))
-  })
+  return stoneRowsFromLines(lines)
 })
 
-const technicalDetailRows = computed<Array<{ label: string; value: string }>>(() => {
+const technicalDetailRows = computed<SpecRow[]>(() => {
   const desc = product.value?.description?.trim() || ''
-  const specs: Array<{ label: string; value: string }> = []
+  const specs: SpecRow[] = []
   // Gross weight is the only weight the storefront quotes — net (gold) weight
   // stays internal, where it drives the gold value.
   const attributeSpecs = [
     ...stoneLineRows.value,
-    { label: 'Gross Weight', value: product.value?.productAttributes?.grossWeight || '' },
-  ].filter((spec) => spec.value)
+    { label: 'Gross Weight', values: [product.value?.productAttributes?.grossWeight || ''].filter(Boolean) },
+  ].filter((spec) => spec.values.length)
   const seenLabels = new Set(attributeSpecs.map((spec) => spec.label.toLowerCase()))
 
   const regex = /([A-Z][A-Za-z ]+?):\s*(.+?)(?=\s+[A-Z][A-Za-z ]+?:|\s*$)/g
@@ -297,7 +303,7 @@ const technicalDetailRows = computed<Array<{ label: string; value: string }>>(()
   while (desc && (match = regex.exec(desc)) !== null) {
     const label = match[1]?.trim() || ''
     const value = match[2]?.trim().replace(/[.,;]+$/, '') || ''
-    if (label && value && !seenLabels.has(label.toLowerCase())) specs.push({ label, value })
+    if (label && value && !seenLabels.has(label.toLowerCase())) specs.push({ label, values: [value] })
   }
 
   return [...attributeSpecs, ...specs]
@@ -307,16 +313,16 @@ const technicalDetailRows = computed<Array<{ label: string; value: string }>>(()
 // and its fixed color as one line, e.g. "14k Yellow Gold"), the centre stone's
 // size when the style number records one, then the stone groups' weight and
 // quality and the gross weight.
-const specRows = computed<Array<{ label: string; value: string }>>(() => {
+const specRows = computed<SpecRow[]>(() => {
   const attrs = product.value?.productAttributes
   const metal = product.value ? [attrs?.metalPurity || '', productColorLabel.value].filter(Boolean).join(' ') : ''
-  const rows = [
-    { label: 'Metal', value: metal },
-    { label: 'Centre Stone', value: attrs?.centerStoneSize || '' },
+  const rows: SpecRow[] = [
+    { label: 'Metal', values: [metal].filter(Boolean) },
+    { label: 'Centre Stone', values: [attrs?.centerStoneSize || ''].filter(Boolean) },
     ...technicalDetailRows.value,
   ]
 
-  return rows.filter((row) => Boolean(row.value))
+  return rows.filter((row) => row.values.length)
 })
 
 const hasSpecDetails = computed(() => Boolean(specRows.value.length || product.value?.details?.length))
@@ -694,9 +700,18 @@ async function handleAddToCart() {
                 <h2 class="ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48 ect-mb-3">Details</h2>
 
                 <dl v-if="specRows.length" class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3">
-                  <div v-for="row in specRows" :key="`${row.label}-${row.value}`" class="ect-flex ect-flex-col ect-gap-0.5">
+                  <!-- Keyed by position: a label parsed out of the description can
+                       repeat one already in the sheet, so it is not unique on its own.
+                       Each parcel of a stone group is a <dd> under the group's one <dt>. -->
+                  <div v-for="(row, index) in specRows" :key="`${index}-${row.label}`" class="ect-flex ect-flex-col ect-gap-0.5">
                     <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">{{ row.label }}</dt>
-                    <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
+                    <dd
+                      v-for="(value, valueIndex) in row.values"
+                      :key="valueIndex"
+                      class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums"
+                    >
+                      {{ value }}
+                    </dd>
                   </div>
                 </dl>
 
