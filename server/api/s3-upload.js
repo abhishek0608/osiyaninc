@@ -1,5 +1,6 @@
 import { S3Client, DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { productImageKeys } from './s3-images.js'
 
 // Presigned-upload helper for internal-managed assets (e.g. homepage hero
 // banners). Unlike s3-images.js — which only LISTS externally-managed product
@@ -190,13 +191,34 @@ const CERTIFICATE_TYPES = {
   'image/webp': 'webp',
 }
 
-// Presigned PUT for one product's certificate. Certificates are grouped by
-// product slug so the bucket stays browsable, and the key carries a timestamp
-// so replacing a certificate never collides with the cached copy of the old one.
-export async function createPresignedCertificateUpload({ slug, contentType } = {}) {
-  const folder = String(slug || '').trim()
+// S3 has no real directories, so a folder name only has to be a safe path
+// segment. Style Nos are already ASCII ("RG7973_9.5X7"), but sanitize anyway so
+// a stray slash or space can never reshape the key.
+function sanitizeFolderName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+// Certificates are grouped the same way product photos are: one folder per
+// piece, named after its Style No (productImageKeys puts the Style No first and
+// falls back to the title, then the slug). Passing a bare slug still works for
+// legacy callers.
+function certificateFolder(product) {
+  for (const key of productImageKeys(product)) {
+    const folder = sanitizeFolderName(key)
+    if (folder) return folder
+  }
+  return ''
+}
+
+// Presigned PUT for one product's certificate. The key carries a timestamp so
+// replacing a certificate never collides with the cached copy of the old one.
+export async function createPresignedCertificateUpload({ product, slug, contentType } = {}) {
+  const folder = certificateFolder(product ?? slug)
   if (!folder) {
-    const err = new Error('slug is required.')
+    const err = new Error('A Style No or slug is required to upload a certificate.')
     err.code = 'MISSING_SLUG'
     throw err
   }

@@ -1316,8 +1316,8 @@ watch(
             </div>
 
             <p v-else class="ect-rounded-lg ect-border ect-border-dashed ect-border-charcoal/15 ect-p-6 ect-text-center ect-font-body ect-text-sm ect-text-charcoal/45">
-              No images yet. The first upload creates this product's folder in S3. A piece with a
-              single photo can also have it dropped loose in the bucket, named after the Style No.
+              No images yet. Photos go into this product's S3 folder, named after the Style No. A
+              piece with a single photo can also have it dropped loose in the bucket, named the same.
             </p>
           </article>
 
