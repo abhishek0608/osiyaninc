@@ -278,19 +278,24 @@ export function folderMatchesProduct(folder, product) {
 // only change when a product folder is created or emptied, so keep them for a
 // short while per warm instance and let the upload/delete paths invalidate.
 const FOLDER_CACHE_TTL_MS = 2 * 60 * 1000
-let folderCache = { names: null, expiresAt: 0 }
+// Holds both the folder names and the loose single-photo files that sit
+// directly under the base prefix, since one Delimiter listing returns both.
+let folderCache = { names: null, looseFiles: null, expiresAt: 0 }
 let folderFetch = null
 
 export function invalidateProductFolderCache() {
-  folderCache = { names: null, expiresAt: 0 }
+  folderCache = { names: null, looseFiles: null, expiresAt: 0 }
 }
 
 async function listTopLevelFolders(client) {
-  if (folderCache.names && folderCache.expiresAt > Date.now()) return folderCache.names
+  if (folderCache.names && folderCache.expiresAt > Date.now()) return folderCache
   if (!folderFetch) {
     folderFetch = (async () => {
       const prefix = `${BASE_PREFIX}/`
       const names = []
+      // Files sitting directly under the base prefix: a piece with a single
+      // photo need not have a folder at all.
+      const looseFiles = []
       let token
       do {
         const res = await client.send(
@@ -306,10 +311,15 @@ async function listTopLevelFolders(client) {
           const folder = cp.Prefix.slice(prefix.length).replace(/\/$/, '')
           if (folder) names.push(folder)
         }
+        for (const obj of res.Contents || []) {
+          const filename = obj.Key.slice(prefix.length)
+          if (!filename || !isImageFilename(filename)) continue
+          looseFiles.push({ key: obj.Key, filename, size: obj.Size })
+        }
         token = res.IsTruncated ? res.NextContinuationToken : undefined
       } while (token)
-      folderCache = { names, expiresAt: Date.now() + FOLDER_CACHE_TTL_MS }
-      return names
+      folderCache = { names, looseFiles, expiresAt: Date.now() + FOLDER_CACHE_TTL_MS }
+      return folderCache
     })().finally(() => {
       folderFetch = null
     })
@@ -317,9 +327,17 @@ async function listTopLevelFolders(client) {
   return folderFetch
 }
 
+// Folders and loose single-photo files belonging to any of `keys`. A loose file
+// matches on its own name minus the extension, so it is treated exactly as a
+// one-image folder of that name.
 async function resolveProductFolders(client, keys) {
-  const names = await listTopLevelFolders(client)
-  return names.filter((folder) => keys.some((key) => folderMatchesKey(folder, key)))
+  const { names, looseFiles } = await listTopLevelFolders(client)
+  return {
+    folders: names.filter((folder) => keys.some((key) => folderMatchesKey(folder, key))),
+    looseFiles: looseFiles.filter((file) =>
+      keys.some((key) => folderMatchesKey(looseFileFolder(file.filename), key)),
+    ),
+  }
 }
 
 /**
