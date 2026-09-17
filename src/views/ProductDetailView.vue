@@ -211,22 +211,26 @@ const reviewSummary = computed(() => {
 })
 
 // Stone lines as the spec sheet shows them: one row per group (diamond, fancy
-// shape, colour stone) rather than one per line, because a piece can carry a
-// dozen lines and the sheet is a summary, not the packing list. Each row states
-// the group's total carat weight and its quality — pieces and shapes stay on
-// the packing list. Carats are summed first so a pile of 0.001 lines still
-// adds up; anything that isn't a number is skipped rather than guessed at.
+// shape, colour stone) and, within a group, one row per quality — a piece can
+// carry a dozen lines and the sheet is a summary, not the packing list, but
+// lumping a G-H/SI parcel in with a VVS one would misquote both. Each row
+// states that quality's piece count and total carat weight — shapes stay on
+// the packing list. Both are summed first so a pile of 0.001 lines still adds
+// up; anything that isn't a number is skipped rather than guessed at.
 const STONE_GROUP_LABELS: Record<'D' | 'F' | 'C', string> = {
   D: 'Diamond',
   F: 'Fancy Shape',
   C: 'Colour Stone',
 }
 
-function sumStoneCarats(lines: StoneLine[]) {
+// Sums one numeric column of a bucket's lines. Null when no line states a
+// usable number, so the row can leave that half of the quote out rather than
+// claim a confident zero.
+function sumStoneColumn(lines: StoneLine[], column: 'cts' | 'pcs') {
   let total = 0
   let sawNumber = false
   for (const line of lines) {
-    const parsed = Number(String(line.cts ?? '').trim())
+    const parsed = Number(String(line[column] ?? '').trim())
     if (!Number.isFinite(parsed)) continue
     sawNumber = true
     total += parsed
@@ -234,35 +238,47 @@ function sumStoneCarats(lines: StoneLine[]) {
   return sawNumber ? total : null
 }
 
-function distinctStoneQuality(lines: StoneLine[]) {
-  const seen: string[] = []
+// Lines of the same quality collapse into one bucket, in the order the packing
+// list first names each quality. Lines with no quality stated bucket together
+// under '' — they still carry weight worth quoting.
+function groupLinesByQuality(lines: StoneLine[]) {
+  const buckets = new Map<string, StoneLine[]>()
   for (const line of lines) {
-    const value = String(line.quality ?? '').trim()
-    if (value && !seen.includes(value)) seen.push(value)
+    const quality = String(line?.quality ?? '').trim()
+    const bucket = buckets.get(quality)
+    if (bucket) bucket.push(line)
+    else buckets.set(quality, [line])
   }
-  return seen.join(' / ')
+  return [...buckets.entries()]
 }
 
 const stoneLineRows = computed<Array<{ label: string; value: string }>>(() => {
   const lines = product.value?.productAttributes?.stoneLines
   if (!Array.isArray(lines) || !lines.length) return []
 
-  return (['D', 'F', 'C'] as const)
-    .map((group) => {
-      const groupLines = lines.filter((line) => line?.group === group)
-      if (!groupLines.length) return { label: STONE_GROUP_LABELS[group], value: '' }
+  return (['D', 'F', 'C'] as const).flatMap((group) => {
+    const groupLines = lines.filter((line) => line?.group === group)
+    if (!groupLines.length) return []
 
-      const cts = sumStoneCarats(groupLines)
-      return {
-        label: STONE_GROUP_LABELS[group],
-        // Weight first, quality after — "0.42 ct, G-H/SI" — the order the
-        // trade quotes a parcel.
-        value: [cts != null ? `${cts.toFixed(2)} ct` : '', distinctStoneQuality(groupLines)]
-          .filter(Boolean)
-          .join(', '),
-      }
-    })
-    .filter((row) => Boolean(row.value))
+    return groupLinesByQuality(groupLines)
+      .map(([quality, qualityLines]) => {
+        const pcs = sumStoneColumn(qualityLines, 'pcs')
+        const cts = sumStoneColumn(qualityLines, 'cts')
+        return {
+          label: STONE_GROUP_LABELS[group],
+          // Count, then weight, then quality — "23 pcs, 0.42 ct, G-H/SI" — the
+          // order the trade quotes a parcel.
+          value: [
+            pcs != null ? `${pcs} ${pcs === 1 ? 'pc' : 'pcs'}` : '',
+            cts != null ? `${cts.toFixed(2)} ct` : '',
+            quality,
+          ]
+            .filter(Boolean)
+            .join(', '),
+        }
+      })
+      .filter((row) => Boolean(row.value))
+  })
 })
 
 const technicalDetailRows = computed<Array<{ label: string; value: string }>>(() => {
@@ -656,7 +672,7 @@ async function handleAddToCart() {
             <svg class="ect-w-3.5 ect-h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Free shipping · Insured delivery · Made to order
+            Made to order
           </p>
 
           <div class="ect-mt-10">
@@ -678,7 +694,7 @@ async function handleAddToCart() {
                 <h2 class="ect-font-body ect-text-[11px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/48 ect-mb-3">Details</h2>
 
                 <dl v-if="specRows.length" class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3">
-                  <div v-for="row in specRows" :key="row.label" class="ect-flex ect-flex-col ect-gap-0.5">
+                  <div v-for="row in specRows" :key="`${row.label}-${row.value}`" class="ect-flex ect-flex-col ect-gap-0.5">
                     <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">{{ row.label }}</dt>
                     <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-tabular-nums">{{ row.value }}</dd>
                   </div>
