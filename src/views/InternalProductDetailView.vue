@@ -299,7 +299,7 @@ function stoneGroupLabel(group: StoneGroupValue) {
 const certificateFileName = computed(() => {
   const source = productCertificate.value.key || productCertificate.value.url
   if (!source) return ''
-  const path = source.split('?')[0]
+  const path = source.split('?')[0] || source
   return path.split('/').pop() || path
 })
 
