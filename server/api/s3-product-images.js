@@ -5,7 +5,7 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { folderMatchesKey, isImageFilename, productImageKeys } from './s3-images.js'
+import { folderMatchesKey, isImageFilename, looseFileFolder, productImageKeys } from './s3-images.js'
 
 // Write side of the S3 product-image store. s3-images.js only LISTS the
 // externally-managed folders; this module lets the internal admin create and
@@ -19,6 +19,12 @@ import { folderMatchesKey, isImageFilename, productImageKeys } from './s3-images
 // directories — a folder springs into existence with its first object and
 // disappears with its last — so creating the folder for a new product is simply
 // the first upload landing under that prefix.
+//
+// A single-photo piece may also be filed loose, with no folder at all:
+//   <BASE_PREFIX>/<styleNo><marker>.<ext>
+// Uploads from the workspace always use a folder (it is the layout that scales
+// to a second photo), but a loose file placed in the bucket by hand is shown by
+// the gallery, so deletes have to reach it too.
 
 // The bucket's region, from a dedicated variable. Never read AWS_REGION here:
 // Vercel's Lambda runtime sets it to the *function's* region (ap-south-1 for
@@ -70,8 +76,10 @@ function publicUrlForKey(key) {
 // under any of the product's keys wins (it may be uppercased or carry a size
 // suffix, e.g. style "RG7973" -> "RG7973_9.5X7") so we never split one
 // product's photos across two prefixes. When no folder exists yet — a brand-new
-// product — the primary key (its Style No, else its slug) becomes the folder
-// name, and the first upload brings it into being.
+// product, or one whose only photo is a loose base-level file — the primary key
+// (its Style No, else its slug) becomes the folder name, and the first upload
+// brings it into being. Uploads always use a folder: the workspace can add a
+// second photo at any time, and only a folder holds an ordered gallery.
 async function resolveUploadFolder(client, keys) {
   const prefix = `${BASE_PREFIX}/`
   let token
@@ -184,6 +192,8 @@ export async function createPresignedProductImageUploads({ product, slug, files 
     )
     uploads.push({ uploadUrl, publicUrl: publicUrlForKey(key), key, contentType })
   }
+  // A new folder may appear once these uploads land; forget the cached folder list.
+  invalidateProductFolderCache()
   return uploads
 }
 
@@ -211,22 +221,26 @@ export async function deleteProductImage({ product, slug, key } = {}) {
 
   const client = getClient()
   await client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: objectKey }))
+  invalidateProductFolderCache()
 }
 
-// True when `key` is "<BASE_PREFIX>/<folder>/<file>" and <folder> belongs to
-// the product under any of its keys (see productImageKeys). Rejects nested
+// True when `key` is "<BASE_PREFIX>/<folder>/<file>" and <folder> belongs to the
+// product under any of its keys (see productImageKeys), or when it is a loose
+// base-level file "<BASE_PREFIX>/<file>" whose own name does. Rejects nested
 // paths and traversal attempts along the way.
 export function isKeyInProductFolder(key, product) {
   const prefix = `${BASE_PREFIX}/`
   if (!key.startsWith(prefix) || key.includes('..')) return false
   const rest = key.slice(prefix.length)
   const slash = rest.indexOf('/')
-  if (slash <= 0) return false
-  const folder = rest.slice(0, slash)
-  const filename = rest.slice(slash + 1)
+  if (slash === 0) return false
+  const filename = slash < 0 ? rest : rest.slice(slash + 1)
   if (!filename || filename.includes('/')) return false
   // Same predicate the listers use, so every photo the workspace shows for this
   // product can also be deleted — extensionless uploads included.
   if (!isImageFilename(filename)) return false
+  // A loose file stands in for a folder of its own name, exactly as the listers
+  // index it.
+  const folder = slash < 0 ? looseFileFolder(rest) : rest.slice(0, slash)
   return productImageKeys(product).some((k) => folderMatchesKey(folder, k))
 }

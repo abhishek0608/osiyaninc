@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { productImageUrl } from '../composables/productImageUrl'
 import { formatProductPrice, type Material, type Product } from '../data/products'
 import { useCart, isCustomizedCartItem } from '../composables/useCart'
 import { useWishlist } from '../composables/useWishlist'
@@ -100,7 +101,7 @@ const PLACEHOLDER_GRADIENT = 'ect-from-champagne ect-to-cream'
       >
         <img
           v-if="images?.length"
-          :src="images[0]"
+          :src="productImageUrl(images[0], 640)"
           :alt="title"
           loading="lazy"
           decoding="async"

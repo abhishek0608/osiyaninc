@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
+import { productImageUrl } from '../composables/productImageUrl'
 import { useAuth } from '../composables/useAuth'
 import { useMyOrders, orderPaymentLabel, orderStatusLabel, type MyOrder } from '../composables/useMyOrders'
 
@@ -68,7 +69,7 @@ function statusPillClass(order: MyOrder) {
           <li v-for="order in orders" :key="order.id" class="ect-bg-white/90 ect-backdrop-blur-sm ect-rounded-2xl ect-border ect-border-sand ect-shadow-sm ect-overflow-hidden">
             <div class="ect-flex ect-gap-4 ect-p-5 sm:ect-p-6">
               <span class="ect-w-16 ect-h-16 sm:ect-w-20 sm:ect-h-20 ect-rounded-xl ect-bg-champagne/50 ect-shrink-0 ect-flex ect-items-center ect-justify-center ect-overflow-hidden">
-                <img v-if="order.items[0]?.image" :src="order.items[0].image" :alt="order.items[0].title" class="ect-w-full ect-h-full ect-object-cover" />
+                <img v-if="order.items[0]?.image" :src="productImageUrl(order.items[0].image, 320)" :alt="order.items[0].title" class="ect-w-full ect-h-full ect-object-cover" />
                 <svg v-else class="ect-w-8 ect-h-8 ect-text-gold-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
                 </svg>

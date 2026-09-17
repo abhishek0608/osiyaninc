@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { productImageUrl } from '../composables/productImageUrl'
 import ProductCard from '../components/ProductCard.vue'
 import StarRating from '../components/StarRating.vue'
 import VolumeDiscountInfo from '../components/VolumeDiscountInfo.vue'
@@ -469,7 +470,7 @@ async function handleAddToCart() {
             >
               <img
                 v-if="galleryImages[activeImage]"
-                :src="galleryImages[activeImage]"
+                :src="productImageUrl(galleryImages[activeImage], 1280)"
                 :alt="product.title"
                 decoding="async"
                 class="ect-w-full ect-h-full ect-object-cover"
@@ -555,7 +556,7 @@ async function handleAddToCart() {
                     :class="activeImage === idx ? 'ect-border-gold-400 ect-shadow-sm' : 'ect-border-sand ect-opacity-75 hover:ect-border-gold-300 hover:ect-opacity-100'"
                     :aria-current="activeImage === idx ? 'true' : undefined"
                   >
-                    <img :src="img" :alt="`${product.title} view ${idx + 1}`" loading="lazy" decoding="async" class="ect-w-full ect-h-full ect-object-cover" />
+                    <img :src="productImageUrl(img, 320)" :alt="`${product.title} view ${idx + 1}`" loading="lazy" decoding="async" class="ect-w-full ect-h-full ect-object-cover" />
                   </button>
                 </li>
               </ul>

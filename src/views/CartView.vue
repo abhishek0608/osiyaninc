@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { productImageUrl } from '../composables/productImageUrl'
 
 import { useAuth } from '../composables/useAuth'
 import { useCart, type CartItem, isCustomizedCartItem } from '../composables/useCart'
@@ -157,7 +158,7 @@ function customizationEntries(item: CartItem) {
               <RouterLink :to="`/product/${item.product.slug}`" class="ect-shrink-0 ect-w-24 ect-h-24 sm:ect-w-28 sm:ect-h-28 ect-rounded-xl ect-overflow-hidden ect-bg-champagne/50">
                 <img
                   v-if="item.product.images?.length"
-                  :src="item.product.images[0]"
+                  :src="productImageUrl(item.product.images[0], 320)"
                   :alt="item.product.title"
                   loading="lazy"
                   decoding="async"
@@ -262,7 +263,7 @@ function customizationEntries(item: CartItem) {
               <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3 ect-mb-5">
                 <li v-for="item in items" :key="item.id" class="ect-flex ect-items-center ect-gap-3">
                   <span class="ect-w-10 ect-h-10 ect-rounded-lg ect-overflow-hidden ect-bg-champagne/50 ect-shrink-0">
-                    <img v-if="item.product.images?.length" :src="item.product.images[0]" :alt="item.product.title" loading="lazy" decoding="async" class="ect-w-full ect-h-full ect-object-cover" />
+                    <img v-if="item.product.images?.length" :src="productImageUrl(item.product.images[0], 320)" :alt="item.product.title" loading="lazy" decoding="async" class="ect-w-full ect-h-full ect-object-cover" />
                     <span v-else class="ect-w-full ect-h-full ect-flex ect-items-center ect-justify-center">
                       <svg class="ect-w-4 ect-h-4 ect-text-gold-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
                     </span>

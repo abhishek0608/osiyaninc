@@ -1831,29 +1831,32 @@ async function getProductPayload(slug) {
   const primaryVariant =
     pickVariantForPricing(activeVariants, null) || product.variants[0] || null
 
-  const actorMap = await resolveActorMap([product.createdById, product.updatedById])
-
   // The product's gallery, straight from its S3 folder (named after the Style
   // No, or the slug for legacy folders).
   // S3 is the source of truth for product photos, so this is what the internal
   // workspace shows and edits; `key` identifies the object to delete. The
   // `images` rows below are legacy base64 uploads, kept only because the
   // storefront still merges them — the workspace no longer displays them.
-  let s3Images = []
-  if (isS3Configured()) {
-    try {
-      const found = await listProductImages(product)
-      s3Images = found.map((img, index) => ({
-        url: img.url,
-        key: img.key,
-        sku: img.sku || null,
-        sortOrder: index,
-        source: 's3',
-      }))
-    } catch (error) {
-      console.error('[internal-product] s3 image list failed:', error?.message || error)
-    }
-  }
+  // The S3 listing (cross-region, the slow part) runs alongside the actor lookup.
+  const [actorMap, s3Images] = await Promise.all([
+    resolveActorMap([product.createdById, product.updatedById]),
+    (async () => {
+      if (!isS3Configured()) return []
+      try {
+        const found = await listProductImages(product)
+        return found.map((img, index) => ({
+          url: img.url,
+          key: img.key,
+          sku: img.sku || null,
+          sortOrder: index,
+          source: 's3',
+        }))
+      } catch (error) {
+        console.error('[internal-product] s3 image list failed:', error?.message || error)
+        return []
+      }
+    })(),
+  ])
 
   return {
     id: product.id,
@@ -2692,16 +2695,18 @@ async function handleProductCertificateResource(req, res, body) {
   const slug = String(body?.slug || '').trim()
   if (!slug) return res.status(400).json({ message: 'slug is required.' })
 
+  // title + productAttributes come along because the certificate folder is named
+  // after the piece's Style No, exactly like its photo folder.
   const product = await prisma.product.findUnique({
     where: { slug },
-    select: { id: true, certFileKey: true },
+    select: { id: true, slug: true, title: true, productAttributes: true, certFileKey: true },
   })
   if (!product) return res.status(404).json({ message: 'Product not found.' })
 
   try {
     if (action === 'presign') {
       const upload = await createPresignedCertificateUpload({
-        slug,
+        product,
         contentType: String(body?.contentType || ''),
       })
       return res.status(200).json({ upload })

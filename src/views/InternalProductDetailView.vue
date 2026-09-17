@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
+import { productImageUrl } from '../composables/productImageUrl'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
@@ -9,7 +10,7 @@ import { HIGH_JEWELRY_COLLECTION_NAMES } from '../data/collections'
 import { invalidateProductsCache } from '../composables/useProductsApi'
 import { CATEGORIES, CERT_LAB_OPTIONS, COLORS, METAL_PURITY_OPTIONS } from '../data/products'
 
-// One photo in the product's S3 folder. `key` is the object key, which the
+// One of the product's photos in S3. `key` is the object key, which the
 // delete endpoint needs; display order comes from the "_<n>" filename suffix.
 interface ProductImage {
   url: string
@@ -82,12 +83,11 @@ const lastSavedSlug = ref(String(route.params.slug || ''))
 const isEditing = ref(false)
 const slugManuallyEdited = ref(false)
 const formSnapshot = ref<ProductForm | null>(null)
-const imageUploadInput = ref<HTMLInputElement | null>(null)
-const imageUploadProcessing = ref(false)
 const imageDeletingKey = ref('')
-// The product's gallery, read from its S3 folder (named after the Style No,
-// or the slug for older folders). S3 is the only source of product photos:
-// uploads go straight into the folder and
+// The product's gallery, read from S3: the folder named after the Style No (or
+// the slug, for older folders), plus any loose single-photo file named after the
+// Style No. S3 is the only source of product photos: uploads go into the folder
+// and
 // removals delete the object, so this list is always what the storefront shows.
 const productImages = ref<ProductImage[]>([])
 // The piece's lab report, read back from the saved product row.
@@ -294,9 +294,13 @@ function stoneGroupLabel(group: StoneGroupValue) {
   return stoneGroupOptions.find((option) => option.value === group)?.label || group
 }
 
+// Prefer the S3 key's last segment; fall back to the URL so a certificate that
+// isn't an S3 object (the seeded repo asset, whose key is null) still names itself.
 const certificateFileName = computed(() => {
-  const key = productCertificate.value.key
-  return key ? key.split('/').pop() || key : ''
+  const source = productCertificate.value.key || productCertificate.value.url
+  if (!source) return ''
+  const path = source.split('?')[0]
+  return path.split('/').pop() || path
 })
 
 const certificationDisplayRows = computed(() => [
@@ -403,7 +407,7 @@ function mapIncomingCertificate(product: any): ProductCertificate {
   }
 }
 
-// The gallery comes from the product's S3 folder, never from the form payload.
+// The gallery comes from the product's S3 photos, never from the form payload.
 function mapIncomingImages(product: any): ProductImage[] {
   if (!Array.isArray(product?.s3Images)) return []
   return product.s3Images.map((image: any, index: number) => ({
@@ -479,14 +483,11 @@ function normalizeInputValue(input: unknown) {
   return String(input ?? '').trim()
 }
 
-// A product's photos live under its own S3 folder, so the product row has to
-// exist (and own a settled slug) before anything can be uploaded for it.
+// A product's photos are filed in S3 under its Style No, so the product row has to
+// exist (and own a settled slug) before its gallery can be managed here. Photos
+// are added to that folder outside the console; this page only lists and removes
+// them.
 const canManageImages = computed(() => !isNewProduct.value && Boolean(lastSavedSlug.value))
-
-function openImageUpload() {
-  if (!canManageImages.value || imageUploadProcessing.value) return
-  imageUploadInput.value?.click()
-}
 
 // Call the S3 product-image endpoint. Every action returns the refreshed
 // product, except `presign`, which returns the URLs to upload to.
@@ -513,55 +514,13 @@ async function postImageAction(payload: Record<string, unknown>) {
   return data
 }
 
-// Bulk upload: ask for one presigned PUT per file, send the bytes straight to
-// S3 from the browser, then let the server refresh caches and photo vectors.
-// The first object to land creates the product's folder in the bucket.
-async function onImageUploadChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = Array.from(input.files || []).filter((file) => file.type.startsWith('image/'))
-  input.value = ''
-  if (!files.length || !canManageImages.value) return
-
-  imageUploadProcessing.value = true
-  error.value = ''
-  try {
-    const { uploads } = await postImageAction({
-      action: 'presign',
-      files: files.map((file) => ({ contentType: file.type })),
-    })
-    if (!Array.isArray(uploads) || uploads.length !== files.length) {
-      throw new Error('Unable to start the upload.')
-    }
-
-    await Promise.all(
-      files.map(async (file, index) => {
-        const target = uploads[index]
-        const putRes = await fetch(target.uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': target.contentType || file.type },
-          body: file,
-        })
-        if (!putRes.ok) throw new Error(`Upload failed for ${file.name}.`)
-      }),
-    )
-
-    const data = await postImageAction({ action: 'uploaded' })
-    productImages.value = mapIncomingImages(data.product)
-    productCertificate.value = mapIncomingCertificate(data.product)
-    invalidateProductsCache()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Unable to upload images.'
-  } finally {
-    imageUploadProcessing.value = false
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Certificate file (S3, one per product)
 // ---------------------------------------------------------------------------
 
-// Certificates are filed under the product slug, so — as with photos — the row
-// has to exist and own a settled slug first.
+// Certificates are filed under the piece's Style No — the same folder name its
+// photos use, one level down from the certificates prefix — so, as with photos,
+// the row has to exist first.
 const canManageCertificate = computed(() => !isNewProduct.value && Boolean(lastSavedSlug.value))
 
 const certificateBusy = computed(() => certificateUploading.value || certificateDeleting.value)
@@ -836,15 +795,6 @@ watch(
   <section class="ect-min-h-screen ect-bg-[#f6efec] ect-pt-6 sm:ect-pt-14 ect-pb-16">
     <div class="ect-max-w-7xl ect-mx-auto ect-px-5">
       <InternalWorkspaceTabs />
-
-      <input
-        ref="imageUploadInput"
-        type="file"
-        accept="image/*"
-        multiple
-        class="ect-hidden"
-        @change="onImageUploadChange"
-      />
 
       <input
         ref="certificateUploadInput"
@@ -1333,19 +1283,9 @@ watch(
               <div>
                 <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Gallery images</h2>
                 <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-1">
-                  Stored in this product's S3 folder and shown on the storefront in this order.
-                  Uploads and removals apply to S3 immediately — they don't wait for Save.
+                  Stored in S3 under this product's Style No and shown on the storefront in this order.
+                  Removals apply to S3 immediately — they don't wait for Save.
                 </p>
-              </div>
-              <div class="ect-flex ect-shrink-0 ect-flex-wrap ect-items-center ect-justify-end ect-gap-2">
-                <button
-                  type="button"
-                  class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-xs ect-font-semibold ect-text-white hover:ect-bg-rose-700 ect-transition-colors disabled:ect-cursor-not-allowed disabled:ect-opacity-50"
-                  :disabled="!canManageImages || imageUploadProcessing"
-                  @click="openImageUpload"
-                >
-                  {{ imageUploadProcessing ? 'Uploading...' : 'Upload images' }}
-                </button>
               </div>
             </div>
 
@@ -1353,14 +1293,14 @@ watch(
               v-if="!canManageImages"
               class="ect-rounded-lg ect-border ect-border-dashed ect-border-charcoal/15 ect-p-6 ect-text-center ect-font-body ect-text-sm ect-text-charcoal/45"
             >
-              Save the product first. Its S3 folder is named after the Style No, so images can only
-              be uploaded once the product exists.
+              Save the product first. Its images are found in S3 by Style No, so they
+              only appear once the product exists.
             </p>
 
             <div v-else-if="productImages.length" class="ect-grid ect-grid-cols-2 sm:ect-grid-cols-3 lg:ect-grid-cols-4 ect-gap-3">
               <figure v-for="image in productImages" :key="image.key || image.url" class="ect-rounded-lg ect-border ect-border-rose-100 ect-overflow-hidden">
                 <div class="ect-relative ect-aspect-square ect-bg-charcoal/5">
-                  <img :src="image.url" :alt="image.sku || form.title" loading="lazy" class="ect-h-full ect-w-full ect-object-cover" />
+                  <img :src="productImageUrl(image.url, 320)" :alt="image.sku || form.title" loading="lazy" class="ect-h-full ect-w-full ect-object-cover" />
                   <button
                     type="button"
                     class="ect-absolute ect-top-1.5 ect-right-1.5 ect-rounded-full ect-bg-white/90 ect-px-2.5 ect-py-1 ect-font-body ect-text-[10px] ect-font-semibold ect-text-red-700 ect-shadow-sm hover:ect-bg-red-50 ect-transition-colors disabled:ect-cursor-wait disabled:ect-opacity-60"
@@ -1376,7 +1316,8 @@ watch(
             </div>
 
             <p v-else class="ect-rounded-lg ect-border ect-border-dashed ect-border-charcoal/15 ect-p-6 ect-text-center ect-font-body ect-text-sm ect-text-charcoal/45">
-              No images yet. The first upload creates this product's folder in S3.
+              No images yet. The first upload creates this product's folder in S3. A piece with a
+              single photo can also have it dropped loose in the bucket, named after the Style No.
             </p>
           </article>
 
@@ -1431,8 +1372,8 @@ watch(
                 v-if="!canManageCertificate"
                 class="ect-rounded-lg ect-border ect-border-dashed ect-border-charcoal/15 ect-p-6 ect-text-center ect-font-body ect-text-sm ect-text-charcoal/45"
               >
-                Save the product first. Certificates are filed under the slug, so one can only be
-                uploaded once the slug is final.
+                Save the product first. Certificates are filed under the Style No, so one can
+                only be uploaded once the piece exists.
               </p>
 
               <div
@@ -1496,7 +1437,7 @@ watch(
             <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mb-4">Preview</h2>
             <div v-if="previewImages.length" class="ect-space-y-3">
               <figure class="ect-relative ect-aspect-square ect-rounded-lg ect-overflow-hidden ect-bg-charcoal/5">
-                <img :src="previewImages[activePreviewImage]?.url" :alt="previewImages[activePreviewImage]?.sku || form.title" class="ect-h-full ect-w-full ect-object-cover" />
+                <img :src="productImageUrl(previewImages[activePreviewImage]?.url, 1280)" :alt="previewImages[activePreviewImage]?.sku || form.title" class="ect-h-full ect-w-full ect-object-cover" />
                 <span v-if="previewImages.length > 1" class="ect-absolute ect-top-2 ect-left-2 ect-inline-flex ect-items-center ect-rounded-full ect-bg-white/88 ect-px-2.5 ect-py-1 ect-font-body ect-text-[11px] ect-font-semibold ect-text-charcoal ect-shadow-sm">
                   {{ activePreviewImage + 1 }} / {{ previewImages.length }}
                 </span>
@@ -1506,7 +1447,7 @@ watch(
                   <button type="button" @click="setPreviewImage(idx)" :aria-current="activePreviewImage === idx ? 'true' : undefined"
                     class="ect-h-16 ect-w-16 ect-rounded-lg ect-overflow-hidden ect-border-2 ect-transition focus:ect-outline-none focus-visible:ect-ring-2 focus-visible:ect-ring-rose-300"
                     :class="activePreviewImage === idx ? 'ect-border-rose-400 ect-shadow-sm' : 'ect-border-charcoal/10 ect-opacity-75 hover:ect-opacity-100'">
-                    <img :src="image.url" :alt="image.sku || form.title" loading="lazy" class="ect-h-full ect-w-full ect-object-cover" />
+                    <img :src="productImageUrl(image.url, 320)" :alt="image.sku || form.title" loading="lazy" class="ect-h-full ect-w-full ect-object-cover" />
                   </button>
                 </li>
               </ul>
@@ -1626,8 +1567,8 @@ watch(
               <div>
                 <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Gallery images</h2>
                 <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-1">
-                  Read from this product's S3 folder, in storefront display order. Use Edit to upload
-                  or remove photos.
+                  Read from S3 by Style No, in storefront display order. Photos are added to
+                  that folder in S3; use Edit to remove one.
                 </p>
               </div>
             </div>
@@ -1635,14 +1576,14 @@ watch(
             <div v-if="productImages.length" class="ect-grid ect-grid-cols-2 sm:ect-grid-cols-3 lg:ect-grid-cols-4 ect-gap-3">
               <figure v-for="image in productImages" :key="image.key || image.url" class="ect-rounded-lg ect-border ect-border-rose-100 ect-overflow-hidden">
                 <div class="ect-aspect-square ect-bg-charcoal/5">
-                  <img :src="image.url" :alt="image.sku || form.title" loading="lazy" class="ect-h-full ect-w-full ect-object-cover" />
+                  <img :src="productImageUrl(image.url, 320)" :alt="image.sku || form.title" loading="lazy" class="ect-h-full ect-w-full ect-object-cover" />
                 </div>
                 <figcaption v-if="image.sku" class="ect-px-2 ect-py-1.5 ect-font-body ect-text-[11px] ect-text-charcoal/55 ect-truncate">{{ image.sku }}</figcaption>
               </figure>
             </div>
 
             <p v-else class="ect-rounded-lg ect-border ect-border-dashed ect-border-charcoal/15 ect-p-6 ect-text-center ect-font-body ect-text-sm ect-text-charcoal/45">
-              No images in S3 yet. Use Edit to upload the first one.
+              No images in this piece's S3 folder yet.
             </p>
           </article>
 
@@ -1677,7 +1618,7 @@ watch(
             <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mb-4">Preview</h2>
             <div v-if="previewImages.length" class="ect-space-y-3">
               <figure class="ect-relative ect-aspect-square ect-rounded-lg ect-overflow-hidden ect-bg-charcoal/5">
-                <img :src="previewImages[activePreviewImage]?.url" :alt="previewImages[activePreviewImage]?.sku || form.title" class="ect-h-full ect-w-full ect-object-cover" />
+                <img :src="productImageUrl(previewImages[activePreviewImage]?.url, 1280)" :alt="previewImages[activePreviewImage]?.sku || form.title" class="ect-h-full ect-w-full ect-object-cover" />
                 <span v-if="previewImages.length > 1" class="ect-absolute ect-top-2 ect-left-2 ect-inline-flex ect-items-center ect-rounded-full ect-bg-white/88 ect-px-2.5 ect-py-1 ect-font-body ect-text-[11px] ect-font-semibold ect-text-charcoal ect-shadow-sm">
                   {{ activePreviewImage + 1 }} / {{ previewImages.length }}
                 </span>
@@ -1687,7 +1628,7 @@ watch(
                   <button type="button" @click="setPreviewImage(idx)" :aria-current="activePreviewImage === idx ? 'true' : undefined"
                     class="ect-h-16 ect-w-16 ect-rounded-lg ect-overflow-hidden ect-border-2 ect-transition focus:ect-outline-none focus-visible:ect-ring-2 focus-visible:ect-ring-rose-300"
                     :class="activePreviewImage === idx ? 'ect-border-rose-400 ect-shadow-sm' : 'ect-border-charcoal/10 ect-opacity-75 hover:ect-opacity-100'">
-                    <img :src="image.url" :alt="image.sku || form.title" loading="lazy" class="ect-h-full ect-w-full ect-object-cover" />
+                    <img :src="productImageUrl(image.url, 320)" :alt="image.sku || form.title" loading="lazy" class="ect-h-full ect-w-full ect-object-cover" />
                   </button>
                 </li>
               </ul>

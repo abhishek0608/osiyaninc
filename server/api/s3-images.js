@@ -9,6 +9,15 @@ import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3'
 //   <BASE_PREFIX>/<styleNo>[_<suffix>]/<file>
 // e.g. Osiyan-product-images/rg0478/RG0478-pink.jpg      (style "RG0478")
 //      Osiyan-product-images/RG7973_9.5X7/RG7973_1.webp  (style "RG7973", size 9.5x7)
+//
+// A style with a single photo need not get a folder at all: a file dropped
+// straight under the base prefix whose name starts with the Style No belongs to
+// that piece too, e.g.
+//      Osiyan-product-images/RG0478-pink.jpg             (style "RG0478")
+// Such a loose file is treated as a one-image folder named after the file (see
+// looseFileFolder), so folders and loose files resolve through the same matcher
+// and a piece may have both.
+//
 // Older folders are named after the Product.slug (the slugified bag number, or
 // a hand-written slug), so the slug is still tried as a fallback key. See
 // productImageKeys for the full resolution order.
@@ -180,16 +189,29 @@ export function compareProductImages(a, b) {
   return a.key.localeCompare(b.key)
 }
 
-// A folder belongs to `key` when its name equals the key (older uploads) or
-// starts with "key_" — the "_" separates the key from a size/dimension suffix,
-// e.g. style "RG7973" -> folder "RG7973_9.5X7". Matching is case-insensitive:
-// keys are compared lowercased but S3 folders are usually uppercased. The "_"
-// guard stops sibling style "rg0478" matching "rg04780".
+// A folder (or loose file, see looseFileFolder) belongs to `key` when its name
+// equals the key or starts with the key followed by a separator: "_" for a
+// size/dimension suffix (style "RG7973" -> folder "RG7973_9.5X7"), "-" or a
+// space for the photo pipeline's shot markers ("RG0478-pink", "RG0478 R (1)").
+// Matching is case-insensitive: keys are compared lowercased but S3 names are
+// usually uppercased. The separator guard stops sibling style "rg0478"
+// matching "rg04780".
+const KEY_SEPARATOR = /^[_\-\s]/
 export function folderMatchesKey(folder, key) {
   const f = String(folder).toLowerCase()
   const k = String(key || '').trim().toLowerCase()
   if (!k) return false
-  return f === k || f.startsWith(`${k}_`)
+  return f === k || (f.startsWith(k) && KEY_SEPARATOR.test(f.slice(k.length)))
+}
+
+/**
+ * The folder name a loose file stands in for: its filename without the image
+ * extension, so "RG0478-pink.jpg" behaves like a folder "RG0478-pink" holding
+ * one photo. Extensionless names are used as they are.
+ * @param {string} filename - object name directly under the base prefix.
+ */
+export function looseFileFolder(filename) {
+  return String(filename || '').replace(IMAGE_EXTENSIONS, '')
 }
 
 // Backwards-compatible name: a slug is just one of the keys a product can be
@@ -247,30 +269,57 @@ export function folderMatchesProduct(folder, product) {
 }
 
 // Enumerate the actual (case-preserved) folder names under the base prefix that
-// belong to any of `keys`. S3 prefixes are case-sensitive, so we can't narrow
-// the listing by a lowercase key; instead we list folder names (one per product
-// via Delimiter, so this is cheap) and match them case-insensitively.
+// belong to any of `keys`, plus the loose files there that do. S3 prefixes are
+// case-sensitive, so we can't narrow the listing by a lowercase key; instead we
+// list the base level (one CommonPrefix per folder plus the loose files, so
+// this is cheap) and match names case-insensitively.
+// The bucket's top-level folder names. Every per-product lookup starts by
+// listing these (paginated, ~250ms a page from Mumbai to us-east-1), and they
+// only change when a product folder is created or emptied, so keep them for a
+// short while per warm instance and let the upload/delete paths invalidate.
+const FOLDER_CACHE_TTL_MS = 2 * 60 * 1000
+let folderCache = { names: null, expiresAt: 0 }
+let folderFetch = null
+
+export function invalidateProductFolderCache() {
+  folderCache = { names: null, expiresAt: 0 }
+}
+
+async function listTopLevelFolders(client) {
+  if (folderCache.names && folderCache.expiresAt > Date.now()) return folderCache.names
+  if (!folderFetch) {
+    folderFetch = (async () => {
+      const prefix = `${BASE_PREFIX}/`
+      const names = []
+      let token
+      do {
+        const res = await client.send(
+          new ListObjectsV2Command({
+            Bucket: BUCKET,
+            Prefix: prefix,
+            Delimiter: '/',
+            ContinuationToken: token,
+            MaxKeys: 1000,
+          }),
+        )
+        for (const cp of res.CommonPrefixes || []) {
+          const folder = cp.Prefix.slice(prefix.length).replace(/\/$/, '')
+          if (folder) names.push(folder)
+        }
+        token = res.IsTruncated ? res.NextContinuationToken : undefined
+      } while (token)
+      folderCache = { names, expiresAt: Date.now() + FOLDER_CACHE_TTL_MS }
+      return names
+    })().finally(() => {
+      folderFetch = null
+    })
+  }
+  return folderFetch
+}
+
 async function resolveProductFolders(client, keys) {
-  const prefix = `${BASE_PREFIX}/`
-  const folders = []
-  let token
-  do {
-    const res = await client.send(
-      new ListObjectsV2Command({
-        Bucket: BUCKET,
-        Prefix: prefix,
-        Delimiter: '/',
-        ContinuationToken: token,
-        MaxKeys: 1000,
-      }),
-    )
-    for (const cp of res.CommonPrefixes || []) {
-      const folder = cp.Prefix.slice(prefix.length).replace(/\/$/, '')
-      if (folder && keys.some((key) => folderMatchesKey(folder, key))) folders.push(folder)
-    }
-    token = res.IsTruncated ? res.NextContinuationToken : undefined
-  } while (token)
-  return folders
+  const names = await listTopLevelFolders(client)
+  return names.filter((folder) => keys.some((key) => folderMatchesKey(folder, key)))
 }
 
 /**
@@ -285,12 +334,24 @@ export async function listProductImages(product) {
   if (!keys.length) return []
 
   const client = getClient()
-  const folders = await resolveProductFolders(client, keys)
-  if (!folders.length) return []
+  const { folders, looseFiles } = await resolveProductFolders(client, keys)
+  if (!folders.length && !looseFiles.length) return []
 
   // Gather objects from every matching folder (normally just one), each listed
-  // with its exact, case-correct prefix.
+  // with its exact, case-correct prefix, plus any loose single-photo files.
   const collected = []
+  for (const loose of looseFiles) {
+    const { sku, order, group, rank } = parseImageFilename(loose.filename)
+    collected.push({
+      url: publicUrlForKey(loose.key),
+      key: loose.key,
+      sku,
+      order,
+      group,
+      rank,
+      size: loose.size,
+    })
+  }
   for (const folder of folders) {
     const prefix = `${BASE_PREFIX}/${folder}/`
     let token
@@ -368,12 +429,15 @@ export async function listAllProductImagesByFolder() {
       }),
     )
     for (const obj of res.Contents || []) {
-      const rest = obj.Key.slice(prefix.length) // "<folder>/<file>"
+      const rest = obj.Key.slice(prefix.length) // "<folder>/<file>", or "<file>"
       const slash = rest.indexOf('/')
-      if (slash <= 0) continue // skip base-level files like .DS_Store
-      const slug = rest.slice(0, slash)
-      const filename = rest.slice(slash + 1)
+      if (slash === 0) continue
+      // A base-level image is a single-photo piece filed without a folder; it is
+      // indexed under its own name so folderMatchesProduct can find it exactly
+      // as it finds a folder.
+      const filename = slash < 0 ? rest : rest.slice(slash + 1)
       if (!isImageFilename(filename)) continue
+      const slug = slash < 0 ? looseFileFolder(rest) : rest.slice(0, slash)
       const { order, rank } = parseImageFilename(filename)
       if (!bySlug.has(slug)) bySlug.set(slug, [])
       bySlug.get(slug).push({ url: publicUrlForKey(obj.Key), order, rank, key: obj.Key })
