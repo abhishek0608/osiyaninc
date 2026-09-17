@@ -89,7 +89,7 @@ function subscribe() {
         <h2>Little<br />Luxuries</h2>
         <RouterLink to="/collections" class="shop-button">SHOP</RouterLink>
       </article>
-      <img src="/osiyan-little-luxuries.png" alt="Model wearing Osiyan emerald jewelry" loading="lazy" />
+      <img src="/osiyan-little-luxuries.jpg" alt="Model wearing Osiyan emerald jewelry" loading="lazy" />
     </section>
 
     <section class="world-section">
