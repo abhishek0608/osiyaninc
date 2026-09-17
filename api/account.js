@@ -3,7 +3,6 @@ import { toApiProduct } from '../server/api/product-presenter.js'
 import { getCatalogProducts } from '../server/api/products-source.js'
 import { applyCors, handlePreflight } from '../server/api/cors.js'
 import { creditLimitToUsd } from '../server/api/money.js'
-import { createPresignedServiceUpload, isUploadConfigured } from '../server/api/s3-upload.js'
 import {
   createServiceRequestRecord,
   toServiceRequestPayload,
@@ -18,7 +17,8 @@ import {
   convertMemoToOrder,
   createMemo,
   extendMemo,
-  getMemoOutstandingPaise,
+  memoOutstandingPaise,
+  OPEN_MEMO_STATUSES,
   getMemoCustomer,
   formatMemoMoney,
   MEMO_PAYLOAD_INCLUDE,
@@ -620,6 +620,10 @@ async function handlePostServiceRequest(res, body) {
 // require sign-in); the helper validates type/extension and generated keys
 // never leak filenames. 501 tells the client to fall back to filename-only.
 async function handlePostServiceUpload(res, body) {
+  // The S3 SDK is the heaviest dependency this function has and only this one
+  // mode needs it, so it is loaded here rather than at module top level — every
+  // other account request (profile, cart, memos) cold-starts without it.
+  const { createPresignedServiceUpload, isUploadConfigured } = await import('../server/api/s3-upload.js')
   if (!isUploadConfigured()) {
     return res.status(501).json({ message: 'File uploads are not configured.' })
   }
@@ -680,15 +684,24 @@ function memoErrorResponse(res, err) {
 
 async function handleGetMemos(res, customerId) {
   if (!customerId) return res.status(400).json({ message: 'userId is required.' })
-  const customer = await getMemoCustomer(customerId)
+  // The customer row and the memo list do not depend on each other, so they
+  // go out together — every sequential statement here is a full round trip to
+  // the database, and this endpoint was paying five of them in a row.
+  const [customer, memos] = await Promise.all([
+    getMemoCustomer(customerId),
+    prisma.memo.findMany({
+      where: { customerId },
+      include: MEMO_PAYLOAD_INCLUDE,
+      orderBy: { issuedAt: 'desc' },
+    }),
+  ])
   if (!customer) return res.status(404).json({ message: 'User not found.' })
 
-  const memos = await prisma.memo.findMany({
-    where: { customerId },
-    include: MEMO_PAYLOAD_INCLUDE,
-    orderBy: { issuedAt: 'desc' },
-  })
-  const outstandingPaise = await getMemoOutstandingPaise(customerId)
+  // Outstanding value is summed from the open memos already in hand rather than
+  // re-fetching their items; same numbers as getMemoOutstandingPaise.
+  const outstandingPaise = memoOutstandingPaise(
+    memos.filter((memo) => OPEN_MEMO_STATUSES.includes(memo.status)).flatMap((memo) => memo.items),
+  )
   // memoLimitPaise is stored in cents; everything else in this payload is in
   // whole dollars, so the limit is converted once here and the whole response
   // speaks a single unit.
