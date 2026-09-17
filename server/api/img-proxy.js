@@ -1,6 +1,10 @@
-import { applyCors, handlePreflight } from '../server/api/cors.js'
+import { applyCors, handlePreflight } from './cors.js'
 
 // Resized, edge-cached product photos.
+//
+// This is not a serverless function of its own: the Hobby plan caps a
+// deployment at 12, so /api/img is rewritten to /api/products, which dispatches
+// here on the __img flag (see vercel.json). Public URLs are unchanged.
 //
 // Product images live in an S3 bucket in us-east-1 and are uploaded at camera
 // resolution (3000px+, ~1MB each). Customers are mostly in India, so a product
@@ -25,7 +29,7 @@ function snapWidth(raw) {
   return WIDTHS.find((w) => w >= n) || WIDTHS[WIDTHS.length - 1]
 }
 
-export default async function handler(req, res) {
+export async function serveResizedImage(req, res) {
   const preflight = handlePreflight(req, res)
   if (preflight) return preflight
   applyCors(req, res)
