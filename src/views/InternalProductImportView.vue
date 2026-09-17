@@ -188,6 +188,7 @@ function toProduct(row: ImportRow) {
     },
   }
   if (row.subtype !== undefined) product.subtype = row.subtype
+  if (row.collection !== undefined) product.collection = row.collection
   if (row.price !== undefined) product.variantPricePaise = numberOrNull(row.price)
   if (row.description !== undefined) product.description = row.description
   if (row.qty !== undefined) product.quantity = numberOrNull(row.qty)
@@ -343,7 +344,7 @@ function statusClass(status: string) {
           <table class="ect-w-full ect-min-w-[760px] ect-border-collapse">
             <thead class="ect-bg-rose-50">
               <tr>
-                <th v-for="h in ['Bag No', 'Style No', 'Type', 'Kt/Col', 'Stones', 'Price', 'Status']" :key="h"
+                <th v-for="h in ['Bag No', 'Style No', 'Type', 'Collection', 'Kt/Col', 'Stones', 'Price', 'Status']" :key="h"
                   class="ect-px-3 ect-py-2 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-wide ect-text-charcoal/45">{{ h }}</th>
               </tr>
             </thead>
@@ -355,6 +356,7 @@ function statusClass(status: string) {
                 </td>
                 <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/80">{{ row.title }}</td>
                 <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/60">{{ row.category }}</td>
+                <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/60">{{ row.collection || '—' }}</td>
                 <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/60">{{ metalLabel(row) }}</td>
                 <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/60">{{ row.stoneLines.length }}</td>
                 <td class="ect-px-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal/60">{{ row.price }}</td>

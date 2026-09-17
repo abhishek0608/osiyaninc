@@ -572,6 +572,22 @@ export function productHasPieceType(product: any, id: PieceTypeId): boolean {
   })
 }
 
+// ------------------------------------------------------------- Collection ---
+
+/**
+ * Collection names compare case- and punctuation-insensitively, so "JEWEL
+ * GARDEN" and "jewel-garden" both mean the packing list's "Jewel Garden".
+ * Mirrors normalizeCollection in server/api/product-filter.js.
+ */
+export function normalizeCollection(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+export function productInCollection(product: any, name: string): boolean {
+  const wanted = normalizeCollection(name)
+  return Boolean(wanted) && normalizeCollection(product?.collection) === wanted
+}
+
 // ------------------------------------------------------------------ Price ---
 
 export interface PriceBounds {

@@ -15,6 +15,7 @@ import {
   productHasMetal,
   productHasPieceType,
   productHasStone,
+  productInCollection,
   productPriceValue,
   stoneLabel,
   stoneOptionsFor,
@@ -80,6 +81,10 @@ const filterOpen = ref(false)
 // or more (Bracelets & Bangles) keeps the filter but narrows it to that set, so
 // shoppers can drill into just one without escaping the page's scope.
 const lockedCategories = ref<Category[]>([])
+// The merchandising collection a suite page is scoped to ("Jewel Garden"). Page
+// context like a single locked category: the title says it, so it draws no
+// facet or chip and survives "clear filters".
+const lockedCollection = ref<string | null>(null)
 const singleLockedCategory = computed(() => (lockedCategories.value.length === 1 ? lockedCategories.value[0] : null))
 const appliedFilters = ref<Filters>(emptyFilters())
 // Which facets this collection offers. Set from the preset so the filter list is
@@ -97,7 +102,9 @@ const typeOptions = ref(pieceTypeOptionsFor())
 // site's. Null bounds (nothing in scope is priced) hide the facet.
 const scopedProducts = computed(() => {
   const locked = lockedCategories.value
-  const list = products.value
+  const collection = lockedCollection.value
+  let list = products.value
+  if (collection) list = list.filter((p) => productInCollection(p, collection))
   return locked.length ? list.filter((p) => locked.includes(p.category as Category)) : list
 })
 const priceBounds = computed(() => priceBoundsFor(scopedProducts.value))
@@ -179,6 +186,7 @@ function applyPreset(p: NonNullable<typeof preset.value>) {
   if (p.types !== undefined) f.types = [...p.types]
   appliedFilters.value = f
   lockedCategories.value = locked
+  lockedCollection.value = p.collection?.trim() || null
   facets.value = p.facets?.length ? [...p.facets] : [...DEFAULT_FACETS]
   metalOptions.value = metalOptionsFor(p.metalOptions)
   stoneOptions.value = stoneOptionsFor(p.stoneOptions)
@@ -415,7 +423,7 @@ async function loadFilteredProducts() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tab: requestedTab,
-        filters,
+        filters: lockedCollection.value ? { ...filters, collections: [lockedCollection.value] } : filters,
       }),
     })
     const data = await res.json().catch(() => ({}))
@@ -428,6 +436,8 @@ async function loadFilteredProducts() {
     if (requestedTab === 'new') list = list.filter((p) => p.isNewArrival)
     else if (requestedTab === 'bestseller') list = list.filter((p) => p.isBestSeller)
     const f = filters
+    const collection = lockedCollection.value
+    if (collection) list = list.filter((p) => productInCollection(p, collection))
     if (f.categories.length) list = list.filter((p) => f.categories.includes(p.category))
     if (f.materials.length) list = list.filter((p) => f.materials.includes(p.material))
     if (f.colors.length) list = list.filter((p) => f.colors.includes(p.color))

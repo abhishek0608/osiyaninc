@@ -14,9 +14,10 @@
 //
 // The live Explore buttons point at /jewel-garden, /jade-forest, /osiyanic-blues
 // and /fiery — all four sit behind the Wix guest-area password — while the
-// newest band, Hematita Zora, points at the contact page. None of the five is a
-// catalogue category here, so every button lands on /contact, which is what that
-// newest band already does upstream.
+// newest band, Hematita Zora, points at the contact page. Here every button
+// opens the suite's collection page (/collections/<key>), which lists the
+// pieces whose Product.collection carries that suite's name — the packing
+// list's COLLECTION column. The live paths redirect there (see the router).
 interface Suite {
   key: string
   /** Title, pre-split into the two lines the live page sets it on. */
@@ -149,7 +150,7 @@ const SUITES: Suite[] = [
       </div>
       <div class="hj-suite-copy">
         <h2>{{ suite.lines[0] }}<br />{{ suite.lines[1] }}</h2>
-        <RouterLink class="hj-explore" to="/contact">Explore</RouterLink>
+        <RouterLink class="hj-explore" :to="`/collections/${suite.key}`">Explore</RouterLink>
       </div>
     </section>
   </div>

@@ -47,6 +47,21 @@ export default async function handler(req, res) {
     ...(categories.length ? { category: { in: categories } } : {}),
     ...(normalized.materials.length ? { material: { in: normalized.materials } } : {}),
     ...(normalized.colors.length ? { color: { in: normalized.colors } } : {}),
+    // Collection names are compared case-insensitively against the packing
+    // list spelling stored on the product ("Jewel Garden"), one OR per name so
+    // it can sit beside the price OR below.
+    ...(normalized.collections.length
+      ? {
+          AND: [
+            {
+              OR: (Array.isArray(inputFilters.collections) ? inputFilters.collections : [])
+                .map((name) => String(name || '').trim())
+                .filter(Boolean)
+                .map((name) => ({ collection: { equals: name, mode: 'insensitive' } })),
+            },
+          ],
+        }
+      : {}),
     ...(normalized.priceMin != null || normalized.priceMax != null
       ? {
           OR: [

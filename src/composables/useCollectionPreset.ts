@@ -16,6 +16,12 @@ export interface CollectionPreset {
   color?: Color
   tab?: TabId
   subtypes?: ProductSubtype[]
+  /**
+   * Scope the page to one merchandising collection, by the name stored on the
+   * product ("Jewel Garden"). Matched case-insensitively; the page title says
+   * it, so no chip or facet is drawn for it.
+   */
+  collection?: string
   /** Type facet selection. */
   types?: PieceTypeId[]
   /**

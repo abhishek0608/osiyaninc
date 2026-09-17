@@ -5,6 +5,7 @@ import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
 import { formatKtCol, parseKtCol } from '../data/packingList'
+import { HIGH_JEWELRY_COLLECTION_NAMES } from '../data/collections'
 import { invalidateProductsCache } from '../composables/useProductsApi'
 import { CATEGORIES, CERT_LAB_OPTIONS, COLORS, METAL_PURITY_OPTIONS } from '../data/products'
 
@@ -42,6 +43,7 @@ interface ProductForm {
   title: string
   category: string
   subtype: string
+  collection: string
   material: string
   color: string
   description: string
@@ -165,6 +167,7 @@ function emptyProductForm(): ProductForm {
     title: '',
     category: '',
     subtype: '',
+    collection: '',
     material: '',
     color: '',
     description: '',
@@ -204,6 +207,7 @@ const form = ref<ProductForm>({
   title: '',
   category: '',
   subtype: '',
+  collection: '',
   material: '',
   color: '',
   description: '',
@@ -265,6 +269,7 @@ const coreDisplayRows = computed(() => [
   { label: 'Type', value: displayValue(form.value.category) },
   { label: 'Kt/Col', value: displayValue(formatKtCol(form.value.metalPurity, form.value.color)) },
   { label: 'Subtype', value: displayValue(findOptionLabel(subtypeOptions, form.value.subtype)) },
+  { label: 'Collection', value: displayValue(form.value.collection) },
   { label: 'Material', value: displayValue(findOptionLabel(materialOptions, form.value.material)) },
   { label: 'Metal colour', value: displayValue(COLORS.find((color) => color.id === form.value.color)?.label || form.value.color) },
   { label: 'Price (USD)', value: displayValue(form.value.variantPricePaise) },
@@ -353,6 +358,7 @@ function mapIncomingProduct(product: any): ProductForm {
     title: String(product?.title || ''),
     category: String(product?.category || ''),
     subtype: String(product?.subtype || ''),
+    collection: String(product?.collection || ''),
     material: String(product?.material || ''),
     color: String(product?.color || ''),
     description: String(product?.description || ''),
@@ -715,6 +721,7 @@ async function saveProduct() {
     title: form.value.title,
     category: form.value.category,
     subtype: form.value.subtype,
+    collection: form.value.collection.trim(),
     material: form.value.material,
     color: form.value.color,
     description: form.value.description,
@@ -1036,6 +1043,20 @@ watch(
                   <option value="">Unspecified</option>
                   <option v-for="subtype in subtypeOptions" :key="subtype.value" :value="subtype.value">{{ subtype.label }}</option>
                 </select>
+              </label>
+              <label class="ect-block">
+                <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Collection</span>
+                <input
+                  v-model="form.collection"
+                  type="text"
+                  placeholder="Jewel Garden"
+                  list="product-collection-names"
+                  :readonly="!fieldsEditable"
+                  :class="['ect-w-full ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-2.5 ect-font-body ect-text-sm focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-rose-300/40', !fieldsEditable ? 'ect-bg-charcoal/[0.04] ect-text-charcoal/90' : '']"
+                />
+                <datalist id="product-collection-names">
+                  <option v-for="name in HIGH_JEWELRY_COLLECTION_NAMES" :key="name" :value="name" />
+                </datalist>
               </label>
               <label class="ect-block">
                 <span class="ect-block ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45 ect-mb-2">Kt/Col</span>

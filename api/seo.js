@@ -4,8 +4,12 @@ import { getCatalogProducts } from '../server/api/products-source.js'
 // ?type=robots|sitemap) from one function to stay under the serverless function
 // quota. SITE_URL overrides the host header once a custom domain exists.
 
-// Keep in sync with COLLECTION_LINKS in src/data/collections.ts.
-const COLLECTION_SLUGS = ['rings', 'earrings', 'pendants', 'bracelets', 'necklaces']
+// Keep in sync with COLLECTION_LINKS and HIGH_JEWELRY_COLLECTIONS in
+// src/data/collections.ts.
+const COLLECTION_SLUGS = [
+  'rings', 'earrings', 'pendants', 'bracelets', 'necklaces',
+  'jewel-garden', 'jade-forest', 'osiyanic-blues', 'fiery', 'hematita-zora',
+]
 
 const STATIC_PATHS = ['/', '/collections', '/about', '/services']
 const SITE_URL = 'https://www.kianajewels.com'

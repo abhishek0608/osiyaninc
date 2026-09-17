@@ -90,6 +90,58 @@ export const COLLECTION_LINKS: CollectionLink[] = [
   },
 ]
 
+// The high-jewelry suites from /high-jewelry. Each page lists the pieces whose
+// Product.collection carries the suite's name — the packing list's COLLECTION
+// column, matched case-insensitively — so a suite fills in as pieces are
+// imported under it. They are deliberately not in COLLECTION_LINKS: the header
+// menus and the homepage grid are the catalogue categories, and these are
+// reached from the Explore buttons on the High Jewelry page instead.
+export const HIGH_JEWELRY_COLLECTIONS: CollectionLink[] = [
+  {
+    slug: 'jewel-garden',
+    label: 'Jewel Garden',
+    title: 'Jewel Garden',
+    description: 'Carved tourmalines, emeralds and pink sapphires in bloom.',
+    icon: 'high-jewelry',
+    preset: { collection: 'Jewel Garden', facets: ['price', 'category', 'metal', 'stone'] },
+  },
+  {
+    slug: 'jade-forest',
+    label: 'Jade Forest',
+    title: 'Jade Forest',
+    description: 'Emeralds and diamonds in deep forest greens.',
+    icon: 'high-jewelry',
+    preset: { collection: 'Jade Forest', facets: ['price', 'category', 'metal', 'stone'] },
+  },
+  {
+    slug: 'osiyanic-blues',
+    label: 'Osiyanic Blues',
+    title: 'Osiyanic Blues',
+    description: 'Aquamarines, sapphires and tanzanites in every blue.',
+    icon: 'high-jewelry',
+    preset: { collection: 'Osiyanic Blues', facets: ['price', 'category', 'metal', 'stone'] },
+  },
+  {
+    slug: 'fiery',
+    label: 'Fiery Collection',
+    title: 'Fiery Collection',
+    description: 'Fire opals, rubies and rubellites set ablaze.',
+    icon: 'high-jewelry',
+    preset: { collection: 'Fiery', facets: ['price', 'category', 'metal', 'stone'] },
+  },
+  {
+    slug: 'hematita-zora',
+    label: 'Hematita Zora',
+    title: 'Hematita Zora',
+    description: 'Brazilian alexandrite and diamonds in yellow gold.',
+    icon: 'high-jewelry',
+    preset: { collection: 'Hematita Zora', facets: ['price', 'category', 'metal', 'stone'] },
+  },
+]
+
+/** The collection names as stored on products, for the internal form's suggestions. */
+export const HIGH_JEWELRY_COLLECTION_NAMES = HIGH_JEWELRY_COLLECTIONS.map((c) => c.preset.collection as string)
+
 export function findCollectionBySlug(slug: string): CollectionLink | null {
-  return COLLECTION_LINKS.find((c) => c.slug === slug) ?? null
+  return COLLECTION_LINKS.find((c) => c.slug === slug) ?? HIGH_JEWELRY_COLLECTIONS.find((c) => c.slug === slug) ?? null
 }

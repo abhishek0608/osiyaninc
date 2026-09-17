@@ -598,7 +598,7 @@ async function exportProducts() {
     const XLSX = await import('xlsx')
     const grid = piecesToGrid(records.map((r) => ({
       bagNo: r.bagNo, slug: r.slug ?? '', styleNo: r.styleNo, title: r.title ?? '', category: r.category ?? '',
-      styleTags: r.styleTags, qty: r.qty, grossWeight: r.grossWeight, metalPurity: r.metalPurity,
+      collection: r.collection, qty: r.qty, grossWeight: r.grossWeight, metalPurity: r.metalPurity,
       color: r.color, netWeight: r.netWeight, goldRate: r.goldRate, goldValue: r.goldValue,
       stoneLines: r.stoneLines, price: r.price,
     })))

@@ -7,7 +7,8 @@
 //   | Gold Rate | Gold Value | DShape DQuality DPcs DCts | F… | C… | PRICE
 //
 // The storefront's own fields map onto it as: slug ← BAG NO (slugified),
-// title ← Style No, category ← Type, and Kt/Col ← metal purity + colour
+// title ← Style No, category ← Type, collection ← COLLECTION (the suite the
+// piece belongs to, e.g. "Jewel Garden"), and Kt/Col ← metal purity + colour
 // (`14KTYG` = 14 karat, yellow gold). Both the import and the export go through
 // this module so a file exported here re-imports without loss.
 
@@ -39,6 +40,8 @@ export interface ImportRow {
   title: string
   category: string
   subtype?: string
+  /** The suite the piece belongs to, as the COLLECTION column spells it. */
+  collection?: string
   material: string
   color: string
   price?: string
@@ -81,7 +84,8 @@ const HEADER_ALIASES: Record<string, string[]> = {
   title: ['title'],
   category: ['type', 'category'],
   subtype: ['subtype'],
-  collection: ['collection', 'styletags'],
+  collection: ['collection'],
+  styleTags: ['styletags'],
   qty: ['qty', 'quantity'],
   grossWeight: ['grosswt', 'grossweight', 'gwt'],
   ktCol: ['ktcol', 'kt', 'ktcolour', 'ktcolor', 'metal'],
@@ -323,7 +327,7 @@ export function gridToImportRows(grid: unknown[][]): { rows: ImportRow[]; header
     if (!category) missing.push('Type')
     if (!material || !color) missing.push('Kt/Col')
 
-    const collection = cell(row, index.collection)
+    const styleTags = cell(row, index.styleTags)
     const stoneTags = cell(row, index.stoneTags)
 
     current = {
@@ -331,6 +335,7 @@ export function gridToImportRows(grid: unknown[][]): { rows: ImportRow[]; header
       title,
       category,
       subtype: index.subtype === undefined ? undefined : cell(row, index.subtype),
+      collection: index.collection === undefined ? undefined : cell(row, index.collection),
       material,
       color,
       price: index.price === undefined ? undefined : cell(row, index.price),
@@ -345,7 +350,7 @@ export function gridToImportRows(grid: unknown[][]): { rows: ImportRow[]; header
       metalPurity,
       centerStoneSize: index.centerStoneSize === undefined ? undefined : cell(row, index.centerStoneSize),
       stoneLines,
-      styleTags: index.collection === undefined ? undefined : splitList(collection),
+      styleTags: index.styleTags === undefined ? undefined : splitList(styleTags),
       stoneTags: index.stoneTags === undefined ? undefined : splitList(stoneTags),
       isNewArrival: index.isNewArrival === undefined ? undefined : cell(row, index.isNewArrival),
       isBestSeller: index.isBestSeller === undefined ? undefined : cell(row, index.isBestSeller),
@@ -370,7 +375,7 @@ export interface ExportPiece {
   styleNo?: string
   title: string
   category: string
-  styleTags?: string[] | string
+  collection?: string | null
   qty?: string | number | null
   grossWeight?: string
   metalPurity?: string
@@ -423,7 +428,7 @@ export function piecesToGrid(pieces: ExportPiece[]): Cell[][] {
         row[col('BAG NO')] = piece.bagNo || piece.slug
         row[col('Style No')] = piece.styleNo || piece.title
         row[col('Type')] = categoryToType(piece.category)
-        row[col('COLLECTION')] = Array.isArray(piece.styleTags) ? piece.styleTags.join('|') : String(piece.styleTags ?? '')
+        row[col('COLLECTION')] = String(piece.collection ?? '')
         row[col('Qty')] = qty
         row[col('Gross Wt')] = gross
         row[col('Kt/Col')] = formatKtCol(piece.metalPurity, piece.color)

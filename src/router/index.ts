@@ -38,6 +38,12 @@ const router = createRouter({
     { path: '/terms-conditions', name: 'terms', component: () => import('../views/TermsView.vue'), meta: { title: 'Terms & Conditions', description: 'The terms and conditions governing your use of the Osiyan website and services.' } },
     { path: '/privacy-policy', name: 'privacy-policy', component: () => import('../views/PrivacyPolicyView.vue'), meta: { title: 'Privacy Policy', description: 'How Osiyan collects, uses, discloses and safeguards your personal information.' } },
     { path: '/careers', redirect: '/about' },
+    // The live site's high-jewelry suite URLs; each opens that suite's collection page.
+    { path: '/jewel-garden', redirect: '/collections/jewel-garden' },
+    { path: '/jade-forest', redirect: '/collections/jade-forest' },
+    { path: '/osiyanic-blues', redirect: '/collections/osiyanic-blues' },
+    { path: '/fiery', redirect: '/collections/fiery' },
+    { path: '/hematita-zora', redirect: '/collections/hematita-zora' },
     { path: '/search', name: 'search', component: () => import('../views/SearchView.vue'), meta: { title: 'Search', noindex: true } },
     { path: '/chat', name: 'chat', component: () => import('../views/ChatView.vue'), meta: { title: 'Chat', noindex: true } },
     { path: '/internal', name: 'internal', component: () => import('../views/InternalView.vue') },

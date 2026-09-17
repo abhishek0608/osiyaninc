@@ -69,6 +69,11 @@ model Product {
   title                String
   category             String
   subtype              String?
+  // The merchandising collection a piece belongs to ("Jewel Garden", "Jade
+  // Forest", ...), as the packing list's COLLECTION column spells it. The
+  // high-jewelry suite pages list every piece whose collection matches their
+  // name, so this is a display name, not a slug.
+  collection           String?
   material             String
   color                String
   description          String?
@@ -103,6 +108,8 @@ model Product {
   priceBookMap         PriceBookItem[]
   wishlists            WishlistItem[]
   imageEmbeddings      ProductImageEmbedding[]
+
+  @@index([collection])
 }
 
 // One row per product photo, embedded as an IMAGE (Bedrock Titan multimodal,

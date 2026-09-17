@@ -1458,6 +1458,7 @@ function buildBulkProductData(row) {
     productAttributes: normalizeProductAttributes(row?.productAttributes),
   }
   if (has('subtype')) data.subtype = String(row.subtype || '').trim() || null
+  if (has('collection')) data.collection = String(row.collection || '').trim() || null
   if (has('description')) data.description = String(row.description || '').trim() || null
   if (has('isNewArrival')) data.isNewArrival = Boolean(row.isNewArrival)
   if (has('isBestSeller')) data.isBestSeller = Boolean(row.isBestSeller)
@@ -1573,6 +1574,7 @@ async function handleProductExport(res) {
       title: p.title,
       category: p.category,
       subtype: p.subtype || '',
+      collection: p.collection || '',
       material: p.material,
       color: p.color,
       price: price != null ? String(price) : '',
@@ -1856,6 +1858,7 @@ async function getProductPayload(slug) {
     title: product.title,
     category: product.category,
     subtype: product.subtype || '',
+    collection: product.collection || '',
     material: product.material,
     color: product.color,
     description: product.description || '',
@@ -2024,6 +2027,7 @@ async function handleProductPatch(res, currentSlug, body, userId) {
           title,
           category,
           subtype: String(body?.subtype || '').trim() || null,
+          collection: String(body?.collection || '').trim() || null,
           material,
           color,
           description: manualDescription || null,
@@ -2159,6 +2163,7 @@ async function handleProductPost(res, body, userId) {
           title,
           category,
           subtype: String(body?.subtype || '').trim() || null,
+          collection: String(body?.collection || '').trim() || null,
           material,
           color,
           description: manualDescription || null,

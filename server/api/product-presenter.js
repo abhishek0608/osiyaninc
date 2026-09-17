@@ -246,6 +246,7 @@ export function toApiProduct(dbProduct, preferredVariant = null) {
     title: dbProduct.title,
     category: dbProduct.category,
     subtype: dbProduct.subtype || inferSubtype(dbProduct) || undefined,
+    collection: dbProduct.collection || undefined,
     material: dbProduct.material,
     color: dbProduct.color || 'yellow',
     price,

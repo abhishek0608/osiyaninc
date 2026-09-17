@@ -231,6 +231,8 @@ export interface Product {
   title: string
   category: Category
   subtype?: ProductSubtype
+  /** Merchandising collection ("Jewel Garden"), as the packing list spells it. */
+  collection?: string
   material: Material
   color: Color
   price: string

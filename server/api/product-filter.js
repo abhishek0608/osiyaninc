@@ -65,6 +65,17 @@ function normalizeSubtype(value) {
     .replace(/\s+/g, '-')
 }
 
+// Collections are matched on the name as typed on the packing list ("Jewel
+// Garden"), ignoring case and spacing so `jewel-garden` and `JEWEL GARDEN` both
+// land on the same suite.
+export function normalizeCollection(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
 export function normalizeFilterCriteria(criteria = {}) {
   const categories = toSafeArray(criteria.categories).map(normalizeCategory)
   const materials = toSafeArray(criteria.materials).map(normalizeMaterial)
@@ -77,6 +88,7 @@ export function normalizeFilterCriteria(criteria = {}) {
     ),
   ]
   const subtypes = [...new Set(toSafeArray(criteria.subtypes).map(normalizeSubtype).filter(Boolean))]
+  const collections = [...new Set(toSafeArray(criteria.collections).map(normalizeCollection).filter(Boolean))]
   const range = criteria?.priceRange || {}
   const rawMin =
     criteria?.priceMin ?? criteria?.minPrice ?? (typeof range?.min === 'number' ? range.min : null)
@@ -85,7 +97,7 @@ export function normalizeFilterCriteria(criteria = {}) {
   const priceMin = typeof rawMin === 'number' && Number.isFinite(rawMin) ? rawMin : null
   const priceMax = typeof rawMax === 'number' && Number.isFinite(rawMax) ? rawMax : null
   const tab = typeof criteria.tab === 'string' ? criteria.tab : 'all'
-  return { categories, materials, colors, stoneTags, subtypes, priceMin, priceMax, tab }
+  return { categories, materials, colors, stoneTags, subtypes, collections, priceMin, priceMax, tab }
 }
 
 const STONE_KEYWORDS = ['diamond', 'kundan', 'polki', 'pearl', 'emerald', 'ruby', 'black-beads', 'stone']
@@ -108,7 +120,7 @@ function productStoneTagsLower(p) {
 }
 
 export function filterProductsByCriteria(products, criteria = {}) {
-  const { categories, materials, colors, stoneTags, subtypes, priceMin, priceMax, tab } =
+  const { categories, materials, colors, stoneTags, subtypes, collections, priceMin, priceMax, tab } =
     normalizeFilterCriteria(criteria)
 
   let list = Array.isArray(products) ? products : []
@@ -120,6 +132,7 @@ export function filterProductsByCriteria(products, criteria = {}) {
     const material = normalizeMaterial(p?.material)
     const color = String(p?.color || '').toLowerCase()
     const subtype = normalizeSubtype(p?.subtype)
+    const collection = normalizeCollection(p?.collection)
     const priceValue = parseProductPrice(p)
     const pStones = productStoneTagsLower(p)
 
@@ -127,11 +140,12 @@ export function filterProductsByCriteria(products, criteria = {}) {
     const materialMatch = !materials.length || materials.includes(material)
     const colorMatch = !colors.length || colors.includes(color)
     const subtypeMatch = !subtypes.length || subtypes.includes(subtype)
+    const collectionMatch = !collections.length || collections.includes(collection)
     const minMatch = priceMin == null || (!Number.isNaN(priceValue) && priceValue >= priceMin)
     const maxMatch = priceMax == null || (!Number.isNaN(priceValue) && priceValue <= priceMax)
     const stoneMatch =
       !stoneTags.length || stoneTags.every((tag) => pStones.includes(tag))
 
-    return categoryMatch && materialMatch && colorMatch && subtypeMatch && stoneMatch && minMatch && maxMatch
+    return categoryMatch && materialMatch && colorMatch && subtypeMatch && collectionMatch && stoneMatch && minMatch && maxMatch
   })
 }
