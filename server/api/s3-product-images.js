@@ -5,7 +5,13 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { folderMatchesKey, isImageFilename, looseFileFolder, productImageKeys } from './s3-images.js'
+import {
+  folderMatchesKey,
+  invalidateProductFolderCache,
+  isImageFilename,
+  looseFileFolder,
+  productImageKeys,
+} from './s3-images.js'
 
 // Write side of the S3 product-image store. s3-images.js only LISTS the
 // externally-managed folders; this module lets the internal admin create and

@@ -239,9 +239,11 @@ export async function createPresignedCertificateUpload({ product, slug, contentT
     Bucket: BUCKET,
     Key: key,
     ContentType: contentType,
-    // Inline so "View certificate" opens the report in the browser rather than
-    // pushing a download; keys are unique per upload, so cache hard.
-    ContentDisposition: 'inline',
+    // Only headers the browser also sends may be signed: a signed header the
+    // uploader omits makes S3 reject the PUT with SignatureDoesNotMatch. The
+    // client sends Content-Type and nothing else, so Content-Disposition is left
+    // off — a PDF or image served with its real Content-Type already opens in
+    // the browser rather than downloading.
     CacheControl: 'public, max-age=31536000, immutable',
   })
 
