@@ -228,18 +228,6 @@ function customizationEntries(item: CartItem) {
                     </button>
                   </section>
                 </section>
-
-                <!-- Price breakup tooltip -->
-                <span v-if="isLoggedIn && !isItemCustomized(item)" class="ect-relative ect-inline-block ect-group/tip ect-mt-2 ect-self-start">
-                  <span class="ect-font-body ect-text-[11px] ect-text-gold-600 ect-cursor-default ect-border-b ect-border-dashed ect-border-gold-400/60">View price breakup</span>
-                  <span class="ect-absolute ect-left-0 ect-bottom-full ect-mb-2 ect-w-56 ect-bg-white ect-rounded-xl ect-shadow-xl ect-shadow-charcoal/10 ect-ring-1 ect-ring-charcoal/[0.06] ect-p-3 ect-opacity-0 ect-invisible group-hover/tip:ect-opacity-100 group-hover/tip:ect-visible ect-transition-all ect-duration-200 ect-z-10">
-                    <span class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-widest ect-text-charcoal/40 ect-block ect-mb-2">Price Breakup</span>
-                    <span class="ect-flex ect-justify-between ect-py-1 ect-border-b ect-border-charcoal/[0.04]"><span class="ect-font-body ect-text-xs ect-text-charcoal/60">Gold ({{ item.product.breakup.goldWeight }})</span><span class="ect-font-body ect-text-xs ect-text-charcoal">{{ item.product.breakup.goldValue }}</span></span>
-                    <span class="ect-flex ect-justify-between ect-py-1 ect-border-b ect-border-charcoal/[0.04]"><span class="ect-font-body ect-text-xs ect-text-charcoal/60">Stone ({{ item.product.breakup.stoneWeight }})</span><span class="ect-font-body ect-text-xs ect-text-charcoal">{{ item.product.breakup.stoneValue }}</span></span>
-                    <span class="ect-flex ect-justify-between ect-py-1 ect-border-b ect-border-charcoal/[0.04]"><span class="ect-font-body ect-text-xs ect-text-charcoal/60">Making &amp; Labour</span><span class="ect-font-body ect-text-xs ect-text-charcoal">{{ item.product.breakup.labour }}</span></span>
-                    <span class="ect-flex ect-justify-between ect-pt-1.5"><span class="ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal">Total</span><span class="ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal">{{ item.product.breakup.total }}</span></span>
-                  </span>
-                </span>
               </section>
             </li>
 
