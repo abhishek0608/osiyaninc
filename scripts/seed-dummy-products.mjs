@@ -68,7 +68,11 @@ const skipS3 = process.argv.includes('--skip-s3')
 const remove = process.argv.includes('--remove')
 const onlyCategories = flags('category').map((c) => c.toLowerCase())
 
-const REGION = process.env.AWS_REGION || 'us-east-1'
+// The bucket's region, from a dedicated variable. Never read AWS_REGION here:
+// Vercel's Lambda runtime sets it to the *function's* region (ap-south-1 for
+// Mumbai), and an S3 client pointed at the wrong region gets a PermanentRedirect
+// ("must be addressed using the specified endpoint") instead of a listing.
+const REGION = process.env.AWS_S3_REGION || 'us-east-1'
 const BUCKET = flag('bucket') || process.env.AWS_S3_BUCKET || 'osiyaninc'
 const BASE_PREFIX = (flag('prefix') || process.env.AWS_S3_BASE_PREFIX || 'Osiyan-product-images').replace(
   /\/+$/,

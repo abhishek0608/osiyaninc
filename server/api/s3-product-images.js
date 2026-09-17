@@ -20,7 +20,11 @@ import { folderMatchesKey, isImageFilename, productImageKeys } from './s3-images
 // disappears with its last — so creating the folder for a new product is simply
 // the first upload landing under that prefix.
 
-const REGION = process.env.AWS_REGION || 'us-east-1'
+// The bucket's region, from a dedicated variable. Never read AWS_REGION here:
+// Vercel's Lambda runtime sets it to the *function's* region (ap-south-1 for
+// Mumbai), and an S3 client pointed at the wrong region gets a PermanentRedirect
+// ("must be addressed using the specified endpoint") instead of a listing.
+const REGION = process.env.AWS_S3_REGION || 'us-east-1'
 const BUCKET = process.env.AWS_S3_BUCKET || ''
 const BASE_PREFIX = (process.env.AWS_S3_BASE_PREFIX || 'Osiyan-product-images').replace(/\/+$/, '')
 

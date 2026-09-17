@@ -10,7 +10,11 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 // CORS already allows browser PUT, so an uploaded object is immediately
 // readable at its public URL with no extra configuration.
 
-const REGION = process.env.AWS_REGION || 'us-east-1'
+// The bucket's region, from a dedicated variable. Never read AWS_REGION here:
+// Vercel's Lambda runtime sets it to the *function's* region (ap-south-1 for
+// Mumbai), and an S3 client pointed at the wrong region gets a PermanentRedirect
+// ("must be addressed using the specified endpoint") instead of a listing.
+const REGION = process.env.AWS_S3_REGION || 'us-east-1'
 const BUCKET = process.env.AWS_S3_BUCKET || ''
 // Top-level folder for homepage banner uploads. Trailing slash optional.
 const HOMEPAGE_PREFIX = (process.env.AWS_S3_HOMEPAGE_PREFIX || 'osiyan-homepage-banners').replace(
