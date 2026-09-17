@@ -444,7 +444,7 @@ function onUserCreated() {
 // payload so the table is no longer capped at the first 50 records) ---
 const products = ref<InternalProduct[]>([])
 const productSearch = ref('')
-const productStatusFilter = ref<'all' | 'active' | 'hidden'>('all')
+const productStatusFilter = ref<'all' | 'active' | 'hidden'>('active')
 const productStatusOptions = [
   { value: 'all', label: 'All products' },
   { value: 'active', label: 'Active products' },
