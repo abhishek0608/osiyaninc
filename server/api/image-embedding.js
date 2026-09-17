@@ -22,7 +22,7 @@ import { join, resolve } from 'path'
 import sharp from 'sharp'
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime'
 import { prisma } from './db.js'
-import { isS3Configured, listProductImagesBySlug } from './s3-images.js'
+import { isS3Configured, listProductImages } from './s3-images.js'
 
 const IMAGE_EMBED_MODEL = process.env.BEDROCK_IMAGE_EMBED_MODEL || 'amazon.titan-embed-image-v1'
 const JINA_EMBED_MODEL = process.env.JINA_IMAGE_EMBED_MODEL || 'jina-clip-v2'
@@ -259,14 +259,14 @@ export function diversifyImageSources(sources) {
 
 /**
  * Image sources for a product: DB ProductImage rows first, else the S3
- * folder matching the slug (same resolution order as the AI-description flow,
- * so S3-only products are covered too).
+ * folder matching its Style No (or legacy slug) — the same resolution order as
+ * the AI-description flow, so S3-only products are covered too.
  */
 async function listProductImageSources(product) {
   let sources = (product.images || []).map((image) => image.url).filter(Boolean)
   if (!sources.length && isS3Configured()) {
     try {
-      const s3 = await listProductImagesBySlug(product.slug)
+      const s3 = await listProductImages(product)
       sources = s3.map((img) => img.url).filter(Boolean)
     } catch (err) {
       console.error('[image-embedding] s3 list failed for', product.slug, '-', err?.message || err)
@@ -286,6 +286,8 @@ export async function updateProductImageEmbeddings(productId) {
     select: {
       id: true,
       slug: true,
+      title: true,
+      productAttributes: true, // styleNo names the S3 folder
       images: {
         where: { active: true },
         orderBy: { sortOrder: 'asc' },

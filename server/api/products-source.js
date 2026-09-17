@@ -2,8 +2,8 @@ import { prisma } from './db.js'
 import { toApiProduct } from './product-presenter.js'
 import {
   isS3Configured,
-  listAllProductImagesBySlug,
-  folderMatchesSlug,
+  listAllProductImagesByFolder,
+  folderMatchesProduct,
   isThumbnailImage,
 } from './s3-images.js'
 
@@ -27,7 +27,7 @@ export function invalidateCatalogProductsCache() {
   s3FetchPromise = null
 }
 
-// Cached, deduped access to the S3 slug->images map with stale-while-revalidate:
+// Cached, deduped access to the S3 folder->images map with stale-while-revalidate:
 // a fresh map is returned immediately; a stale one is returned while a single
 // background refresh runs; only a cold cache awaits the sweep.
 async function getS3ImageMap() {
@@ -35,7 +35,7 @@ async function getS3ImageMap() {
   if (s3ImageCache.map && s3ImageCache.expiresAt > now) return s3ImageCache.map
 
   if (!s3FetchPromise) {
-    s3FetchPromise = listAllProductImagesBySlug()
+    s3FetchPromise = listAllProductImagesByFolder()
       .then((map) => {
         s3ImageCache = { map, expiresAt: Date.now() + S3_IMAGE_CACHE_TTL_MS }
         return map
@@ -68,7 +68,7 @@ async function fetchCatalogProductsFromDb() {
       color: true,
       description: true,
       aiDescription: true,
-      productAttributes: true,
+      productAttributes: true, // carries styleNo, the S3 folder key
       certLab: true,
       certNumber: true,
       certFileUrl: true,
@@ -126,9 +126,9 @@ async function fetchCatalogProductsFromDb() {
 
 // S3 is the source of truth for product photos, so a product's S3 folder
 // *replaces* its ProductImage rows rather than being appended to them. The
-// folder is named after the slug, optionally uppercased and/or with a size
-// suffix (slug "pd0448" -> "PD0448_8"), resolved via the shared
-// case-insensitive matcher.
+// folder is named after the Style No (style "RG7973" -> "RG7973" or
+// "RG7973_9.5X7"), with the slug as a legacy fallback, resolved via the shared
+// case-insensitive matcher in s3-images.js.
 //
 // Products with no S3 folder keep their DB rows. Every active product is
 // S3-backed, so in practice that fallback only covers retired products (and
@@ -145,7 +145,7 @@ export async function applyS3Images(products) {
     if (!imagesByFolder || !imagesByFolder.size) return products
     const folderEntries = [...imagesByFolder.entries()]
     for (const product of products) {
-      const match = folderEntries.find(([folder]) => folderMatchesSlug(folder, product.slug))
+      const match = folderEntries.find(([folder]) => folderMatchesProduct(folder, product))
       const s3Images = match?.[1]
       if (!s3Images || !s3Images.length) continue
       const images = s3Images.slice()

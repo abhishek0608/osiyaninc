@@ -5,7 +5,7 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { folderMatchesSlug, isImageFilename } from './s3-images.js'
+import { folderMatchesKey, isImageFilename, productImageKeys } from './s3-images.js'
 
 // Write side of the S3 product-image store. s3-images.js only LISTS the
 // externally-managed folders; this module lets the internal admin create and
@@ -13,11 +13,12 @@ import { folderMatchesSlug, isImageFilename } from './s3-images.js'
 // product photos (the database no longer holds uploaded image bytes).
 //
 // Bucket layout is the one s3-images.js already reads:
-//   <BASE_PREFIX>/<folder>/<slug>_<n>.<ext>
-// where <folder> is the Product.slug, optionally uppercased and/or carrying an
-// "_<size>" suffix. S3 has no real directories — a folder springs into existence
-// with its first object and disappears with its last — so creating the folder
-// for a new product is simply the first upload landing under that prefix.
+//   <BASE_PREFIX>/<folder>/<styleNo>_<n>.<ext>
+// where <folder> is the piece's Style No (legacy folders: the Product.slug),
+// optionally uppercased and/or carrying an "_<size>" suffix. S3 has no real
+// directories — a folder springs into existence with its first object and
+// disappears with its last — so creating the folder for a new product is simply
+// the first upload landing under that prefix.
 
 const REGION = process.env.AWS_REGION || 'us-east-1'
 const BUCKET = process.env.AWS_S3_BUCKET || ''
@@ -61,12 +62,13 @@ function publicUrlForKey(key) {
   return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${encodeURI(key)}`
 }
 
-// Pick the folder new uploads for `slug` should land in. An existing folder wins
-// (it may be uppercased or carry a size suffix, e.g. slug "pd0448" -> "PD0448_8")
-// so we never split one product's photos across two prefixes. When no folder
-// exists yet — a brand-new product — the slug itself becomes the folder name,
-// and the first upload brings it into being.
-async function resolveUploadFolder(client, slug) {
+// Pick the folder new uploads for a product should land in. An existing folder
+// under any of the product's keys wins (it may be uppercased or carry a size
+// suffix, e.g. style "RG7973" -> "RG7973_9.5X7") so we never split one
+// product's photos across two prefixes. When no folder exists yet — a brand-new
+// product — the primary key (its Style No, else its slug) becomes the folder
+// name, and the first upload brings it into being.
+async function resolveUploadFolder(client, keys) {
   const prefix = `${BASE_PREFIX}/`
   let token
   do {
@@ -79,13 +81,17 @@ async function resolveUploadFolder(client, slug) {
         MaxKeys: 1000,
       }),
     )
-    for (const cp of res.CommonPrefixes || []) {
-      const folder = cp.Prefix.slice(prefix.length).replace(/\/$/, '')
-      if (folder && folderMatchesSlug(folder, slug)) return folder
+    // Keys are in priority order, so an exact Style No folder beats a legacy
+    // slug folder even when both exist.
+    for (const key of keys) {
+      for (const cp of res.CommonPrefixes || []) {
+        const folder = cp.Prefix.slice(prefix.length).replace(/\/$/, '')
+        if (folder && folderMatchesKey(folder, key)) return folder
+      }
     }
     token = res.IsTruncated ? res.NextContinuationToken : undefined
   } while (token)
-  return slug
+  return keys[0]
 }
 
 // Highest "_<n>" suffix already used in a folder, so a batch of new uploads can
@@ -117,14 +123,15 @@ async function highestImageIndex(client, folder) {
 
 /**
  * Presigned PUT URLs for a batch of product images, all landing in the product's
- * S3 folder. Filenames follow the "<slug>_<n>.<ext>" convention s3-images.js
+ * S3 folder. Filenames follow the "<styleNo>_<n>.<ext>" convention s3-images.js
  * parses for display order, numbered on from whatever the folder already holds.
- * @param {{ slug: string, files: Array<{ contentType: string }> }} params
+ * @param {{ product: string|{ slug, title, productAttributes }, files: Array<{ contentType: string }> }} params
+ *   `product` is the Product row (or a bare slug for legacy callers).
  * @returns {Promise<Array<{ uploadUrl, publicUrl, key, contentType }>>}
  */
-export async function createPresignedProductImageUploads({ slug, files } = {}) {
-  const clean = String(slug || '').trim()
-  if (!clean) {
+export async function createPresignedProductImageUploads({ product, slug, files } = {}) {
+  const keys = productImageKeys(product ?? slug)
+  if (!keys.length) {
     const err = new Error('Product slug is required to upload images.')
     err.code = 'MISSING_SLUG'
     throw err
@@ -149,15 +156,18 @@ export async function createPresignedProductImageUploads({ slug, files } = {}) {
   })
 
   const client = getClient()
-  const folder = await resolveUploadFolder(client, clean)
+  const folder = await resolveUploadFolder(client, keys)
   let next = await highestImageIndex(client, folder)
 
+  // Files are named after the primary key (the Style No) so the object name
+  // still identifies the piece when the folder is a legacy slug folder.
+  const fileBase = keys[0]
   const uploads = []
   for (let i = 0; i < list.length; i++) {
     next += 1
     const ext = extensions[i]
     const contentType = String(list[i].contentType).toLowerCase()
-    const key = `${BASE_PREFIX}/${folder}/${clean}_${next}.${ext}`
+    const key = `${BASE_PREFIX}/${folder}/${fileBase}_${next}.${ext}`
     const uploadUrl = await getSignedUrl(
       client,
       new PutObjectCommand({
@@ -174,20 +184,22 @@ export async function createPresignedProductImageUploads({ slug, files } = {}) {
 }
 
 /**
- * Delete one image object. The key must sit inside a folder belonging to `slug`
- * — the caller supplies it from a listing, but it arrives over HTTP, so it is
- * re-checked here to keep the endpoint from deleting arbitrary bucket objects.
- * @param {{ slug: string, key: string }} params
+ * Delete one image object. The key must sit inside a folder belonging to the
+ * product — the caller supplies it from a listing, but it arrives over HTTP, so
+ * it is re-checked here to keep the endpoint from deleting arbitrary bucket
+ * objects.
+ * @param {{ product: string|object, key: string }} params - `product` is the
+ *   Product row (or a bare slug for legacy callers).
  */
-export async function deleteProductImage({ slug, key } = {}) {
-  const clean = String(slug || '').trim()
+export async function deleteProductImage({ product, slug, key } = {}) {
+  const keys = productImageKeys(product ?? slug)
   const objectKey = String(key || '').trim()
-  if (!clean || !objectKey) {
+  if (!keys.length || !objectKey) {
     const err = new Error('Product slug and image key are required.')
     err.code = 'MISSING_KEY'
     throw err
   }
-  if (!isKeyInProductFolder(objectKey, clean)) {
+  if (!isKeyInProductFolder(objectKey, product ?? slug)) {
     const err = new Error('That image does not belong to this product.')
     err.code = 'KEY_MISMATCH'
     throw err
@@ -198,8 +210,9 @@ export async function deleteProductImage({ slug, key } = {}) {
 }
 
 // True when `key` is "<BASE_PREFIX>/<folder>/<file>" and <folder> belongs to
-// `slug`. Rejects nested paths and traversal attempts along the way.
-export function isKeyInProductFolder(key, slug) {
+// the product under any of its keys (see productImageKeys). Rejects nested
+// paths and traversal attempts along the way.
+export function isKeyInProductFolder(key, product) {
   const prefix = `${BASE_PREFIX}/`
   if (!key.startsWith(prefix) || key.includes('..')) return false
   const rest = key.slice(prefix.length)
@@ -211,5 +224,5 @@ export function isKeyInProductFolder(key, slug) {
   // Same predicate the listers use, so every photo the workspace shows for this
   // product can also be deleted — extensionless uploads included.
   if (!isImageFilename(filename)) return false
-  return folderMatchesSlug(folder, slug)
+  return productImageKeys(product).some((k) => folderMatchesKey(folder, k))
 }

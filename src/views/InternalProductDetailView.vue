@@ -85,8 +85,9 @@ const formSnapshot = ref<ProductForm | null>(null)
 const imageUploadInput = ref<HTMLInputElement | null>(null)
 const imageUploadProcessing = ref(false)
 const imageDeletingKey = ref('')
-// The product's gallery, read from its S3 folder (folder name === slug). S3 is
-// the only source of product photos: uploads go straight into the folder and
+// The product's gallery, read from its S3 folder (named after the Style No,
+// or the slug for older folders). S3 is the only source of product photos:
+// uploads go straight into the folder and
 // removals delete the object, so this list is always what the storefront shows.
 const productImages = ref<ProductImage[]>([])
 // The piece's lab report, read back from the saved product row.
@@ -1352,8 +1353,8 @@ watch(
               v-if="!canManageImages"
               class="ect-rounded-lg ect-border ect-border-dashed ect-border-charcoal/15 ect-p-6 ect-text-center ect-font-body ect-text-sm ect-text-charcoal/45"
             >
-              Save the product first. Its S3 folder is named after the slug, so images can only be
-              uploaded once the slug is final.
+              Save the product first. Its S3 folder is named after the Style No, so images can only
+              be uploaded once the product exists.
             </p>
 
             <div v-else-if="productImages.length" class="ect-grid ect-grid-cols-2 sm:ect-grid-cols-3 lg:ect-grid-cols-4 ect-gap-3">

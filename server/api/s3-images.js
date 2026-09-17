@@ -2,13 +2,16 @@ import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3'
 
 // S3-backed product image source.
 //
-// Bucket layout (one folder per product). The folder name is the Product.slug,
-// optionally followed by an "_<suffix>" that encodes a size/dimension:
-//   <BASE_PREFIX>/<slug>[_<suffix>]/<SKU>_<n>.<ext>
-// e.g. Kiana-product-images/ruby-ring/500067FYAAA12_1.webp
-//      Kiana-product-images/pd0448_6/pd0448_1.webp      (slug "pd0448", size 6)
-//      Kiana-product-images/pd0448_6*7/pd0448_1.webp    (slug "pd0448", size 6*7)
-// Slugs never contain "_", so the first "_" cleanly separates slug from suffix.
+// Bucket layout (one folder per product). The folder is named after the piece's
+// Style No — the code stamped on the piece and printed on the packing list
+// (productAttributes.styleNo, mirrored in Product.title) — optionally followed
+// by an "_<suffix>" that encodes a size/dimension:
+//   <BASE_PREFIX>/<styleNo>[_<suffix>]/<file>
+// e.g. Osiyan-product-images/rg0478/RG0478-pink.jpg      (style "RG0478")
+//      Osiyan-product-images/RG7973_9.5X7/RG7973_1.webp  (style "RG7973", size 9.5x7)
+// Older folders are named after the Product.slug (the slugified bag number, or
+// a hand-written slug), so the slug is still tried as a fallback key. See
+// productImageKeys for the full resolution order.
 //
 // Within a folder, the filename also encodes display order — a "_thumbnail" file
 // leads (it is what product cards show), followed by the rose, white and yellow
@@ -173,22 +176,77 @@ export function compareProductImages(a, b) {
   return a.key.localeCompare(b.key)
 }
 
-// A folder belongs to `slug` when its name equals the slug (older uploads) or
-// starts with "slug_" — the "_" separates the slug from a size/dimension
-// suffix, e.g. slug "pd0448" -> folder "PD0448_8" or "PD0220_9X7". Matching is
-// case-insensitive: DB slugs are lowercase but S3 folders are usually
-// uppercased. The "_" guard stops sibling slug "pd0448" matching "pd04480".
-export function folderMatchesSlug(folder, slug) {
+// A folder belongs to `key` when its name equals the key (older uploads) or
+// starts with "key_" — the "_" separates the key from a size/dimension suffix,
+// e.g. style "RG7973" -> folder "RG7973_9.5X7". Matching is case-insensitive:
+// keys are compared lowercased but S3 folders are usually uppercased. The "_"
+// guard stops sibling style "rg0478" matching "rg04780".
+export function folderMatchesKey(folder, key) {
   const f = String(folder).toLowerCase()
-  const s = String(slug).toLowerCase()
-  return f === s || f.startsWith(`${s}_`)
+  const k = String(key || '').trim().toLowerCase()
+  if (!k) return false
+  return f === k || f.startsWith(`${k}_`)
+}
+
+// Backwards-compatible name: a slug is just one of the keys a product can be
+// filed under.
+export const folderMatchesSlug = folderMatchesKey
+
+/**
+ * Ordered, de-duplicated list of folder names a product's photos may be filed
+ * under. The photo pipeline names folders after the Style No, so that leads:
+ *   1. the Style No exactly as recorded ("RG7973_9.5X7"),
+ *   2. the Style No without its size suffix ("RG7973"), so a folder that was
+ *      created for the bare style still serves every size of it,
+ *   3. the slug, for folders created before style-number naming (dummy seeds,
+ *      hand-made products) and for anything imported without a Style No.
+ * Accepts either a product-shaped object ({ slug, title, productAttributes })
+ * or a bare string, which is treated as a slug.
+ *
+ * @param {string|{ slug?: string, title?: string, productAttributes?: { styleNo?: string }|null }} product
+ * @returns {string[]} keys, original casing preserved, lowercase-unique.
+ */
+export function productImageKeys(product) {
+  const keys = []
+  const seen = new Set()
+  const push = (value) => {
+    const clean = String(value || '').trim()
+    if (!clean) return
+    const lower = clean.toLowerCase()
+    if (seen.has(lower)) return
+    seen.add(lower)
+    keys.push(clean)
+  }
+  if (typeof product === 'string') {
+    push(product)
+    return keys
+  }
+  if (!product || typeof product !== 'object') return keys
+
+  const styleNo = String(product.productAttributes?.styleNo || '').trim() || String(product.title || '').trim()
+  push(styleNo)
+  // "RG7973_9.5X7" -> "RG7973". A title like "Amrita Halo Ring" has no "_" and
+  // is left alone.
+  const underscore = styleNo.indexOf('_')
+  if (underscore > 0) push(styleNo.slice(0, underscore))
+  push(product.slug)
+  return keys
+}
+
+/**
+ * True when an S3 folder holds photos for `product` under any of its keys.
+ * @param {string} folder - folder name under the base prefix.
+ * @param {string|object} product - see productImageKeys.
+ */
+export function folderMatchesProduct(folder, product) {
+  return productImageKeys(product).some((key) => folderMatchesKey(folder, key))
 }
 
 // Enumerate the actual (case-preserved) folder names under the base prefix that
-// belong to `slug`. S3 prefixes are case-sensitive, so we can't narrow the
-// listing by the lowercase slug; instead we list folder names (one per product
+// belong to any of `keys`. S3 prefixes are case-sensitive, so we can't narrow
+// the listing by a lowercase key; instead we list folder names (one per product
 // via Delimiter, so this is cheap) and match them case-insensitively.
-async function resolveProductFolders(client, slug) {
+async function resolveProductFolders(client, keys) {
   const prefix = `${BASE_PREFIX}/`
   const folders = []
   let token
@@ -204,7 +262,7 @@ async function resolveProductFolders(client, slug) {
     )
     for (const cp of res.CommonPrefixes || []) {
       const folder = cp.Prefix.slice(prefix.length).replace(/\/$/, '')
-      if (folder && folderMatchesSlug(folder, slug)) folders.push(folder)
+      if (folder && keys.some((key) => folderMatchesKey(folder, key))) folders.push(folder)
     }
     token = res.IsTruncated ? res.NextContinuationToken : undefined
   } while (token)
@@ -212,17 +270,18 @@ async function resolveProductFolders(client, slug) {
 }
 
 /**
- * List all images for a product, resolving the S3 folder by slug. The folder
- * may be uppercased and/or carry a size suffix (slug "pd0448" -> "PD0448_8").
- * @param {string} slug - product slug.
+ * List all images for a product, resolving its S3 folder by Style No (with the
+ * slug as a fallback — see productImageKeys). The folder may be uppercased
+ * and/or carry a size suffix (style "RG7973" -> "RG7973_9.5X7").
+ * @param {string|{ slug?: string, title?: string, productAttributes?: object|null }} product
  * @returns {Promise<Array<{ url, key, sku, sortOrder, size }>>} ordered images.
  */
-export async function listProductImagesBySlug(slug) {
-  const clean = String(slug || '').trim()
-  if (!clean) return []
+export async function listProductImages(product) {
+  const keys = productImageKeys(product)
+  if (!keys.length) return []
 
   const client = getClient()
-  const folders = await resolveProductFolders(client, clean)
+  const folders = await resolveProductFolders(client, keys)
   if (!folders.length) return []
 
   // Gather objects from every matching folder (normally just one), each listed
@@ -272,17 +331,27 @@ export async function listProductImagesBySlug(slug) {
 }
 
 /**
- * Sweep the entire base prefix once and return a map of slug -> ordered image URLs.
- * Uses a handful of paginated ListObjectsV2 calls total (1000 keys each),
- * independent of how many product folders exist. Intended to be called from the
- * cached catalog build, not per-request.
+ * Slug-only lookup, kept for scripts that predate style-number folders. Prefer
+ * listProductImages with the product row so the Style No is tried first.
+ * @param {string} slug
+ */
+export async function listProductImagesBySlug(slug) {
+  return listProductImages({ slug })
+}
+
+/**
+ * Sweep the entire base prefix once and return a map of folder -> ordered image URLs.
+ * Folder names are Style Nos (or legacy slugs); match them to products with
+ * folderMatchesProduct. Uses a handful of paginated ListObjectsV2 calls total
+ * (1000 keys each), independent of how many product folders exist. Intended to
+ * be called from the cached catalog build, not per-request.
  * @returns {Promise<Map<string, string[]>>}
  */
-export async function listAllProductImagesBySlug() {
+export async function listAllProductImagesByFolder() {
   const client = getClient()
   const prefix = `${BASE_PREFIX}/`
 
-  // slug -> array of { url, order, key }
+  // folder -> array of { url, order, key }
   const bySlug = new Map()
   let token
   do {
@@ -295,7 +364,7 @@ export async function listAllProductImagesBySlug() {
       }),
     )
     for (const obj of res.Contents || []) {
-      const rest = obj.Key.slice(prefix.length) // "<slug>/<file>"
+      const rest = obj.Key.slice(prefix.length) // "<folder>/<file>"
       const slash = rest.indexOf('/')
       if (slash <= 0) continue // skip base-level files like .DS_Store
       const slug = rest.slice(0, slash)
@@ -316,9 +385,12 @@ export async function listAllProductImagesBySlug() {
   return out
 }
 
+// Backwards-compatible name from when every folder was a slug.
+export const listAllProductImagesBySlug = listAllProductImagesByFolder
+
 /**
  * List every product folder under the base prefix.
- * @returns {Promise<string[]>} slugs (folder names).
+ * @returns {Promise<string[]>} folder names (Style Nos, or legacy slugs).
  */
 export async function listProductFolders() {
   const client = getClient()

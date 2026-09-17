@@ -12,7 +12,7 @@ import {
   updateProductImageEmbeddingsSafe,
 } from '../server/api/image-embedding.js'
 import { pickVariantForPricing } from '../server/api/product-presenter.js'
-import { isS3Configured, listProductImagesBySlug } from '../server/api/s3-images.js'
+import { isS3Configured, listProductImages } from '../server/api/s3-images.js'
 import { getAllHomepageSlides } from '../server/api/homepage-slides-source.js'
 import { getSiteConfig, saveSiteConfig } from '../server/api/site-config-source.js'
 import {
@@ -1629,13 +1629,14 @@ async function handleBulk(res, body) {
 }
 
 // Resolve the image URLs to feed the AI for a product. Prefers active DB images;
-// falls back to the product's S3 folder (folder name === slug) so bulk-imported
-// products — which keep no DB images — still get described and vectorized.
+// falls back to the product's S3 folder (named after its Style No, or legacy
+// slug) so bulk-imported products — which keep no DB images — still get
+// described and vectorized.
 async function resolveAiImagesForProduct(product) {
   let urls = (product.images || []).map((image) => image.url).filter(Boolean)
   if (!urls.length && isS3Configured()) {
     try {
-      const s3 = await listProductImagesBySlug(product.slug)
+      const s3 = await listProductImages(product)
       urls = s3.map((img) => img.url).filter(Boolean)
     } catch (error) {
       console.error('[internal-product] bulk-ai s3 list failed for', product.slug, '-', error?.message || error)
@@ -1668,6 +1669,7 @@ async function handleBulkAi(res, body) {
       slug: true,
       title: true,
       category: true,
+      productAttributes: true, // styleNo names the S3 folder
       images: { where: { active: true }, orderBy: { sortOrder: 'asc' }, select: { url: true } },
     },
   })
@@ -1831,7 +1833,8 @@ async function getProductPayload(slug) {
 
   const actorMap = await resolveActorMap([product.createdById, product.updatedById])
 
-  // The product's gallery, straight from its S3 folder (folder name === slug).
+  // The product's gallery, straight from its S3 folder (named after the Style
+  // No, or the slug for legacy folders).
   // S3 is the source of truth for product photos, so this is what the internal
   // workspace shows and edits; `key` identifies the object to delete. The
   // `images` rows below are legacy base64 uploads, kept only because the
@@ -1839,7 +1842,7 @@ async function getProductPayload(slug) {
   let s3Images = []
   if (isS3Configured()) {
     try {
-      const found = await listProductImagesBySlug(product.slug)
+      const found = await listProductImages(product)
       s3Images = found.map((img, index) => ({
         url: img.url,
         key: img.key,
@@ -1919,7 +1922,7 @@ async function handleGenerateAiDescription(res, currentSlug) {
   let imageUrls = []
   if (isS3Configured()) {
     try {
-      const s3 = await listProductImagesBySlug(existing.slug)
+      const s3 = await listProductImages(existing)
       imageUrls = s3.map((img) => img.url).filter(Boolean)
     } catch (error) {
       console.error('[internal-product] s3 image list failed for', existing.slug, '-', error?.message || error)
@@ -2558,7 +2561,12 @@ async function handleProductImageResource(req, res, body) {
   if (!slug) return res.status(400).json({ message: 'slug is required.' })
 
   // Guard against typo'd or stale slugs writing stray folders into the bucket.
-  const product = await prisma.product.findUnique({ where: { slug }, select: { id: true } })
+  // title + productAttributes give the S3 layer the Style No that names the
+  // product's folder.
+  const product = await prisma.product.findUnique({
+    where: { slug },
+    select: { id: true, slug: true, title: true, productAttributes: true },
+  })
   if (!product) return res.status(404).json({ message: 'Product not found.' })
 
   try {
@@ -2566,12 +2574,12 @@ async function handleProductImageResource(req, res, body) {
       const files = Array.isArray(body?.files)
         ? body.files.map((file) => ({ contentType: String(file?.contentType || '') }))
         : []
-      const uploads = await createPresignedProductImageUploads({ slug, files })
+      const uploads = await createPresignedProductImageUploads({ product, files })
       return res.status(200).json({ uploads })
     }
 
     if (action === 'delete') {
-      await deleteProductImage({ slug, key: String(body?.key || '') })
+      await deleteProductImage({ product, key: String(body?.key || '') })
     } else if (action !== 'uploaded') {
       return res.status(400).json({ message: 'Unknown action.' })
     }

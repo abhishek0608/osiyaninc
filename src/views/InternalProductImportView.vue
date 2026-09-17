@@ -289,11 +289,12 @@ function statusClass(status: string) {
     <p class="ect-mt-1 ect-font-body ect-text-sm ect-text-charcoal/55 ect-max-w-2xl">
       Upload the packing list as an Excel or CSV file (.xlsx, .xls, .csv) to create or update many pieces
       at once. Each <strong>BAG NO</strong> becomes one product: the bag number is its web address
-      and its S3 image folder (<code>25/P/1406</code> → <code>25-p-1406</code>), <strong>Style No</strong>
-      is its name, <strong>Type</strong> its category, and <strong>Kt/Col</strong> its metal
+      (<code>25/P/1406</code> → <code>25-p-1406</code>), <strong>Style No</strong> is its name and
+      its S3 image folder (<code>RG6228</code> → <code>RG6228/</code>), <strong>Type</strong> its
+      category, and <strong>Kt/Col</strong> its metal
       (<code>14KTYG</code> = 14 karat yellow gold; <code>W</code> white, <code>P</code>/<code>R</code> rose).
       Rows with only stone columns filled continue the piece above them, and Total rows are ignored.
-      Images are not part of the file — they are pulled from each piece's S3 folder.
+      Images are not part of the file — they are pulled from the S3 folder named after each piece's Style No.
       Apple Numbers files aren't read directly — in Numbers, use File → Export To → Excel first.
     </p>
 
