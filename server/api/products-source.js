@@ -124,11 +124,13 @@ async function fetchCatalogProductsFromDb() {
   return applyS3Images(products)
 }
 
-// S3 is the source of truth for product photos, so a product's S3 folder
-// *replaces* its ProductImage rows rather than being appended to them. The
-// folder is named after the Style No (style "RG7973" -> "RG7973" or
-// "RG7973_9.5X7"), with the slug as a legacy fallback, resolved via the shared
-// case-insensitive matcher in s3-images.js.
+// S3 is the source of truth for product photos, so a product's S3 photos
+// *replace* its ProductImage rows rather than being appended to them. They are
+// found by Style No (style "RG7973" -> folder "RG7973" or "RG7973_9.5X7"), with
+// the slug as a legacy fallback, resolved via the shared case-insensitive
+// matcher in s3-images.js. A single-photo piece may be filed as a loose file
+// with no folder; the sweep indexes such a file under its own name, so it
+// matches the same way a folder does.
 //
 // Products with no S3 folder keep their DB rows. Every active product is
 // S3-backed, so in practice that fallback only covers retired products (and
@@ -145,10 +147,12 @@ export async function applyS3Images(products) {
     if (!imagesByFolder || !imagesByFolder.size) return products
     const folderEntries = [...imagesByFolder.entries()]
     for (const product of products) {
-      const match = folderEntries.find(([folder]) => folderMatchesProduct(folder, product))
-      const s3Images = match?.[1]
-      if (!s3Images || !s3Images.length) continue
-      const images = s3Images.slice()
+      // Every match counts, not just the first: a piece can have both a folder
+      // and a loose single-photo file, and both are its photos.
+      const images = folderEntries
+        .filter(([folder]) => folderMatchesProduct(folder, product))
+        .flatMap(([, urls]) => urls)
+      if (!images.length) continue
       // A "_thumbnail" file is the photo pipeline's explicit pick for the card,
       // so it takes position 0 regardless of where it sorts.
       const thumbnailAt = images.findIndex((url) => isThumbnailImage(url))

@@ -294,7 +294,8 @@ function statusClass(status: string) {
       category, and <strong>Kt/Col</strong> its metal
       (<code>14KTYG</code> = 14 karat yellow gold; <code>W</code> white, <code>P</code>/<code>R</code> rose).
       Rows with only stone columns filled continue the piece above them, and Total rows are ignored.
-      Images are not part of the file — they are pulled from the S3 folder named after each piece's Style No.
+      Images are not part of the file — they are pulled from S3 by each piece's Style No, from a
+      folder of that name or a single loose file named after it.
       Apple Numbers files aren't read directly — in Numbers, use File → Export To → Excel first.
     </p>
 
