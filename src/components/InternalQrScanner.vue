@@ -35,6 +35,40 @@ let lastCode = ''
 let lastCodeAt = 0
 const REPEAT_WINDOW_MS = 2500
 
+// Jewellery tags carry a QR code about 7 mm across with almost no quiet zone.
+// qr-scanner's default shrinks the centre of the frame to a 400 px canvas
+// before decoding, which leaves such a code at ~2 px per module — below what
+// the decoder can read. Decode the scan region at the camera's own resolution
+// instead; the region stays the centred square staff already see highlighted.
+function calculateScanRegion(videoEl: HTMLVideoElement): QrScanner.ScanRegion {
+  const size = Math.round((2 / 3) * Math.min(videoEl.videoWidth, videoEl.videoHeight))
+  return {
+    x: Math.round((videoEl.videoWidth - size) / 2),
+    y: Math.round((videoEl.videoHeight - size) / 2),
+    width: size,
+    height: size,
+    downScaledWidth: size,
+    downScaledHeight: size,
+  }
+}
+
+// Phones default to a focus that hunts when a tag is held close. Ask for
+// continuous autofocus where the browser supports it; elsewhere this is a no-op.
+async function preferCloseFocus(videoEl: HTMLVideoElement) {
+  const stream = videoEl.srcObject
+  if (!(stream instanceof MediaStream)) return
+  const [track] = stream.getVideoTracks()
+  if (!track) return
+  try {
+    const caps = (track.getCapabilities?.() ?? {}) as { focusMode?: string[] }
+    if (caps.focusMode?.includes('continuous')) {
+      await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] })
+    }
+  } catch {
+    // Focus hints are best-effort; the stream keeps working without them.
+  }
+}
+
 function handleDecoded(result: QrScanner.ScanResult) {
   const code = String(result?.data || '').trim()
   if (!code || props.busy) return
@@ -56,6 +90,7 @@ async function startCamera() {
     if (!(await QrScanner.hasCamera())) throw new Error('No camera found on this device.')
     scanner = new QrScanner(video.value, handleDecoded, {
       preferredCamera: 'environment',
+      calculateScanRegion,
       highlightScanRegion: true,
       highlightCodeOutline: true,
       maxScansPerSecond: 8,
@@ -64,6 +99,7 @@ async function startCamera() {
       onDecodeError: () => {},
     })
     await scanner.start()
+    await preferCloseFocus(video.value)
     cameraState.value = 'live'
   } catch (e) {
     cameraState.value = 'unavailable'
@@ -126,7 +162,7 @@ onBeforeUnmount(() => {
     </div>
     <p v-if="cameraState === 'unavailable'" class="ect-mt-2 ect-font-body ect-text-xs ect-text-amber-700">{{ cameraError }}</p>
     <p v-else-if="cameraState === 'live'" class="ect-mt-2 ect-font-body ect-text-xs ect-text-charcoal/55">
-      Point the camera at the QR code on the tag. Each piece is added as soon as it is read.
+      Hold the tag close so the QR code fills the highlighted square. Each piece is added as soon as it is read.
     </p>
 
     <form class="ect-mt-2 ect-flex ect-gap-2" @submit.prevent="submitManual">
