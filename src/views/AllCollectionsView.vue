@@ -24,6 +24,6 @@ setPreset({ tab: 'all' })
     </header>
 
     <!-- Full product grid (header suppressed; this page provides its own) -->
-    <CollectionGrid hide-header sidebar :guest-preview-limit="6" />
+    <CollectionGrid hide-header sidebar :guest-preview-limit="3" />
   </section>
 </template>

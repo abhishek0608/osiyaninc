@@ -247,7 +247,16 @@ function selectSort(id: SortId) {
 const displayedProducts = computed(() => {
   const list = [...filteredProducts.value]
   if (sortBy.value === 'newest') list.sort((a, b) => (b.isNewArrival ? 1 : 0) - (a.isNewArrival ? 1 : 0))
-  return catalogLocked.value ? list.slice(0, props.guestPreviewLimit) : list
+  if (!catalogLocked.value) return list
+  // Guests see the first N pieces of *each* category, so the all-jewellery page
+  // previews every category rather than N pieces of whichever sorts first.
+  const seen = new Map<string, number>()
+  return list.filter((p) => {
+    const n = seen.get(p.category) ?? 0
+    if (n >= props.guestPreviewLimit) return false
+    seen.set(p.category, n + 1)
+    return true
+  })
 })
 
 const hiddenProductCount = computed(() => Math.max(0, filteredProducts.value.length - displayedProducts.value.length))
