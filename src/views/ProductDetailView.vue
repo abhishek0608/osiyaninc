@@ -210,26 +210,24 @@ const reviewSummary = computed(() => {
   return `${product.value.rating.toFixed(1)} · ${product.value.reviewCount} reviews`
 })
 
-// A row of the Details sheet: one label and the lines stated under it. Most
-// rows carry a single line; a stone group's row carries one per parcel of that
-// quality, so "Diamond" names itself once per quality rather than once per
-// parcel.
+// A row of the Details sheet: one label and the lines stated under it. A
+// stone group has one row per stone (quality), each carrying that stone's
+// summed count and weight.
 interface SpecRow {
   label: string
   values: string[]
 }
 
 // Stone lines as the spec sheet shows them. Two things decide how they fall:
-// the group (diamond, fancy shape, colour stone) and, inside it, the quality.
-// Parcels of one quality stack under a single heading rather than repeating
-// "Diamond" down the sheet, but a different quality starts its own row — a
-// G-H/SI parcel and a VVS one are different goods and the trade quotes them
-// apart, so lumping them under one heading would misread both. Parcels are
-// never summed: a bench sets several into one piece and each is its own quote,
-// so rolling a 23 pc line into a 99 pc one would hide four of the five behind a
-// single count. Each line states that parcel's piece count and carat weight —
-// shapes and stone sizes stay on the packing list. Anything that isn't a
-// number is skipped rather than guessed at.
+// the group (diamond, fancy shape, colour stone) and, inside it, the stone —
+// the quality column, which names the grade for diamonds ("G-H/SI") and the
+// stone itself for colour stones ("EMERALD"). A piece is set from several
+// parcels of the same stone, one per size, and the storefront quotes the stone
+// as a whole rather than each parcel: five diamond parcels read as one line of
+// their summed count and weight. A different quality is a different stone and
+// keeps its own line — a G-H/SI parcel and a VVS one are different goods. Only
+// the totals are shown; shapes and sizes stay on the packing list, and a cell
+// that isn't a number is left out of the sum rather than guessed at.
 const STONE_GROUP_LABELS: Record<'D' | 'F' | 'C', string> = {
   D: 'Diamond',
   F: 'Fancy Shape',
@@ -247,16 +245,23 @@ function stoneColumn(line: StoneLine, column: 'cts' | 'pcs') {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-// One parcel as the sheet states it: count, then weight, then quality —
-// "23 pcs, 0.59 ct, G-H/SI" — the order the trade quotes a parcel. Empty when
-// the line states nothing usable, so it can be dropped rather than shown blank.
-function stoneLineValue(line: StoneLine) {
-  const pcs = stoneColumn(line, 'pcs')
-  const cts = stoneColumn(line, 'cts')
+// The running total for one stone. Either half stays null until a parcel
+// states it, so a stone whose parcels never give a count is quoted by weight
+// alone instead of as "0 pcs".
+interface StoneTotal {
+  quality: string
+  pcs: number | null
+  cts: number | null
+}
+
+// One stone as the sheet states it: count, then weight, then quality —
+// "299 pcs, 14.30 ct, G-H/SI" — the order the trade quotes a parcel. Empty
+// when nothing usable was stated, so it can be dropped rather than shown blank.
+function stoneTotalValue(total: StoneTotal) {
   return [
-    pcs != null ? `${pcs} ${pcs === 1 ? 'pc' : 'pcs'}` : '',
-    cts != null ? `${cts.toFixed(2)} ct` : '',
-    String(line?.quality ?? '').trim(),
+    total.pcs != null ? `${total.pcs} ${total.pcs === 1 ? 'pc' : 'pcs'}` : '',
+    total.cts != null ? `${total.cts.toFixed(2)} ct` : '',
+    total.quality,
   ]
     .filter(Boolean)
     .join(', ')
@@ -264,20 +269,24 @@ function stoneLineValue(line: StoneLine) {
 
 function stoneRowsFromLines(lines: StoneLine[]): SpecRow[] {
   return (['D', 'F', 'C'] as const).flatMap((group) => {
-    // Qualities keep the order the packing list first names them, so the sheet
+    // Stones keep the order the packing list first names them, so the sheet
     // reads in the order the piece was written up. Lines with no quality stated
     // bucket together under '' — they still carry weight worth quoting.
-    const byQuality = new Map<string, string[]>()
+    const byQuality = new Map<string, StoneTotal>()
     for (const line of lines) {
       if (line?.group !== group) continue
-      const value = stoneLineValue(line)
-      if (!value) continue
       const quality = String(line?.quality ?? '').trim()
-      const bucket = byQuality.get(quality)
-      if (bucket) bucket.push(value)
-      else byQuality.set(quality, [value])
+      const pcs = stoneColumn(line, 'pcs')
+      const cts = stoneColumn(line, 'cts')
+      const total = byQuality.get(quality) ?? { quality, pcs: null, cts: null }
+      if (pcs != null) total.pcs = (total.pcs ?? 0) + pcs
+      if (cts != null) total.cts = (total.cts ?? 0) + cts
+      byQuality.set(quality, total)
     }
-    return [...byQuality.values()].map((values) => ({ label: STONE_GROUP_LABELS[group], values }))
+    return [...byQuality.values()]
+      .map(stoneTotalValue)
+      .filter(Boolean)
+      .map((value) => ({ label: STONE_GROUP_LABELS[group], values: [value] }))
   })
 }
 
@@ -702,7 +711,7 @@ async function handleAddToCart() {
                 <dl v-if="specRows.length" class="ect-grid ect-grid-cols-1 sm:ect-grid-cols-2 ect-gap-x-6 ect-gap-y-3">
                   <!-- Keyed by position: a label parsed out of the description can
                        repeat one already in the sheet, so it is not unique on its own.
-                       Each parcel of a stone group is a <dd> under the group's one <dt>. -->
+                       Each stone of a group is its own row with the group's label. -->
                   <div v-for="(row, index) in specRows" :key="`${index}-${row.label}`" class="ect-flex ect-flex-col ect-gap-0.5">
                     <dt class="ect-font-body ect-text-[10px] ect-font-semibold ect-uppercase ect-tracking-[0.14em] ect-text-charcoal/45">{{ row.label }}</dt>
                     <dd
