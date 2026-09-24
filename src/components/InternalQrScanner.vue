@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import QrScanner from 'qr-scanner'
 
 // Camera scanner for the QR code on a piece's tag. It only reads codes and
@@ -14,9 +14,11 @@ import QrScanner from 'qr-scanner'
 // it can, the code covers very few pixels. So this component opens the camera
 // itself at the highest resolution the device offers, asks for continuous
 // focus, and exposes the camera's zoom so the tag can be held at a focusable
-// distance and still fill the scan square. For phones whose browser exposes
-// none of that (older iPhones), a photo taken with the native camera app —
-// which does switch to its macro lens — is decoded as a still.
+// distance and still fill the scan square. The view opens at the widest zoom
+// (or the level last used on this device) so staff can frame the tag first
+// and zoom in themselves. For phones whose browser exposes none of that
+// (older iPhones), a photo taken with the native camera app — which does
+// switch to its macro lens — is decoded as a still.
 
 export interface ScanFeedback {
   tone: 'ok' | 'error' | 'info'
@@ -41,6 +43,57 @@ const photoState = ref<'idle' | 'reading' | 'failed'>('idle')
 // Zoom is only offered when the camera reports it; the range comes from the
 // device so the slider never asks for a level the lens cannot give.
 const zoom = ref<{ min: number; max: number; step: number; value: number } | null>(null)
+const ZOOM_STORAGE_KEY = 'osiyan.tagScanner.zoom'
+
+// One-tap levels for the common framings; only those the lens can reach.
+const zoomPresets = computed(() => {
+  if (!zoom.value) return []
+  const { min, max } = zoom.value
+  return [min, 2, 3, 5].filter((level, index) => index === 0 || (level > min && level <= max))
+})
+
+function formatZoom(level: number) {
+  return `${Number(level.toFixed(1))}×`
+}
+
+function readStoredZoom(): number | null {
+  try {
+    const value = Number(localStorage.getItem(ZOOM_STORAGE_KEY))
+    return Number.isFinite(value) && value > 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+function storeZoom(value: number) {
+  try {
+    localStorage.setItem(ZOOM_STORAGE_KEY, String(value))
+  } catch {
+    // Private windows can refuse storage; the next scan just opens at 1×.
+  }
+}
+
+const torchAvailable = ref(false)
+const torchOn = ref(false)
+
+// A brief green wash over the viewfinder each time a piece is added, so staff
+// scanning a tray can keep their eyes on the camera rather than the list.
+const addedFlash = ref(false)
+let addedFlashTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => props.feedback,
+  (feedback) => {
+    if (feedback?.tone !== 'ok') return
+    addedFlash.value = true
+    if (addedFlashTimer) clearTimeout(addedFlashTimer)
+    addedFlashTimer = setTimeout(() => (addedFlash.value = false), 600)
+    try {
+      navigator.vibrate?.(60)
+    } catch {
+      // Vibration is a nicety; iOS does not offer it at all.
+    }
+  },
+)
 
 let scanner: QrScanner | null = null
 let stream: MediaStream | null = null
@@ -72,6 +125,7 @@ function calculateScanRegion(videoEl: HTMLVideoElement): QrScanner.ScanRegion {
 type CameraCapabilities = MediaTrackCapabilities & {
   zoom?: { min: number; max: number; step?: number }
   focusMode?: string[]
+  torch?: boolean
 }
 
 function handleDecoded(result: QrScanner.ScanResult) {
@@ -124,26 +178,41 @@ async function applyCameraHints() {
   } catch {
     // Focus hints are best-effort; the stream keeps working without them.
   }
+  torchAvailable.value = caps.torch === true
   if (caps.zoom && caps.zoom.max > caps.zoom.min) {
     const { min, max } = caps.zoom
     const step = caps.zoom.step && caps.zoom.step > 0 ? caps.zoom.step : 0.1
-    // Start zoomed in a little: a tag at arm's-length focus distance is tiny
-    // at 1x, and staff can always slide back out.
-    const value = Math.min(max, Math.max(min, min * 2))
-    zoom.value = { min, max, step, value }
-    await setZoom(value)
+    // Open wide so the tag is easy to find, unless this device has a level
+    // staff settled on last time.
+    const value = readStoredZoom() ?? min
+    zoom.value = { min, max, step, value: min }
+    await setZoom(value, { remember: false })
   }
 }
 
-async function setZoom(value: number) {
+async function setZoom(value: number, { remember = true } = {}) {
   const track = videoTrack()
   if (!track || !zoom.value) return
   const clamped = Math.min(zoom.value.max, Math.max(zoom.value.min, value))
   zoom.value.value = clamped
+  if (remember) storeZoom(clamped)
   try {
     await track.applyConstraints({ advanced: [{ zoom: clamped } as MediaTrackConstraintSet] })
   } catch {
     // Some cameras report zoom but refuse it mid-stream; leave the slider where it is.
+  }
+}
+
+async function toggleTorch() {
+  const track = videoTrack()
+  if (!track) return
+  const next = !torchOn.value
+  try {
+    await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] })
+    torchOn.value = next
+  } catch {
+    torchAvailable.value = false
+    torchOn.value = false
   }
 }
 
@@ -191,12 +260,81 @@ function stopCamera() {
   scanner = null
   stream?.getTracks().forEach((track) => track.stop())
   stream = null
+  torchOn.value = false
+  torchAvailable.value = false
   if (video.value) video.value.srcObject = null
+}
+
+function loadPhoto(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('That photo could not be opened.'))
+    }
+    img.src = url
+  })
+}
+
+// Overlapping squares across the photo, largest first. The tag's code is a
+// small patch of a busy frame (a table, a tray, a hand), and the decoder
+// misses it when it has to search the whole photo at once but finds it in a
+// crop that holds mostly the label.
+function photoWindows(width: number, height: number): QrScanner.ScanRegion[] {
+  const regions: QrScanner.ScanRegion[] = []
+  const short = Math.min(width, height)
+  for (const fraction of [0.7, 0.5, 0.35]) {
+    const size = Math.round(short * fraction)
+    const stride = Math.max(1, Math.round(size / 2))
+    const offsets = (length: number) => {
+      const list: number[] = []
+      for (let at = 0; at + size < length; at += stride) list.push(at)
+      list.push(length - size)
+      return [...new Set(list)]
+    }
+    const decodeSize = Math.min(size, 800)
+    for (const y of offsets(height)) {
+      for (const x of offsets(width)) {
+        regions.push({ x, y, width: size, height: size, downScaledWidth: decodeSize, downScaledHeight: decodeSize })
+      }
+    }
+  }
+  return regions
 }
 
 // A still from the native camera app: it focuses (and on newer iPhones swaps
 // to the macro lens) in ways the in-page stream cannot, so it reads tags the
-// live view misses. Try the centre first, then the whole frame.
+// live view misses. Try the centre and the whole frame first, then sweep the
+// photo in crops.
+async function decodePhoto(file: File): Promise<QrScanner.ScanResult> {
+  try {
+    return await QrScanner.scanImage(file, { returnDetailedScanResult: true, alsoTryWithoutScanRegion: true })
+  } catch {
+    // Fall through to the crop sweep.
+  }
+  const img = await loadPhoto(file)
+  const engine = await QrScanner.createQrEngine()
+  const canvas = document.createElement('canvas')
+  try {
+    for (const scanRegion of photoWindows(img.naturalWidth, img.naturalHeight)) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        return await QrScanner.scanImage(img, { scanRegion, qrEngine: engine, canvas, returnDetailedScanResult: true })
+      } catch {
+        // No code in this crop; try the next.
+      }
+    }
+    throw new Error('No QR code found')
+  } finally {
+    if (engine instanceof Worker) engine.terminate()
+  }
+}
+
 async function onPhotoPicked(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -204,7 +342,7 @@ async function onPhotoPicked(event: Event) {
   if (!file || props.busy) return
   photoState.value = 'reading'
   try {
-    const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true, alsoTryWithoutScanRegion: true })
+    const result = await decodePhoto(file)
     photoState.value = 'idle'
     lastCode = ''
     handleDecoded(result)
@@ -225,6 +363,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (addedFlashTimer) clearTimeout(addedFlashTimer)
   stopCamera()
 })
 </script>
@@ -244,8 +383,18 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <div class="ect-relative ect-mt-2 ect-overflow-hidden ect-rounded-lg ect-bg-charcoal" :class="cameraState === 'unavailable' ? 'ect-hidden' : ''">
-      <video ref="video" class="ect-block ect-h-56 ect-w-full ect-object-cover" muted playsinline></video>
+    <!-- Square so the whole highlighted scan square is always in view, whether
+         the phone streams portrait or a laptop streams landscape. -->
+    <div
+      class="ect-relative ect-mx-auto ect-mt-2 ect-aspect-square ect-w-full ect-max-w-sm ect-overflow-hidden ect-rounded-lg ect-bg-charcoal"
+      :class="cameraState === 'unavailable' ? 'ect-hidden' : ''"
+    >
+      <video ref="video" class="ect-block ect-h-full ect-w-full ect-object-cover" muted playsinline></video>
+      <div
+        class="ect-pointer-events-none ect-absolute ect-inset-0 ect-bg-green-500/35 ect-transition-opacity ect-duration-300"
+        :class="addedFlash ? 'ect-opacity-100' : 'ect-opacity-0'"
+        aria-hidden="true"
+      ></div>
       <p
         v-if="cameraState === 'starting'"
         class="ect-absolute ect-inset-0 ect-flex ect-items-center ect-justify-center ect-font-body ect-text-sm ect-text-white/80"
@@ -258,25 +407,55 @@ onBeforeUnmount(() => {
       >
         Looking up…
       </p>
+      <button
+        v-if="torchAvailable && cameraState === 'live'"
+        type="button"
+        class="ect-absolute ect-right-2 ect-top-2 ect-rounded-full ect-px-3 ect-py-1.5 ect-font-body ect-text-xs ect-font-semibold ect-transition-colors"
+        :class="torchOn ? 'ect-bg-gold-400 ect-text-charcoal' : 'ect-bg-charcoal/70 ect-text-white/90 hover:ect-bg-charcoal/85'"
+        :aria-pressed="torchOn"
+        @click="toggleTorch"
+      >
+        {{ torchOn ? 'Light on' : 'Light' }}
+      </button>
     </div>
     <p v-if="cameraState === 'unavailable'" class="ect-mt-2 ect-font-body ect-text-xs ect-text-amber-700">{{ cameraError }}</p>
     <p v-else-if="cameraState === 'live'" class="ect-mt-2 ect-font-body ect-text-xs ect-text-charcoal/55">
-      Hold the tag flat and steady until it is sharp, with the QR code filling the highlighted square. Each piece is added as soon as it is read.
+      Lay the tag flat on a plain surface and fill the highlighted square with the white label. Hold steady until it is sharp — each piece is added as soon as it is read.
+      <template v-if="zoom"> Too close to focus? Move back and zoom in.</template>
     </p>
 
-    <label v-if="zoom && cameraState === 'live'" class="ect-mt-2 ect-flex ect-items-center ect-gap-2 ect-font-body ect-text-xs ect-text-charcoal/55">
-      <span class="ect-shrink-0">Zoom {{ zoom.value.toFixed(1) }}×</span>
-      <input
-        type="range"
-        class="ect-min-w-0 ect-flex-1 ect-accent-gold-500"
-        :min="zoom.min"
-        :max="zoom.max"
-        :step="zoom.step"
-        :value="zoom.value"
-        aria-label="Camera zoom"
-        @input="onZoomInput"
-      />
-    </label>
+    <div v-if="zoom && cameraState === 'live'" class="ect-mt-2 ect-flex ect-flex-wrap ect-items-center ect-gap-2 ect-font-body ect-text-xs ect-text-charcoal/55">
+      <div class="ect-flex ect-shrink-0 ect-gap-1" role="group" aria-label="Zoom presets">
+        <button
+          v-for="level in zoomPresets"
+          :key="level"
+          type="button"
+          class="ect-rounded-full ect-border ect-px-2.5 ect-py-1 ect-font-semibold ect-transition-colors"
+          :class="
+            Math.abs(zoom.value - level) < 0.05
+              ? 'ect-border-gold-400 ect-bg-gold-50 ect-text-gold-700'
+              : 'ect-border-charcoal/15 ect-bg-white ect-text-charcoal hover:ect-border-gold-400'
+          "
+          :aria-pressed="Math.abs(zoom.value - level) < 0.05"
+          @click="setZoom(level)"
+        >
+          {{ formatZoom(level) }}
+        </button>
+      </div>
+      <label class="ect-flex ect-min-w-[8rem] ect-flex-1 ect-items-center ect-gap-2">
+        <span class="ect-w-9 ect-shrink-0 ect-text-right ect-tabular-nums">{{ formatZoom(zoom.value) }}</span>
+        <input
+          type="range"
+          class="ect-min-w-0 ect-flex-1 ect-accent-gold-500"
+          :min="zoom.min"
+          :max="zoom.max"
+          :step="zoom.step"
+          :value="zoom.value"
+          aria-label="Camera zoom"
+          @input="onZoomInput"
+        />
+      </label>
+    </div>
 
     <div class="ect-mt-2 ect-flex ect-items-center ect-gap-2">
       <input
