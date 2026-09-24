@@ -291,10 +291,6 @@ function customizationEntries(item: CartItem) {
                   <span class="ect-font-body ect-text-sm ect-text-charcoal/60">Shipping</span>
                   <span class="ect-font-body ect-text-sm ect-text-emerald-600 ect-font-medium">$0</span>
                 </article>
-                <article class="ect-flex ect-justify-between">
-                  <span class="ect-font-body ect-text-sm ect-text-charcoal/60">GST</span>
-                  <span class="ect-font-body ect-text-sm ect-text-charcoal/60">Included</span>
-                </article>
               </section>
 
               <hr class="ect-border-sand ect-mb-4" />

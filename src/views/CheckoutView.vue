@@ -858,10 +858,6 @@ const inputClass = 'ect-w-full ect-px-4 ect-py-3 ect-bg-white ect-border ect-bor
                 <span class="ect-font-body ect-text-sm ect-text-charcoal/60">Shipping</span>
                 <span class="ect-font-body ect-text-sm ect-font-medium ect-text-emerald-600">Free</span>
               </article>
-              <article class="ect-flex ect-justify-between">
-                <span class="ect-font-body ect-text-sm ect-text-charcoal/60">GST</span>
-                <span class="ect-font-body ect-text-sm ect-text-charcoal/60">Included</span>
-              </article>
             </section>
 
             <hr class="ect-border-sand ect-mb-4" />
@@ -870,7 +866,6 @@ const inputClass = 'ect-w-full ect-px-4 ect-py-3 ect-bg-white ect-border ect-bor
               <span class="ect-font-display ect-text-lg ect-text-charcoal">Total</span>
               <span class="ect-font-display ect-text-2xl ect-text-charcoal">{{ volumeDiscountTier ? formattedDiscountedTotal : formattedTotal }}</span>
             </article>
-            <p class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-text-right">GST included in price</p>
             <p v-if="paymentTerm === 'terms'" class="ect-font-body ect-text-xs ect-text-gold-700 ect-text-right ect-mt-1">
               On payment terms · due {{ formattedDueDate }}
             </p>
