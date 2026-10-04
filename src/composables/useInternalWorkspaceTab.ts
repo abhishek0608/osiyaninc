@@ -4,18 +4,21 @@ import { useRoute } from 'vue-router'
 export type InternalWorkspaceTabId = 'orders' | 'memos' | 'users' | 'approvals' | 'products' | 'homepage' | 'about' | 'branding' | 'discounts' | 'new'
 
 // The workspace sections, in menu order. Shared by the desktop tab bar and the
-// header's mobile drawer so the two can't drift.
-export const INTERNAL_WORKSPACE_TABS: { id: InternalWorkspaceTabId; label: string }[] = [
-  { id: 'orders', label: 'Orders' },
-  { id: 'memos', label: 'Memos' },
-  { id: 'users', label: 'Users' },
-  { id: 'approvals', label: 'Approvals' },
-  { id: 'products', label: 'Products' },
-  { id: 'homepage', label: 'Homepage' },
-  { id: 'about', label: 'About page' },
-  { id: 'branding', label: 'Branding' },
-  { id: 'discounts', label: 'Discounts' },
+// header's mobile drawer so the two can't drift. `mobile` marks the sections the
+// drawer offers; the site-content editors stay desktop-only for now.
+export const INTERNAL_WORKSPACE_TABS: { id: InternalWorkspaceTabId; label: string; mobile: boolean }[] = [
+  { id: 'orders', label: 'Orders', mobile: true },
+  { id: 'memos', label: 'Memos', mobile: true },
+  { id: 'users', label: 'Users', mobile: true },
+  { id: 'approvals', label: 'Approvals', mobile: true },
+  { id: 'products', label: 'Products', mobile: true },
+  { id: 'homepage', label: 'Homepage', mobile: false },
+  { id: 'about', label: 'About page', mobile: false },
+  { id: 'branding', label: 'Branding', mobile: false },
+  { id: 'discounts', label: 'Discounts', mobile: false },
 ]
+
+export const INTERNAL_MOBILE_TABS = INTERNAL_WORKSPACE_TABS.filter((tab) => tab.mobile)
 
 export function useInternalWorkspaceTab() {
   const route = useRoute()

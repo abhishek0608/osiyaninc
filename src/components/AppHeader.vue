@@ -5,7 +5,7 @@ import { useCart } from '../composables/useCart'
 import { useWishlist } from '../composables/useWishlist'
 import { useAuth } from '../composables/useAuth'
 import { useSearch } from '../composables/useSearch'
-import { INTERNAL_WORKSPACE_TABS, useInternalWorkspaceTab } from '../composables/useInternalWorkspaceTab'
+import { INTERNAL_MOBILE_TABS, useInternalWorkspaceTab } from '../composables/useInternalWorkspaceTab'
 import { API_BASE } from '../config-api'
 import {
   LOCALE_LABEL,
@@ -758,7 +758,7 @@ onBeforeUnmount(() => {
         <template v-if="isAdminUser">
           <p class="drawer-group-heading internal-drawer-heading">Workspace</p>
           <ul class="drawer-categories">
-            <li v-for="tab in INTERNAL_WORKSPACE_TABS" :key="tab.id" class="drawer-category">
+            <li v-for="tab in INTERNAL_MOBILE_TABS" :key="tab.id" class="drawer-category">
               <!-- Every section shares the /internal path, so the router would
                    mark all of them active; the tab id decides instead. -->
               <RouterLink
