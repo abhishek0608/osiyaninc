@@ -16,6 +16,7 @@ interface MemoItem {
   returnRequestedQty: number
   returnRequestedAt: string | null
   status: string
+  pricePaise: number
   formattedPrice: string
 }
 
@@ -39,6 +40,7 @@ interface MemoDetail {
   createdBy?: string
   shipTo: Record<string, string> | null
   returnRequestedQty: number
+  currency: string
   orders: { id: string; orderNo: string; status: string }[]
   items: MemoItem[]
 }
@@ -55,41 +57,52 @@ const saving = ref(false)
 const memo = ref<MemoDetail | null>(null)
 // Days to push the due date out by, from the current due date.
 const extendDays = ref(15)
-// Per-line quantities the staff member is closing out; defaults to everything
-// still out, which is the usual case.
-const lineQty = ref<Record<string, number>>({})
+// Ticked pieces, the same as the customer's memo page. Every piece is a one-off,
+// so a tick closes the whole line — there is no quantity to pick.
+const selected = ref<Record<string, boolean>>({})
 
 const isOpen = computed(() => memo.value?.status === 'ISSUED' || memo.value?.status === 'PARTIAL')
 
+const selectedItems = computed(() =>
+  (memo.value?.items || []).filter((item) => selected.value[item.id] && item.outQty > 0),
+)
+
 const selectedLines = computed(() =>
-  Object.entries(lineQty.value)
-    .map(([memoItemId, qty]) => ({ memoItemId, qty: Number(qty) || 0 }))
-    .filter((line) => line.qty > 0),
+  selectedItems.value.map((item) => ({ memoItemId: item.id, qty: item.outQty })),
 )
 
 const selectedCount = computed(() => selectedLines.value.reduce((sum, line) => sum + line.qty, 0))
+
+const selectionTotal = computed(() =>
+  selectedItems.value.reduce((sum, item) => sum + item.pricePaise * item.outQty, 0),
+)
+
+function toggleLine(item: MemoItem) {
+  selected.value = { ...selected.value, [item.id]: !selected.value[item.id] }
+}
+
+// Memo amounts are whole dollars despite the `Paise` name — see server/api/money.js.
+function formatMoney(usd: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: memo.value?.currency || 'USD',
+    maximumFractionDigits: 0,
+  }).format(usd || 0)
+}
 
 function formatDate(value: string | null) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
-function resetLineQty() {
-  const next: Record<string, number> = {}
+// When the customer has said pieces are on their way back, tick just those,
+// ready for "Send back selected" once the package is opened.
+function selectSentBack() {
+  const next: Record<string, boolean> = {}
   for (const item of memo.value?.items || []) {
-    if (item.outQty > 0) next[item.id] = item.outQty
+    if (item.returnRequestedQty > 0) next[item.id] = true
   }
-  lineQty.value = next
-}
-
-// When the customer has said pieces are on their way back, set the quantities
-// to just those, ready for "Returned to us" once the package is opened.
-function fillSentBack() {
-  const next: Record<string, number> = {}
-  for (const item of memo.value?.items || []) {
-    next[item.id] = item.returnRequestedQty || 0
-  }
-  lineQty.value = next
+  selected.value = next
 }
 
 const sentBackSince = computed(() => {
@@ -114,7 +127,7 @@ async function loadMemo() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.message || 'Unable to load this memo.')
     memo.value = data.memo
-    resetLineQty()
+    selected.value = {}
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to load this memo.'
   } finally {
@@ -154,7 +167,7 @@ async function extendMemo() {
 async function runAction(action: 'return' | 'convert' | 'cancel') {
   if (!user.value?.id || !memo.value || saving.value) return
   if (action !== 'cancel' && !selectedLines.value.length) {
-    actionError.value = 'Choose how many pieces to close out first.'
+    actionError.value = 'Tick the pieces first.'
     return
   }
   if (action === 'cancel' && !window.confirm('Cancel this memo? Use this only for a memo raised in error.')) return
@@ -177,7 +190,7 @@ async function runAction(action: 'return' | 'convert' | 'cancel') {
     if (action === 'convert' && data.order) {
       actionMessage.value = `Converted to order ${data.order.orderNo}${data.invoice ? ` and invoice ${data.invoice.invoiceNo}` : ''}.`
     } else if (action === 'return') {
-      actionMessage.value = 'Return recorded.'
+      actionMessage.value = `${selectedCount.value} ${selectedCount.value === 1 ? 'piece' : 'pieces'} marked returned.`
     } else {
       actionMessage.value = 'Memo cancelled.'
     }
@@ -302,7 +315,7 @@ onMounted(() => {
           <header class="ect-p-5 ect-border-b ect-border-rose-200/30">
             <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.16em] ect-text-rose-600 ect-mb-1">Pieces</p>
             <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">
-              {{ isOpen ? 'Set how many of each piece the customer is keeping or sending back' : 'This memo is closed' }}
+              {{ isOpen ? 'Tick the pieces the customer is sending back or buying' : 'This memo is closed' }}
             </h2>
           </header>
 
@@ -312,13 +325,13 @@ onMounted(() => {
           >
             <p class="ect-flex-1 ect-min-w-[220px] ect-font-body ect-text-sm ect-text-sky-800">
               The customer is sending back {{ memo.returnRequestedQty }} {{ memo.returnRequestedQty === 1 ? 'piece' : 'pieces' }}<span v-if="sentBackSince"> (since {{ formatDate(sentBackSince) }})</span>.
-              Mark them returned once they arrive.
+              Use “Send back selected” once {{ memo.returnRequestedQty === 1 ? 'it arrives' : 'they arrive' }}.
             </p>
             <button
               type="button"
               :disabled="saving"
               class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-sky-300 ect-bg-white ect-px-4 ect-py-1.5 ect-font-body ect-text-xs ect-font-semibold ect-text-sky-800 hover:ect-border-sky-500 ect-transition-colors disabled:ect-opacity-50"
-              @click="fillSentBack"
+              @click="selectSentBack"
             >
               Select just those
             </button>
@@ -326,61 +339,61 @@ onMounted(() => {
 
           <ul class="ect-divide-y ect-divide-rose-200/30">
             <li v-for="item in memo.items" :key="item.id" class="ect-p-5 ect-flex ect-flex-wrap ect-items-center ect-gap-3">
+              <input
+                v-if="isOpen && item.outQty > 0"
+                type="checkbox"
+                :checked="Boolean(selected[item.id])"
+                :disabled="saving"
+                :aria-label="`Select ${item.title}`"
+                class="ect-w-4 ect-h-4 ect-shrink-0 ect-accent-charcoal ect-cursor-pointer disabled:ect-cursor-wait"
+                @change="toggleLine(item)"
+              />
               <div class="ect-min-w-0 ect-flex-1">
                 <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ item.title }}</p>
-                <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-1">
-                  {{ item.formattedPrice }} · {{ item.qty }} issued
-                  <span v-if="item.returnedQty"> · {{ item.returnedQty }} returned</span>
-                  <span v-if="item.convertedQty"> · {{ item.convertedQty }} bought</span>
-                  <span v-if="item.outQty" class="ect-text-amber-700"> · {{ item.outQty }} still out</span>
-                  <span v-if="item.returnRequestedQty" class="ect-text-sky-700 ect-font-semibold"> · {{ item.returnRequestedQty }} on the way back</span>
-                </p>
+                <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-1">{{ item.formattedPrice }}</p>
               </div>
-              <label v-if="isOpen && item.outQty > 0" class="ect-flex ect-items-center ect-gap-2">
-                <span class="ect-font-body ect-text-xs ect-text-charcoal/45">Qty</span>
-                <input
-                  v-model.number="lineQty[item.id]"
-                  type="number"
-                  min="0"
-                  :max="item.outQty"
-                  class="ect-w-20 ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-3 ect-py-1.5 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
-                />
-              </label>
-              <span v-else class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.1em] ect-text-charcoal/40">{{ item.status.toLowerCase() }}</span>
+              <span
+                v-if="isOpen && item.outQty > 0"
+                class="ect-inline-flex ect-items-center ect-rounded-full ect-px-2.5 ect-py-0.5 ect-font-body ect-text-[11px] ect-font-semibold"
+                :class="item.returnRequestedQty ? 'ect-bg-sky-50 ect-text-sky-700' : 'ect-bg-amber-50 ect-text-amber-700'"
+              >{{ item.returnRequestedQty ? 'On its way back' : 'With customer' }}</span>
+              <span v-else class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.1em] ect-text-charcoal/40">{{ item.status === 'CONVERTED' ? 'purchased' : item.status.toLowerCase() }}</span>
             </li>
           </ul>
 
           <div v-if="isOpen" class="ect-p-5 ect-border-t ect-border-rose-200/30 ect-bg-cream/40">
             <p v-if="actionError" class="ect-font-body ect-text-sm ect-text-red-600 ect-mb-3">{{ actionError }}</p>
             <p v-if="actionMessage" class="ect-font-body ect-text-sm ect-text-emerald-700 ect-mb-3">{{ actionMessage }}</p>
-            <div class="ect-flex ect-flex-wrap ect-gap-2">
+            <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-3">
+              <span class="ect-flex-1 ect-min-w-[220px] ect-font-body ect-text-sm ect-text-charcoal/60">
+                <template v-if="selectedLines.length">
+                  {{ selectedCount }} {{ selectedCount === 1 ? 'piece' : 'pieces' }} selected ·
+                  <span class="ect-text-charcoal ect-font-semibold">{{ formatMoney(selectionTotal) }}</span>
+                  at memo prices
+                </template>
+                <template v-else>
+                  Tick pieces to mark them returned or bill them — anything left unticked stays on memo.
+                </template>
+              </span>
               <button
                 type="button"
-                :disabled="saving"
-                class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-50"
-                @click="runAction('convert')"
-              >
-                Customer keeps {{ selectedCount }} — bill it
-              </button>
-              <button
-                type="button"
-                :disabled="saving"
-                class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-50"
+                :disabled="saving || !selectedLines.length"
+                class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
                 @click="runAction('return')"
               >
-                Returned to us
+                Send back selected
               </button>
               <button
                 type="button"
-                :disabled="saving"
-                class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/45 hover:ect-text-red-600 ect-transition-colors disabled:ect-opacity-50"
-                @click="runAction('cancel')"
+                :disabled="saving || !selectedLines.length"
+                class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
+                @click="runAction('convert')"
               >
-                Cancel memo
+                {{ selectedLines.length ? `Purchase selected · ${formatMoney(selectionTotal)}` : 'Purchase selected' }}
               </button>
             </div>
             <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-3">
-              Billing a memo creates a confirmed order and an invoice at the prices locked when the goods went out.
+              Send back closes the pieces as returned — use it once they are back in hand. Purchase creates a confirmed order and an invoice at the prices locked when the goods went out.
             </p>
 
             <div class="ect-mt-4 ect-pt-4 ect-border-t ect-border-rose-200/30 ect-flex ect-flex-wrap ect-items-center ect-gap-2">
@@ -400,9 +413,17 @@ onMounted(() => {
               >
                 Extend due date
               </button>
-              <span class="ect-font-body ect-text-xs ect-text-charcoal/40">
+              <span class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-flex-1 ect-min-w-[200px]">
                 Counted from the current due date. Customers can self-extend only in the last 3 days.
               </span>
+              <button
+                type="button"
+                :disabled="saving"
+                class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/45 hover:ect-text-red-600 ect-transition-colors disabled:ect-opacity-50"
+                @click="runAction('cancel')"
+              >
+                Cancel memo
+              </button>
             </div>
           </div>
           <div v-else class="ect-p-5 ect-border-t ect-border-rose-200/30">

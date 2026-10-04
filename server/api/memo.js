@@ -22,7 +22,7 @@ export const MEMO_MAX_SELF_EXTENSIONS = 1
 // customer, say) spread this and add to it, so no payload ever reports an empty
 // `orders` merely because the relation was left out of the query.
 export const MEMO_PAYLOAD_INCLUDE = {
-  items: { orderBy: { createdAt: 'asc' } },
+  items: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
   orders: { select: { id: true, orderNo: true, status: true }, orderBy: { createdAt: 'asc' } },
 }
 
@@ -258,7 +258,7 @@ export async function createMemo({ customerId, lines, shipTo = null, notes = '',
 async function loadOpenMemo(memoId, client = prisma) {
   const memo = await client.memo.findUnique({
     where: { id: memoId },
-    include: { items: { orderBy: { createdAt: 'asc' } } },
+    include: { items: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
   })
   if (!memo) throw new MemoError('MEMO_NOT_FOUND', 'Memo not found.', 404)
   if (!OPEN_MEMO_STATUSES.includes(memo.status)) {
