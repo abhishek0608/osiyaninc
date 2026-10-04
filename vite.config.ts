@@ -21,6 +21,12 @@ function installLocalApiMiddleware(
 ) {
   middlewares.use(async (incomingReq, outgoingRes, next) => {
     const requestUrl = new URL(incomingReq.url || '/', 'http://localhost')
+    // Mirror vercel.json's rewrite: there is no api/img.js (Hobby's function
+    // cap), so the image resizer lives behind api/products.js?__img=1.
+    if (requestUrl.pathname.replace(/\/+$/, '') === '/api/img') {
+      requestUrl.pathname = '/api/products'
+      requestUrl.searchParams.set('__img', '1')
+    }
     const match = requestUrl.pathname.match(API_ROUTE)
     if (!match) return next()
 

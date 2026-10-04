@@ -44,6 +44,13 @@ export async function serveResizedImage(req, res) {
   } catch {
     return res.status(400).json({ message: 'src must be an absolute URL.' })
   }
+  // Local dev usually runs without AWS_S3_BUCKET, which leaves the allowlist
+  // empty. Hand S3 photos back unresized there rather than breaking every image.
+  if (!BUCKET && source.protocol === 'https:' && /\.s3[.-][a-z0-9.-]*amazonaws\.com$/i.test(source.host)) {
+    res.statusCode = 302
+    res.setHeader('Location', source.href)
+    return res.end()
+  }
   if (source.protocol !== 'https:' || !ALLOWED_HOSTS.has(source.host)) {
     return res.status(400).json({ message: 'src is not a product image.' })
   }
