@@ -197,7 +197,7 @@ export async function updateProductEmbedding(productId, opts = {}) {
   if (!product) return { ok: false, reason: 'not-found' }
   const { text, source } = await buildEmbedTextForProduct(product, opts)
   const vector = await generateEmbedding(text)
-  await prisma.$executeRawUnsafe(`UPDATE "Product" SET embedding = $1::vector WHERE id = $2`, `[${vector.join(',')}]`, productId)
+  await prisma.$executeRawUnsafe(`UPDATE "Product" SET embedding = $1::extensions.vector WHERE id = $2`, `[${vector.join(',')}]`, productId)
   return { ok: true, source }
 }
 

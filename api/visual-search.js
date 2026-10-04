@@ -1222,11 +1222,11 @@ async function vectorSearchProducts(queryVector, limit, threshold = VECTOR_SIMIL
     const rows = await prisma.$queryRawUnsafe(`
       SELECT
         p.id,
-        (1 - (p.embedding <=> '${vecStr}'::vector))::float AS similarity
+        (1 - (p.embedding OPERATOR(extensions.<=>) '${vecStr}'::extensions.vector))::float AS similarity
       FROM "Product" p
       WHERE p.active = true
         AND p.embedding IS NOT NULL
-        AND (1 - (p.embedding <=> '${vecStr}'::vector)) >= $1
+        AND (1 - (p.embedding OPERATOR(extensions.<=>) '${vecStr}'::extensions.vector)) >= $1
       ORDER BY similarity DESC
       LIMIT $2
     `, threshold, limit)

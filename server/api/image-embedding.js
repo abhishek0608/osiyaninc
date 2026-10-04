@@ -331,7 +331,7 @@ export async function updateProductImageEmbeddings(productId) {
       select: { id: true },
     })
     await prisma.$executeRawUnsafe(
-      `UPDATE "ProductImageEmbedding" SET embedding = $1::vector WHERE id = $2`,
+      `UPDATE "ProductImageEmbedding" SET embedding = $1::extensions.vector WHERE id = $2`,
       `[${vector.join(',')}]`,
       row.id
     )
@@ -368,13 +368,13 @@ export async function imageVectorSearchProductIds(
     `
       SELECT
         e."productId",
-        MAX(1 - (e.embedding <=> '${vecStr}'::vector))::float AS similarity
+        MAX(1 - (e.embedding OPERATOR(extensions.<=>) '${vecStr}'::extensions.vector))::float AS similarity
       FROM "ProductImageEmbedding" e
       JOIN "Product" p ON p.id = e."productId"
       WHERE p.active = true
         AND e.embedding IS NOT NULL
       GROUP BY e."productId"
-      HAVING MAX(1 - (e.embedding <=> '${vecStr}'::vector)) >= $1
+      HAVING MAX(1 - (e.embedding OPERATOR(extensions.<=>) '${vecStr}'::extensions.vector)) >= $1
       ORDER BY similarity DESC
       LIMIT $2
     `,
