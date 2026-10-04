@@ -26,12 +26,15 @@ const { orders: localOrders } = useOrders()
 
 const loading = ref(false)
 const error = ref('')
-const backendOrders = ref<InternalOrder[]>([])
+const backendOrder = ref<InternalOrder | null>(null)
 const detailSkeletonRows = Array.from({ length: 6 }, (_, index) => index)
 
-const displayOrders = computed<InternalOrder[]>(() => {
-  if (backendOrders.value.length) return backendOrders.value
-  return localOrders.value.map((order) => ({
+// Orders placed before checkout wrote to the database only exist in this
+// browser's localStorage, so fall back to those when the API has no match.
+const localOrder = computed<InternalOrder | null>(() => {
+  const order = localOrders.value.find((o) => o.id === String(route.params.id || ''))
+  if (!order) return null
+  return {
     id: order.id,
     orderNo: order.id,
     customerId: null,
@@ -42,12 +45,10 @@ const displayOrders = computed<InternalOrder[]>(() => {
     itemCount: order.itemCount,
     createdAt: order.createdAt,
     items: order.items,
-  }))
+  }
 })
 
-const targetOrder = computed(
-  () => displayOrders.value.find((order) => order.id === String(route.params.id || '')) || null,
-)
+const targetOrder = computed(() => backendOrder.value || localOrder.value)
 
 const showNotFound = computed(
   () => !loading.value && !error.value && !targetOrder.value,
@@ -69,10 +70,19 @@ async function loadOrders() {
   loading.value = true
   error.value = ''
   try {
-    const res = await fetch(`${API_BASE}/api/internal?userId=${encodeURIComponent(user.value.id)}`)
+    const params = new URLSearchParams({
+      resource: 'order',
+      userId: user.value.id,
+      orderId: String(route.params.id || ''),
+    })
+    const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
     const data = await res.json().catch(() => ({}))
+    if (res.status === 404) {
+      backendOrder.value = null
+      return
+    }
     if (!res.ok) throw new Error(data.message || 'Unable to load internal order detail.')
-    backendOrders.value = Array.isArray(data.orders) ? data.orders : []
+    backendOrder.value = data.order || null
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to load internal order detail.'
   } finally {
@@ -181,7 +191,7 @@ onMounted(() => {
             <div v-if="targetOrder.items?.length" class="ect-mt-5">
               <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.16em] ect-text-charcoal/40 ect-mb-3">Line items</p>
               <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
-                <li v-for="item in targetOrder.items" :key="item.slug" class="ect-flex ect-items-center ect-justify-between ect-gap-3 ect-rounded-lg ect-border ect-border-rose-100 ect-p-3">
+                <li v-for="(item, index) in targetOrder.items" :key="`${item.slug}-${index}`" class="ect-flex ect-items-center ect-justify-between ect-gap-3 ect-rounded-lg ect-border ect-border-rose-100 ect-p-3">
                   <div>
                     <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ item.title }}</p>
                     <p class="ect-font-body ect-text-xs ect-text-charcoal/45">Qty {{ item.qty }}</p>

@@ -591,6 +591,75 @@ async function handleOrdersListResource(req, res, body) {
 }
 
 // ---------------------------------------------------------------------------
+// Order detail (resource=order) — one order with its line items. The detail
+// page used to pick the order out of the dashboard payload, which carries no
+// items and only the 25 newest orders.
+// ---------------------------------------------------------------------------
+
+async function handleOrderResource(req, res, body) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET,OPTIONS')
+    return res.status(405).json({ message: 'Method not allowed' })
+  }
+
+  const userId = String(req?.query?.userId || body?.userId || '').trim()
+
+  try {
+    const internalUser = await assertInternalUser(userId)
+    if (!internalUser) return res.status(403).json({ message: 'Internal access required.' })
+
+    const orderId = String(req?.query?.orderId || body?.orderId || '').trim()
+    if (!orderId) return res.status(400).json({ message: 'orderId is required.' })
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        customer: { select: { id: true, email: true, firstName: true, lastName: true } },
+        items: {
+          orderBy: { createdAt: 'asc' },
+          include: { variant: { select: { product: { select: { slug: true } } } } },
+        },
+      },
+    })
+    if (!order) return res.status(404).json({ message: 'Order not found.' })
+
+    const customerName =
+      [order.customer?.firstName, order.customer?.lastName].filter(Boolean).join(' ').trim() ||
+      order.customer?.email ||
+      'Guest'
+    const actorMap = await resolveActorMap([order.createdById, order.updatedById])
+
+    return res.status(200).json({
+      order: {
+        id: order.id,
+        orderNo: order.orderNo,
+        customerId: order.customer?.id || null,
+        customer: customerName,
+        customerEmail: order.customer?.email || '',
+        status: order.status,
+        total: formatMoney(order.totalPaise, order.currency),
+        itemCount: order.items.reduce((sum, item) => sum + item.qty, 0),
+        createdBy: actorName(actorMap, order.createdById) || customerName,
+        createdAt: order.createdAt,
+        modifiedBy: actorName(actorMap, order.updatedById),
+        modifiedAt: order.updatedAt,
+        items: order.items.map((item) => ({
+          id: item.id,
+          slug: item.variant?.product?.slug || '',
+          title: item.titleSnapshot,
+          price: formatMoney(item.pricePaise, order.currency),
+          priceValue: item.pricePaise,
+          qty: item.qty,
+        })),
+      },
+    })
+  } catch (err) {
+    console.error('Internal order detail failed:', err)
+    return res.status(500).json({ message: 'Unable to load this order.' })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Memos (resource=memos-list, resource=memo)
 // A memo is stock sitting with a customer, unpaid — the list exists so staff
 // can see what is out, what is overdue, and close it out (return or convert).
@@ -2899,6 +2968,7 @@ export default async function handler(req, res) {
 
   if (resource === 'products-list') return handleProductsListResource(req, res, body)
   if (resource === 'orders-list') return handleOrdersListResource(req, res, body)
+  if (resource === 'order') return handleOrderResource(req, res, body)
   if (resource === 'users-list') return handleUsersListResource(req, res, body)
   if (resource === 'user-create') return handleUserCreateResource(req, res, body)
   if (resource === 'order-create') return handleOrderCreateResource(req, res, body)
