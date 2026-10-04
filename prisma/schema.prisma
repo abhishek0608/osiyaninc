@@ -611,21 +611,25 @@ model Memo {
 }
 
 model MemoItem {
-  id            String         @id @default(cuid())
-  memoId        String
-  variantId     String
-  titleSnapshot String
-  pricePaise    Int
-  qty           Int
+  id                 String         @id @default(cuid())
+  memoId             String
+  variantId          String
+  titleSnapshot      String
+  pricePaise         Int
+  qty                Int
   // A customer keeping some pieces and returning the rest is the normal case,
   // so each line closes independently of the others.
-  returnedQty   Int            @default(0)
-  convertedQty  Int            @default(0)
-  status        MemoItemStatus @default(OUT)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  memo          Memo           @relation(fields: [memoId], references: [id], onDelete: Cascade)
-  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  returnedQty        Int            @default(0)
+  convertedQty       Int            @default(0)
+  // Pieces the customer has said are on their way back. They still count as out
+  // (the goods are in transit, not in our hands) until staff record the return.
+  returnRequestedQty Int            @default(0)
+  returnRequestedAt  DateTime?
+  status             MemoItemStatus @default(OUT)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  memo               Memo           @relation(fields: [memoId], references: [id], onDelete: Cascade)
+  variant            ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
 
   @@index([memoId])
 }

@@ -17,6 +17,8 @@ import {
   convertMemoToOrder,
   createMemo,
   extendMemo,
+  notifyMemoReturnRequested,
+  requestMemoReturn,
   memoOutstandingPaise,
   OPEN_MEMO_STATUSES,
   getMemoCustomer,
@@ -827,6 +829,26 @@ async function handlePostMemoConvert(res, customerId, body) {
   })
 }
 
+// Sending pieces back is the customer's own action too, but it only marks them
+// as on their way: staff close the lines when the package arrives. The rules
+// live in requestMemoReturn — this only proves whose memo it is.
+async function handlePostMemoReturn(res, customerId, body) {
+  if (!customerId) return res.status(400).json({ message: 'userId is required.' })
+  const memoId = String(body?.memoId || '').trim()
+  if (!memoId) return res.status(400).json({ message: 'memoId is required.' })
+  // Optional: specific lines to send back. Omitting them sends back everything still out.
+  const lines = Array.isArray(body?.lines) ? body.lines : null
+
+  let result
+  try {
+    result = await requestMemoReturn({ memoId, lines, customerId })
+  } catch (err) {
+    return memoErrorResponse(res, err)
+  }
+  await notifyMemoReturnRequested(result)
+  return res.status(200).json({ memo: toMemoPayload(result.memo) })
+}
+
 function normalizeMemoShipTo(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   const allowed = ['name', 'email', 'phone', 'address', 'city', 'state', 'country', 'pincode']
@@ -868,6 +890,7 @@ export default async function handler(req, res) {
       if (mode === 'memo') return await handlePostMemo(res, userId, body)
       if (mode === 'memo-extend') return await handlePostMemoExtend(res, userId, body)
       if (mode === 'memo-convert') return await handlePostMemoConvert(res, userId, body)
+      if (mode === 'memo-return') return await handlePostMemoReturn(res, userId, body)
       if (mode === 'service-request') return await handlePostServiceRequest(res, body)
       if (mode === 'service-upload') return await handlePostServiceUpload(res, body)
       return res.status(400).json({ message: 'Invalid mode for POST.' })

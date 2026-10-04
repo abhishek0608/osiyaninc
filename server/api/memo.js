@@ -1,5 +1,6 @@
 import { prisma } from './db.js'
 import { creditLimitToUsd, formatUsd } from './money.js'
+import { renderDetails, renderShell, sendResend } from './signup-requests.js'
 
 // Memo = goods on consignment. The pieces leave with the customer but stay ours
 // until they either buy them (convert) or send them back (return). No payment is
@@ -37,6 +38,16 @@ export class MemoError extends Error {
 /** Pieces on this line still physically with the customer. */
 export function memoLineOutQty(item) {
   return Math.max(Number(item?.qty || 0) - Number(item?.returnedQty || 0) - Number(item?.convertedQty || 0), 0)
+}
+
+/** Of the pieces still out, how many the customer has said are on their way back. */
+export function memoLineReturnRequestedQty(item) {
+  return Math.min(Math.max(Number(item?.returnRequestedQty || 0), 0), memoLineOutQty(item))
+}
+
+/** Pieces the customer can still decide on: out, and not already being sent back. */
+export function memoLineOpenQty(item) {
+  return memoLineOutQty(item) - memoLineReturnRequestedQty(item)
 }
 
 export function memoOutstandingPaise(items) {
@@ -259,8 +270,13 @@ async function loadOpenMemo(memoId, client = prisma) {
 /**
  * Requested line quantities, defaulting to "everything still out" when the
  * caller passes no lines (the whole-memo return / whole-memo buy case).
+ *
+ * Customers pass `customerSide`: a piece they have already said is coming back
+ * can't then be bought or sent back a second time. Staff are not held to that —
+ * the package arriving, or the customer changing their mind by phone, is theirs
+ * to record.
  */
-function resolveLineQtys(memo, requestedLines) {
+function resolveLineQtys(memo, requestedLines, { customerSide = false } = {}) {
   const requested = new Map(
     (Array.isArray(requestedLines) ? requestedLines : [])
       .map((line) => [String(line?.memoItemId || line?.id || '').trim(), Math.floor(Number(line?.qty) || 0)])
@@ -269,13 +285,25 @@ function resolveLineQtys(memo, requestedLines) {
   const resolved = []
   for (const item of memo.items) {
     const outQty = memoLineOutQty(item)
-    if (outQty <= 0) continue
-    const wanted = requested.size ? requested.get(item.id) || 0 : outQty
+    const availableQty = customerSide ? memoLineOpenQty(item) : outQty
+    if (availableQty <= 0) {
+      if (requested.has(item.id) && outQty > 0) {
+        throw new MemoError(
+          'MEMO_RETURN_PENDING',
+          `"${item.titleSnapshot}" is already on its way back to us.`,
+          409,
+        )
+      }
+      continue
+    }
+    const wanted = requested.size ? requested.get(item.id) || 0 : availableQty
     if (wanted <= 0) continue
-    if (wanted > outQty) {
+    if (wanted > availableQty) {
       throw new MemoError(
         'MEMO_QTY_TOO_HIGH',
-        `Only ${outQty} of "${item.titleSnapshot}" is still out on this memo.`,
+        availableQty < outQty
+          ? `Only ${availableQty} of "${item.titleSnapshot}" is still with you — the rest is already on its way back.`
+          : `Only ${outQty} of "${item.titleSnapshot}" is still out on this memo.`,
       )
     }
     resolved.push({ item, qty: wanted })
@@ -299,6 +327,23 @@ async function refreshMemoStatus(memoId, actorId, client) {
   })
 }
 
+/**
+ * A pending send-back never outlives the pieces it covers: once a line has been
+ * returned or bought down, whatever was requested beyond what is still out is
+ * dropped. Arriving pieces settle the request first.
+ */
+function settleReturnRequest(item, next) {
+  const outQty = memoLineOutQty({ ...item, ...next })
+  const returnRequestedQty = Math.min(
+    Math.max(Number(item.returnRequestedQty || 0) - Number(next.arrivedQty || 0), 0),
+    outQty,
+  )
+  return {
+    returnRequestedQty,
+    returnRequestedAt: returnRequestedQty > 0 ? item.returnRequestedAt : null,
+  }
+}
+
 /** Pieces came back. Pass no lines to return the whole memo. */
 export async function returnMemoItems({ memoId, lines = null, actorId = null }) {
   const memo = await loadOpenMemo(memoId)
@@ -311,12 +356,78 @@ export async function returnMemoItems({ memoId, lines = null, actorId = null }) 
         where: { id: item.id },
         data: {
           returnedQty,
+          ...settleReturnRequest(item, { returnedQty, arrivedQty: qty }),
           status: deriveMemoItemStatus({ ...item, returnedQty }),
         },
       })
     }
     return refreshMemoStatus(memo.id, actorId, tx)
   })
+}
+
+/**
+ * The customer is sending pieces back. Nothing closes here — the goods are in
+ * transit, not in our hands — so the lines are only marked as on their way and
+ * staff close them with returnMemoItems when the package arrives. The memo
+ * stays open, and the pieces stay out, until then.
+ */
+/**
+ * Tell the team a send-back is coming so someone watches for the package.
+ * Best effort, like the sign-up alerts: a failed email never undoes the request.
+ */
+export async function notifyMemoReturnRequested({ memo, lines }) {
+  const to = String(process.env.NOTIFY_TO_EMAIL || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+  if (!to.length) return
+  const customer = memo.customer || {}
+  const customerName = [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim() || customer.email || 'A customer'
+  const pieceCount = lines.reduce((sum, { qty }) => sum + qty, 0)
+  const pieces = lines.map(({ item, qty }) => `${qty} × ${item.titleSnapshot}`)
+  const subject = `${memo.memoNo}: ${customerName} is sending back ${pieceCount} ${pieceCount === 1 ? 'piece' : 'pieces'}`
+  await sendResend({
+    to,
+    subject,
+    html: renderShell({
+      eyebrow: 'Memo return',
+      title: `${customerName} is sending pieces back`,
+      intro: `Watch for the package, then mark the pieces "Returned to us" on memo ${memo.memoNo} once they arrive.`,
+      bodyHtml: renderDetails([
+        ['Memo', memo.memoNo],
+        ['Customer', [customerName, customer.email].filter(Boolean).join(' · ')],
+        ['Sending back', pieces.join(', ')],
+      ]),
+    }),
+    text: `${subject}\n\n${pieces.join('\n')}\n\nMark them "Returned to us" on the internal memo screen once they arrive.`,
+  }).catch((err) => console.error('[memo] return notification failed:', err))
+}
+
+export async function requestMemoReturn({ memoId, lines = null, customerId }) {
+  const memo = await loadOpenMemo(memoId)
+  if (memo.customerId !== customerId) {
+    throw new MemoError('MEMO_NOT_FOUND', 'Memo not found.', 404)
+  }
+  const resolved = resolveLineQtys(memo, lines, { customerSide: true })
+  const now = new Date()
+
+  const updated = await prisma.$transaction(async (tx) => {
+    for (const { item, qty } of resolved) {
+      await tx.memoItem.update({
+        where: { id: item.id },
+        data: {
+          returnRequestedQty: memoLineReturnRequestedQty(item) + qty,
+          returnRequestedAt: now,
+        },
+      })
+    }
+    return tx.memo.update({
+      where: { id: memo.id },
+      data: { updatedById: customerId },
+      include: { ...MEMO_PAYLOAD_INCLUDE, customer: { select: { email: true, firstName: true, lastName: true } } },
+    })
+  })
+  return { memo: updated, lines: resolved }
 }
 
 /**
@@ -334,7 +445,7 @@ export async function convertMemoToOrder({ memoId, lines = null, actorId = null,
   if (customerId && memo.customerId !== customerId) {
     throw new MemoError('MEMO_NOT_FOUND', 'Memo not found.', 404)
   }
-  const resolved = resolveLineQtys(memo, lines)
+  const resolved = resolveLineQtys(memo, lines, { customerSide: Boolean(customerId) })
   const customer = await getMemoCustomer(memo.customerId)
 
   const subtotalPaise = resolved.reduce((sum, { item, qty }) => sum + item.pricePaise * qty, 0)
@@ -398,6 +509,7 @@ export async function convertMemoToOrder({ memoId, lines = null, actorId = null,
         where: { id: item.id },
         data: {
           convertedQty,
+          ...settleReturnRequest(item, { convertedQty }),
           status: deriveMemoItemStatus({ ...item, convertedQty }),
         },
       })
@@ -484,6 +596,7 @@ export async function cancelMemo({ memoId, actorId = null }) {
 export function toMemoPayload(memo, extra = {}) {
   const items = memo.items || []
   const outstandingPaise = memoOutstandingPaise(items)
+  const returnRequestedQty = items.reduce((sum, item) => sum + memoLineReturnRequestedQty(item), 0)
   return {
     id: memo.id,
     memoNo: memo.memoNo,
@@ -504,6 +617,8 @@ export function toMemoPayload(memo, extra = {}) {
     formattedOutstanding: formatMemoMoney(outstandingPaise, memo.currency),
     notes: memo.notes || '',
     shipTo: memo.shipTo || null,
+    // Pieces the customer has sent back that have not arrived yet.
+    returnRequestedQty,
     // Empty unless the caller included the relation; a memo that has never been
     // billed has none either way.
     orders: (memo.orders || []).map((order) => ({
@@ -519,6 +634,8 @@ export function toMemoPayload(memo, extra = {}) {
       returnedQty: item.returnedQty,
       convertedQty: item.convertedQty,
       outQty: memoLineOutQty(item),
+      returnRequestedQty: memoLineReturnRequestedQty(item),
+      returnRequestedAt: memoLineReturnRequestedQty(item) > 0 ? item.returnRequestedAt || null : null,
       status: item.status,
       pricePaise: item.pricePaise,
       formattedPrice: formatMemoMoney(item.pricePaise, memo.currency),

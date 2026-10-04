@@ -12,6 +12,9 @@ interface MemoItem {
   outQty: number
   returnedQty: number
   convertedQty: number
+  /** Sent back by the customer, not arrived yet — still part of outQty. */
+  returnRequestedQty: number
+  returnRequestedAt: string | null
   status: string
   formattedPrice: string
 }
@@ -35,6 +38,7 @@ interface MemoDetail {
   customerFormattedOutstanding: string
   createdBy?: string
   shipTo: Record<string, string> | null
+  returnRequestedQty: number
   orders: { id: string; orderNo: string; status: string }[]
   items: MemoItem[]
 }
@@ -77,6 +81,24 @@ function resetLineQty() {
   }
   lineQty.value = next
 }
+
+// When the customer has said pieces are on their way back, set the quantities
+// to just those, ready for "Returned to us" once the package is opened.
+function fillSentBack() {
+  const next: Record<string, number> = {}
+  for (const item of memo.value?.items || []) {
+    next[item.id] = item.returnRequestedQty || 0
+  }
+  lineQty.value = next
+}
+
+const sentBackSince = computed(() => {
+  const times = (memo.value?.items || [])
+    .map((item) => item.returnRequestedAt)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+  return times.length ? times[times.length - 1] : null
+})
 
 async function loadMemo() {
   if (!isInternalUser.value || !user.value?.id) return
@@ -284,6 +306,24 @@ onMounted(() => {
             </h2>
           </header>
 
+          <div
+            v-if="isOpen && memo.returnRequestedQty"
+            class="ect-px-5 ect-py-3 ect-border-b ect-border-sky-200 ect-bg-sky-50 ect-flex ect-flex-wrap ect-items-center ect-gap-3"
+          >
+            <p class="ect-flex-1 ect-min-w-[220px] ect-font-body ect-text-sm ect-text-sky-800">
+              The customer is sending back {{ memo.returnRequestedQty }} {{ memo.returnRequestedQty === 1 ? 'piece' : 'pieces' }}<span v-if="sentBackSince"> (since {{ formatDate(sentBackSince) }})</span>.
+              Mark them returned once they arrive.
+            </p>
+            <button
+              type="button"
+              :disabled="saving"
+              class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-sky-300 ect-bg-white ect-px-4 ect-py-1.5 ect-font-body ect-text-xs ect-font-semibold ect-text-sky-800 hover:ect-border-sky-500 ect-transition-colors disabled:ect-opacity-50"
+              @click="fillSentBack"
+            >
+              Select just those
+            </button>
+          </div>
+
           <ul class="ect-divide-y ect-divide-rose-200/30">
             <li v-for="item in memo.items" :key="item.id" class="ect-p-5 ect-flex ect-flex-wrap ect-items-center ect-gap-3">
               <div class="ect-min-w-0 ect-flex-1">
@@ -293,6 +333,7 @@ onMounted(() => {
                   <span v-if="item.returnedQty"> · {{ item.returnedQty }} returned</span>
                   <span v-if="item.convertedQty"> · {{ item.convertedQty }} bought</span>
                   <span v-if="item.outQty" class="ect-text-amber-700"> · {{ item.outQty }} still out</span>
+                  <span v-if="item.returnRequestedQty" class="ect-text-sky-700 ect-font-semibold"> · {{ item.returnRequestedQty }} on the way back</span>
                 </p>
               </div>
               <label v-if="isOpen && item.outQty > 0" class="ect-flex ect-items-center ect-gap-2">

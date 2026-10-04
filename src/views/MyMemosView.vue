@@ -35,7 +35,8 @@ function itemLine(item: Memo['items'][number]) {
   const parts = [`${item.formattedPrice} · ${item.qty} issued`]
   if (item.returnedQty) parts.push(`${item.returnedQty} returned`)
   if (item.convertedQty) parts.push(`${item.convertedQty} purchased`)
-  if (item.outQty) parts.push(`${item.outQty} still with you`)
+  if (item.returnRequestedQty) parts.push(`${item.returnRequestedQty} on the way back`)
+  if (item.outQty - (item.returnRequestedQty || 0) > 0) parts.push(`${item.outQty - (item.returnRequestedQty || 0)} still with you`)
   return parts.join(' · ')
 }
 </script>

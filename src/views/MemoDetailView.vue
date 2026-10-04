@@ -28,6 +28,10 @@ const {
   convertingId,
   convertError,
   convertMessage,
+  sendBack,
+  returningId,
+  returnError,
+  returnMessage,
 } = useMemos()
 
 onMounted(() => void load())
@@ -58,13 +62,25 @@ function statusPillClass(m: Memo) {
   return 'ect-bg-champagne ect-text-gold-800'
 }
 
+// Pieces still with the customer that they can still decide on — out, and not
+// already on their way back.
+function openQty(item: MemoItem) {
+  return Math.max(item.outQty - (item.returnRequestedQty || 0), 0)
+}
+
+function isOnItsWayBack(item: MemoItem) {
+  return item.outQty > 0 && openQty(item) === 0
+}
+
 function itemPillClass(item: MemoItem) {
+  if (isOnItsWayBack(item)) return 'ect-bg-sky-50 ect-text-sky-700'
   if (item.status === 'OUT') return 'ect-bg-champagne ect-text-gold-800'
   if (item.status === 'CONVERTED') return 'ect-bg-emerald-50 ect-text-emerald-700'
   return 'ect-bg-charcoal/5 ect-text-charcoal/60'
 }
 
 function itemPillLabel(item: MemoItem) {
+  if (isOnItsWayBack(item)) return 'On its way back'
   if (item.status === 'OUT') return 'With you'
   if (item.status === 'CONVERTED') return 'Purchased'
   return 'Returned'
@@ -74,7 +90,8 @@ function itemQtyLine(item: MemoItem) {
   const parts = [`${item.formattedPrice} each`, `${item.qty} issued`]
   if (item.returnedQty) parts.push(`${item.returnedQty} returned`)
   if (item.convertedQty) parts.push(`${item.convertedQty} purchased`)
-  if (item.outQty) parts.push(`${item.outQty} still with you`)
+  if (item.returnRequestedQty) parts.push(`${item.returnRequestedQty} on the way back`)
+  if (openQty(item)) parts.push(`${openQty(item)} still with you`)
   return parts.join(' · ')
 }
 
@@ -93,19 +110,20 @@ const pieceCount = computed(() =>
   (memo.value?.items || []).reduce((sum, item) => sum + item.qty, 0)
 )
 
-// Which lines the customer is keeping (memoItemId → qty to buy). Ticking a
-// line defaults to everything still out on it; multi-piece lines get a picker.
+// Which lines the customer is deciding on (memoItemId → qty), whether to buy
+// them or send them back. Ticking a line defaults to everything still with
+// them on it; multi-piece lines get a picker.
 const selected = ref<Record<string, number>>({})
 
 function toggleLine(item: MemoItem) {
   const next = { ...selected.value }
   if (next[item.id]) delete next[item.id]
-  else next[item.id] = item.outQty
+  else next[item.id] = openQty(item)
   selected.value = next
 }
 
 function setLineQty(item: MemoItem, event: Event) {
-  const qty = Math.min(Math.max(Number((event.target as HTMLSelectElement).value) || 1, 1), item.outQty)
+  const qty = Math.min(Math.max(Number((event.target as HTMLSelectElement).value) || 1, 1), openQty(item))
   selected.value = { ...selected.value, [item.id]: qty }
 }
 
@@ -123,11 +141,20 @@ const selectionTotal = computed(() => {
   }, 0)
 })
 
-const hasOutPieces = computed(() => (memo.value?.items || []).some((item) => item.outQty > 0))
+const hasOpenPieces = computed(() => (memo.value?.items || []).some((item) => openQty(item) > 0))
+
+// One action at a time: buying and sending back act on the same ticked lines.
+const busy = computed(() => Boolean(memo.value) && (convertingId.value === memo.value?.id || returningId.value === memo.value?.id))
 
 async function buySelected() {
   if (!memo.value || !selectedLines.value.length) return
   const ok = await convert(memo.value.id, selectedLines.value)
+  if (ok) selected.value = {}
+}
+
+async function sendBackSelected() {
+  if (!memo.value || !selectedLines.value.length) return
+  const ok = await sendBack(memo.value.id, selectedLines.value)
   if (ok) selected.value = {}
 }
 </script>
@@ -167,6 +194,8 @@ async function buySelected() {
         <p v-else-if="extendMessage" class="ect-font-body ect-text-sm ect-text-emerald-700 ect-mb-4">{{ extendMessage }}</p>
         <p v-if="convertError" class="ect-font-body ect-text-sm ect-text-red-600 ect-mb-4">{{ convertError }}</p>
         <p v-else-if="convertMessage" class="ect-font-body ect-text-sm ect-text-emerald-700 ect-mb-4">{{ convertMessage }}</p>
+        <p v-if="returnError" class="ect-font-body ect-text-sm ect-text-red-600 ect-mb-4">{{ returnError }}</p>
+        <p v-else-if="returnMessage" class="ect-font-body ect-text-sm ect-text-emerald-700 ect-mb-4">{{ returnMessage }}</p>
 
         <!-- Header -->
         <header class="ect-mb-6 ect-flex ect-flex-wrap ect-items-start ect-gap-4">
@@ -221,11 +250,11 @@ async function buySelected() {
               class="ect-flex ect-flex-wrap ect-items-baseline ect-gap-x-3 ect-gap-y-1 ect-py-4"
             >
               <input
-                v-if="isOpenMemo(memo) && item.outQty > 0"
+                v-if="isOpenMemo(memo) && openQty(item) > 0"
                 type="checkbox"
                 :checked="Boolean(selected[item.id])"
-                :disabled="convertingId === memo.id"
-                :aria-label="`Keep ${item.title}`"
+                :disabled="busy"
+                :aria-label="`Select ${item.title}`"
                 class="ect-w-4 ect-h-4 ect-shrink-0 ect-self-center ect-accent-charcoal ect-cursor-pointer disabled:ect-cursor-wait"
                 @change="toggleLine(item)"
               />
@@ -236,20 +265,20 @@ async function buySelected() {
                 >{{ item.title }}</span>
                 <span class="ect-block ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-0.5">{{ itemQtyLine(item) }}</span>
                 <span
-                  v-if="selected[item.id] && item.outQty > 1"
+                  v-if="selected[item.id] && openQty(item) > 1"
                   class="ect-inline-flex ect-items-center ect-gap-1.5 ect-font-body ect-text-xs ect-text-charcoal/60 ect-mt-1"
                 >
-                  Keeping
+                  Selected
                   <select
                     :value="selected[item.id]"
-                    :disabled="convertingId === memo.id"
-                    :aria-label="`How many of ${item.title} to keep`"
+                    :disabled="busy"
+                    :aria-label="`How many of ${item.title}`"
                     class="ect-font-body ect-text-xs ect-text-charcoal ect-bg-cream ect-border ect-border-sand ect-rounded-lg ect-px-1.5 ect-py-0.5 focus:ect-outline-none focus:ect-ring-2 focus:ect-ring-gold-400"
                     @change="setLineQty(item, $event)"
                   >
-                    <option v-for="n in item.outQty" :key="n" :value="n">{{ n }}</option>
+                    <option v-for="n in openQty(item)" :key="n" :value="n">{{ n }}</option>
                   </select>
-                  of {{ item.outQty }}
+                  of {{ openQty(item) }}
                 </span>
               </span>
               <span
@@ -264,24 +293,36 @@ async function buySelected() {
           </ul>
         </section>
 
-        <!-- Buy what you're keeping -->
+        <!-- Buy or send back what's ticked -->
         <section
-          v-if="isOpenMemo(memo) && hasOutPieces"
+          v-if="isOpenMemo(memo) && hasOpenPieces"
           class="ect-bg-white/90 ect-backdrop-blur-sm ect-rounded-2xl ect-border ect-border-sand ect-shadow-sm ect-p-4 sm:ect-p-5 ect-mb-5 ect-flex ect-flex-wrap ect-items-center ect-gap-3"
         >
           <span class="ect-flex-1 ect-min-w-[220px] ect-font-body ect-text-sm ect-text-charcoal/60">
             <template v-if="selectedLines.length">
-              Keeping {{ selectedCount }} {{ selectedCount === 1 ? 'piece' : 'pieces' }} ·
+              {{ selectedCount }} {{ selectedCount === 1 ? 'piece' : 'pieces' }} selected ·
               <span class="ect-text-charcoal ect-font-medium">{{ formatMoney(selectionTotal) }}</span>
               at your memo prices
             </template>
             <template v-else>
-              Tick the pieces you are keeping to buy them at their memo prices — the rest stays on memo.
+              Tick pieces to buy them at their memo prices or send them back to us — anything you leave unticked stays on memo.
             </template>
           </span>
           <button
             type="button"
-            :disabled="!selectedLines.length || convertingId === memo.id"
+            :disabled="!selectedLines.length || busy"
+            class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-border-charcoal/20 ect-bg-white ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed disabled:hover:ect-border-charcoal/20 disabled:hover:ect-text-charcoal"
+            @click="sendBackSelected"
+          >
+            <svg v-if="returningId === memo.id" class="ect-w-3.5 ect-h-3.5 ect-animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="ect-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="ect-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span>{{ returningId === memo.id ? 'Sending back…' : 'Send back selected' }}</span>
+          </button>
+          <button
+            type="button"
+            :disabled="!selectedLines.length || busy"
             class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-4 ect-py-2.5 ect-rounded-xl ect-bg-charcoal ect-text-white ect-font-body ect-text-xs ect-font-semibold hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
             @click="buySelected"
           >
@@ -319,7 +360,7 @@ async function buySelected() {
         <!-- Extend / help -->
         <section class="ect-flex ect-flex-wrap ect-items-center ect-gap-3">
           <p class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-flex-1 ect-min-w-[220px] ect-m-0">
-            To keep or send back any piece, reply to your memo email or contact us — we will close the memo and bill only what you keep.
+            Pieces you send back stay on this memo until they reach us — our team will be in touch about shipping, and closes them off once they arrive.
           </p>
           <template v-if="isOpenMemo(memo)">
             <span v-if="memoExtendHint(memo)" class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-text-right">

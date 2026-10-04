@@ -282,7 +282,7 @@ function esc(value) {
     .replace(/>/g, '&gt;')
 }
 
-function renderShell({ eyebrow, title, intro, bodyHtml = '', footer = '' }) {
+export function renderShell({ eyebrow, title, intro, bodyHtml = '', footer = '' }) {
   return `
     <div style="background:#f7efeb;padding:32px 16px;">
       <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #f0ddda;border-radius:24px;overflow:hidden;">
@@ -297,7 +297,7 @@ function renderShell({ eyebrow, title, intro, bodyHtml = '', footer = '' }) {
     </div>`
 }
 
-function renderDetails(rows) {
+export function renderDetails(rows) {
   const body = rows
     .filter(([, value]) => value)
     .map(
@@ -308,7 +308,7 @@ function renderDetails(rows) {
   return `<table style="width:100%;border-collapse:collapse;border:1px solid #f0ddda;border-radius:16px;overflow:hidden;background:#fffaf8;"><tbody>${body}</tbody></table>`
 }
 
-async function sendResend({ to, subject, html, text }) {
+export async function sendResend({ to, subject, html, text }) {
   const key = process.env.RESEND_API_KEY
   if (!key) return { ok: false, skipped: true }
   const recipients = (Array.isArray(to) ? to : [to]).filter((value) => EMAIL_PATTERN.test(String(value || '').trim()))

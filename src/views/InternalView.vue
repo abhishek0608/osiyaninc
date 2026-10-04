@@ -194,6 +194,8 @@ interface InternalMemoItem {
 }
 
 interface InternalMemo {
+  /** Pieces the customer has sent back that have not arrived yet. */
+  returnRequestedQty: number
   id: string
   memoNo: string
   status: string
@@ -1641,6 +1643,10 @@ onBeforeUnmount(() => {
                   >
                     {{ memo.isOverdue ? 'Overdue' : memo.status.toLowerCase() }}
                   </span>
+                  <span
+                    v-if="memo.returnRequestedQty"
+                    class="ect-block ect-mt-1 ect-text-xs ect-font-semibold ect-text-sky-700"
+                  >{{ memo.returnRequestedQty }} on the way back</span>
                 </td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-font-semibold">{{ memo.formattedOutstanding }}</td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/55">

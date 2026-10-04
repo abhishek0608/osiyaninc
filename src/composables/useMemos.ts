@@ -20,6 +20,9 @@ export interface MemoItem {
   returnedQty: number
   convertedQty: number
   outQty: number
+  /** Of `outQty`, how many the customer has sent back that have not arrived yet. */
+  returnRequestedQty: number
+  returnRequestedAt: string | null
   status: MemoItemStatus
   pricePaise: number
   formattedPrice: string
@@ -45,6 +48,8 @@ export interface Memo {
   formattedOutstanding: string
   notes: string
   shipTo: Record<string, string> | null
+  /** Pieces sent back that have not arrived yet, across every line. */
+  returnRequestedQty: number
   /** Every order billed off this memo, oldest first; empty until one is. */
   orders: { id: string; orderNo: string; status: string }[]
   items: MemoItem[]
@@ -75,6 +80,10 @@ const extendMessage = ref('')
 const convertingId = ref('')
 const convertError = ref('')
 const convertMessage = ref('')
+// And for a send-back in flight.
+const returningId = ref('')
+const returnError = ref('')
+const returnMessage = ref('')
 // Which account the loaded memos belong to, so a sign-out (or a different
 // sign-in) never leaves one customer looking at another's consignment.
 let loadedForUserId = ''
@@ -91,6 +100,9 @@ function reset() {
   convertError.value = ''
   convertMessage.value = ''
   convertingId.value = ''
+  returnError.value = ''
+  returnMessage.value = ''
+  returningId.value = ''
   loadedForUserId = ''
 }
 
@@ -201,6 +213,36 @@ export function useMemos() {
     }
   }
 
+  // Send some (or all) of what is still out back to us. This only marks the
+  // pieces as on their way — they stay on the memo until the team receives them.
+  async function sendBack(memoId: string, lines: { memoItemId: string; qty: number }[] | null = null) {
+    const userId = user.value?.id || ''
+    if (!userId || !memoId || returningId.value) return false
+    returningId.value = memoId
+    returnError.value = ''
+    returnMessage.value = ''
+    try {
+      const res = await fetch(`${API_BASE}/api/account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'memo-return', userId, memoId, lines: lines || undefined }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || 'Unable to send these pieces back.')
+      const updated = data.memo as Memo
+      const index = memos.value.findIndex((memo) => memo.id === updated.id)
+      if (index >= 0) memos.value[index] = { ...memos.value[index], ...updated }
+      const count = (lines || []).reduce((sum, line) => sum + line.qty, 0)
+      returnMessage.value = `Return noted${count ? ` for ${count} ${count === 1 ? 'piece' : 'pieces'}` : ''}. Our team will be in touch about shipping them back, and will close them off the memo once they arrive.`
+      return true
+    } catch (e) {
+      returnError.value = e instanceof Error ? e.message : 'Unable to send these pieces back.'
+      return false
+    } finally {
+      returningId.value = ''
+    }
+  }
+
   if (!authWatchBound) {
     authWatchBound = true
     watch(
@@ -237,10 +279,14 @@ export function useMemos() {
     convertingId: computed(() => convertingId.value),
     convertError: computed(() => convertError.value),
     convertMessage: computed(() => convertMessage.value),
+    returningId: computed(() => returningId.value),
+    returnError: computed(() => returnError.value),
+    returnMessage: computed(() => returnMessage.value),
     load,
     refresh: () => load(true),
     extend,
     convert,
+    sendBack,
   }
 }
 
