@@ -12,6 +12,7 @@ import {
   updateProductImageEmbeddingsSafe,
 } from '../server/api/image-embedding.js'
 import { pickVariantForPricing } from '../server/api/product-presenter.js'
+import { withLineImages } from '../server/api/line-images.js'
 import { isS3Configured, listProductImages } from '../server/api/s3-images.js'
 import { getAllHomepageSlides } from '../server/api/homepage-slides-source.js'
 import { getSiteConfig, saveSiteConfig } from '../server/api/site-config-source.js'
@@ -630,7 +631,7 @@ async function handleOrderResource(req, res, body) {
     const actorMap = await resolveActorMap([order.createdById, order.updatedById])
 
     return res.status(200).json({
-      order: {
+      order: await withLineImages({
         id: order.id,
         orderNo: order.orderNo,
         customerId: order.customer?.id || null,
@@ -645,13 +646,14 @@ async function handleOrderResource(req, res, body) {
         modifiedAt: order.updatedAt,
         items: order.items.map((item) => ({
           id: item.id,
+          variantId: item.variantId,
           slug: item.variant?.product?.slug || '',
           title: item.titleSnapshot,
           price: formatMoney(item.pricePaise, order.currency),
           priceValue: item.pricePaise,
           qty: item.qty,
         })),
-      },
+      }),
     })
   } catch (err) {
     console.error('Internal order detail failed:', err)
@@ -800,7 +802,7 @@ async function handleMemoResource(req, res, body) {
       const outstandingPaise = await getMemoOutstandingPaise(memo.customerId)
       const actorMap = await resolveActorMap([memo.createdById, memo.updatedById])
       return res.status(200).json({
-        memo: toMemoPayload(memo, {
+        memo: await withLineImages(toMemoPayload(memo, {
           customerId: memo.customer?.id || null,
           customer: memoCustomerName(memo.customer),
           customerEmail: memo.customer?.email || '',
@@ -812,7 +814,7 @@ async function handleMemoResource(req, res, body) {
           createdBy: actorName(actorMap, memo.createdById) || memoCustomerName(memo.customer),
           modifiedBy: actorName(actorMap, memo.updatedById),
           modifiedAt: memo.updatedAt,
-        }),
+        })),
       })
     }
 
@@ -824,25 +826,25 @@ async function handleMemoResource(req, res, body) {
 
       if (action === 'return') {
         const memo = await returnMemoItems({ memoId, lines, actorId: internalUser.id })
-        return res.status(200).json({ memo: toMemoPayload(memo) })
+        return res.status(200).json({ memo: await withLineImages(toMemoPayload(memo)) })
       }
       if (action === 'convert') {
         const result = await convertMemoToOrder({ memoId, lines, actorId: internalUser.id })
         return res.status(200).json({
-          memo: toMemoPayload(result.memo),
+          memo: await withLineImages(toMemoPayload(result.memo)),
           order: result.order,
           invoice: result.invoice,
         })
       }
       if (action === 'cancel') {
         const memo = await cancelMemo({ memoId, actorId: internalUser.id })
-        return res.status(200).json({ memo: toMemoPayload(memo) })
+        return res.status(200).json({ memo: await withLineImages(toMemoPayload(memo)) })
       }
       // Staff are not held to the customer's final-window rule: this is the way
       // an overdue or already-extended memo gets more time.
       if (action === 'extend') {
         const memo = await extendMemo({ memoId, days: body?.days, actorId: internalUser.id })
-        return res.status(200).json({ memo: toMemoPayload(memo) })
+        return res.status(200).json({ memo: await withLineImages(toMemoPayload(memo)) })
       }
       return res.status(400).json({ message: 'Unknown memo action.' })
     }
@@ -1222,7 +1224,7 @@ async function handleMemoCreateResource(req, res, body) {
       currency: lines[0].currency,
     })
 
-    return res.status(200).json({ memo: toMemoPayload(memo) })
+    return res.status(200).json({ memo: await withLineImages(toMemoPayload(memo)) })
   } catch (err) {
     if (err instanceof MemoError) {
       return res.status(err.status).json({ message: err.message, code: err.code })

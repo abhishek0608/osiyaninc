@@ -27,6 +27,7 @@ import {
   toMemoPayload,
 } from '../server/api/memo.js'
 import { getMyOrders } from '../server/api/checkout.js'
+import { withLineImages } from '../server/api/line-images.js'
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto'
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
@@ -719,7 +720,7 @@ async function handleGetMemos(res, customerId) {
     formattedOutstanding: formatMemoMoney(outstandingPaise),
     availablePaise,
     formattedAvailable: availablePaise == null ? null : formatMemoMoney(availablePaise),
-    memos: memos.map((memo) => toMemoPayload(memo)),
+    memos: await withLineImages(memos.map((memo) => toMemoPayload(memo))),
   })
 }
 
@@ -787,7 +788,7 @@ async function handlePostMemo(res, customerId, body) {
   // would clear it.
   await prisma.cartItem.deleteMany({ where: { cartId: cart.id } })
 
-  return res.status(201).json({ memo: toMemoPayload(memo), cartId: cart.id, items: [] })
+  return res.status(201).json({ memo: await withLineImages(toMemoPayload(memo)), cartId: cart.id, items: [] })
 }
 
 // Extending is the customer's own action, so the rules (final window, one
@@ -803,7 +804,7 @@ async function handlePostMemoExtend(res, customerId, body) {
   } catch (err) {
     return memoErrorResponse(res, err)
   }
-  return res.status(200).json({ memo: toMemoPayload(memo) })
+  return res.status(200).json({ memo: await withLineImages(toMemoPayload(memo)) })
 }
 
 // Buying the pieces is the customer's own action, like extending: the line
@@ -823,7 +824,7 @@ async function handlePostMemoConvert(res, customerId, body) {
     return memoErrorResponse(res, err)
   }
   return res.status(200).json({
-    memo: toMemoPayload(result.memo),
+    memo: await withLineImages(toMemoPayload(result.memo)),
     order: result.order,
     invoice: result.invoice,
   })
@@ -846,7 +847,7 @@ async function handlePostMemoReturn(res, customerId, body) {
     return memoErrorResponse(res, err)
   }
   await notifyMemoReturnRequested(result)
-  return res.status(200).json({ memo: toMemoPayload(result.memo) })
+  return res.status(200).json({ memo: await withLineImages(toMemoPayload(result.memo)) })
 }
 
 function normalizeMemoShipTo(input) {

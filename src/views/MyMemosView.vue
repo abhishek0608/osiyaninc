@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
+import LineItemThumb from '../components/LineItemThumb.vue'
 import { useAuth } from '../composables/useAuth'
 import {
   useMemos,
@@ -161,9 +162,12 @@ function itemLine(item: Memo['items'][number]) {
             </RouterLink>
 
             <ul class="ect-list-none ect-m-0 ect-px-5 sm:ect-px-6 ect-pb-1 ect-flex ect-flex-col ect-gap-2">
-              <li v-for="item in memo.items" :key="item.id" class="ect-flex ect-flex-wrap ect-gap-x-2 ect-items-baseline">
-                <span class="ect-font-body ect-text-sm ect-text-charcoal ect-truncate ect-max-w-full">{{ item.title }}</span>
-                <span class="ect-font-body ect-text-xs ect-text-charcoal/45">{{ itemLine(item) }}</span>
+              <li v-for="item in memo.items" :key="item.id" class="ect-flex ect-items-center ect-gap-3">
+                <LineItemThumb :image="item.image" :alt="item.title" size="sm" />
+                <span class="ect-flex ect-flex-wrap ect-gap-x-2 ect-items-baseline ect-min-w-0">
+                  <span class="ect-font-body ect-text-sm ect-text-charcoal ect-truncate ect-max-w-full">{{ item.title }}</span>
+                  <span class="ect-font-body ect-text-xs ect-text-charcoal/45">{{ itemLine(item) }}</span>
+                </span>
               </li>
             </ul>
 

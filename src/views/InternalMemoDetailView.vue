@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import LineItemThumb from '../components/LineItemThumb.vue'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
 
 interface MemoItem {
   id: string
+  image?: string
   title: string
   qty: number
   outQty: number
@@ -348,6 +350,7 @@ onMounted(() => {
                 class="ect-w-4 ect-h-4 ect-shrink-0 ect-accent-charcoal ect-cursor-pointer disabled:ect-cursor-wait"
                 @change="toggleLine(item)"
               />
+              <LineItemThumb :image="item.image" :alt="item.title" />
               <div class="ect-min-w-0 ect-flex-1">
                 <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ item.title }}</p>
                 <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-1">{{ item.formattedPrice }}</p>

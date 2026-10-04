@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import LineItemThumb from '../components/LineItemThumb.vue'
 import { useMemos, memoDueLabel } from '../composables/useMemos'
 
 // A memo is not an order: nothing was charged, the pieces stay ours, and the
@@ -80,9 +81,12 @@ function formatDate(iso: string) {
           </div>
 
           <ul class="ect-list-none ect-m-0 ect-p-0 ect-flex ect-flex-col ect-gap-2 ect-border-t ect-border-sand ect-pt-4">
-            <li v-for="item in memo.items" :key="item.id" class="ect-flex ect-flex-wrap ect-gap-x-2 ect-items-baseline">
-              <span class="ect-font-body ect-text-sm ect-text-charcoal">{{ item.title }}</span>
-              <span class="ect-font-body ect-text-xs ect-text-charcoal/45">{{ item.formattedPrice }} · {{ item.qty }} out</span>
+            <li v-for="item in memo.items" :key="item.id" class="ect-flex ect-items-center ect-gap-3">
+              <LineItemThumb :image="item.image" :alt="item.title" size="sm" />
+              <span class="ect-flex ect-flex-wrap ect-gap-x-2 ect-items-baseline ect-min-w-0">
+                <span class="ect-font-body ect-text-sm ect-text-charcoal">{{ item.title }}</span>
+                <span class="ect-font-body ect-text-xs ect-text-charcoal/45">{{ item.formattedPrice }} · {{ item.qty }} out</span>
+              </span>
             </li>
           </ul>
         </template>

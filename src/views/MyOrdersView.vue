@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import { productImageUrl } from '../composables/productImageUrl'
+import LineItemThumb from '../components/LineItemThumb.vue'
 import { useAuth } from '../composables/useAuth'
 import { useMyOrders, orderPaymentLabel, orderStatusLabel, type MyOrder } from '../composables/useMyOrders'
 
@@ -68,22 +68,24 @@ function statusPillClass(order: MyOrder) {
         <ul v-else class="ect-list-none ect-m-0 ect-p-0 ect-flex ect-flex-col ect-gap-4">
           <li v-for="order in orders" :key="order.id" class="ect-bg-white/90 ect-backdrop-blur-sm ect-rounded-2xl ect-border ect-border-sand ect-shadow-sm ect-overflow-hidden">
             <div class="ect-flex ect-gap-4 ect-p-5 sm:ect-p-6">
-              <span class="ect-w-16 ect-h-16 sm:ect-w-20 sm:ect-h-20 ect-rounded-xl ect-bg-champagne/50 ect-shrink-0 ect-flex ect-items-center ect-justify-center ect-overflow-hidden">
-                <img v-if="order.items[0]?.image" :src="productImageUrl(order.items[0].image, 320)" :alt="order.items[0].title" class="ect-w-full ect-h-full ect-object-cover" />
-                <svg v-else class="ect-w-8 ect-h-8 ect-text-gold-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-                </svg>
-              </span>
               <span class="ect-flex-1 ect-min-w-0">
                 <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mb-0.5">{{ order.orderNo }}</p>
                 <p class="ect-font-body ect-text-sm ect-text-charcoal/60">
                   {{ formatDate(order.createdAt) }} · {{ order.itemCount }} {{ order.itemCount === 1 ? 'item' : 'items' }}
                 </p>
-                <p class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-1 ect-truncate">{{ order.items.map((i) => i.title).join(', ') }}</p>
               </span>
               <span class="ect-font-display ect-text-lg ect-font-medium ect-text-charcoal ect-shrink-0">{{ order.formattedTotal }}</span>
             </div>
-            <section class="ect-px-5 sm:ect-px-6 ect-pb-5 sm:ect-pb-6 ect-pt-0">
+            <ul class="ect-list-none ect-m-0 ect-px-5 sm:ect-px-6 ect-pb-1 ect-flex ect-flex-col ect-gap-2">
+              <li v-for="item in order.items" :key="item.id" class="ect-flex ect-items-center ect-gap-3">
+                <LineItemThumb :image="item.image" :alt="item.title" size="sm" />
+                <span class="ect-flex ect-flex-wrap ect-gap-x-2 ect-items-baseline ect-min-w-0">
+                  <span class="ect-font-body ect-text-sm ect-text-charcoal ect-truncate ect-max-w-full">{{ item.title }}</span>
+                  <span class="ect-font-body ect-text-xs ect-text-charcoal/45">{{ item.formattedPrice }}<template v-if="item.qty > 1"> × {{ item.qty }}</template></span>
+                </span>
+              </li>
+            </ul>
+            <section class="ect-px-5 sm:ect-px-6 ect-pb-5 sm:ect-pb-6 ect-pt-4">
               <span
                 class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-2.5 ect-py-1 ect-rounded-full ect-font-body ect-text-xs ect-font-medium"
                 :class="statusPillClass(order)"

@@ -18,6 +18,7 @@ import { prisma } from './db.js'
 import { toApiProduct } from './product-presenter.js'
 import { getSiteConfig } from './site-config-source.js'
 import { creditLimitToUsd, formatUsd } from './money.js'
+import { withLineImages } from './line-images.js'
 
 export class CheckoutError extends Error {
   constructor(code, message, status = 400) {
@@ -287,6 +288,7 @@ export function toMyOrderPayload(order) {
     const product = item.variant?.product
     return {
       id: item.id,
+      variantId: item.variantId,
       title: item.titleSnapshot,
       slug: product?.slug || '',
       image: product?.images?.[0]?.url || '',
@@ -345,5 +347,5 @@ export async function getMyOrders(customerId) {
     },
     orderBy: { createdAt: 'desc' },
   })
-  return orders.map((order) => toMyOrderPayload(order))
+  return withLineImages(orders.map((order) => toMyOrderPayload(order)))
 }

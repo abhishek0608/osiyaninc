@@ -16,6 +16,8 @@ export interface MemoItem {
   id: string
   variantId: string
   title: string
+  /** First photo of the piece, resolved server-side; '' when it has none. */
+  image?: string
   qty: number
   returnedQty: number
   convertedQty: number

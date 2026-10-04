@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import LineItemThumb from '../components/LineItemThumb.vue'
 import { useAuth } from '../composables/useAuth'
 import {
   useMemos,
@@ -258,6 +259,7 @@ async function sendBackSelected() {
                 class="ect-w-4 ect-h-4 ect-shrink-0 ect-self-center ect-accent-charcoal ect-cursor-pointer disabled:ect-cursor-wait"
                 @change="toggleLine(item)"
               />
+              <LineItemThumb :image="item.image" :alt="item.title" class="ect-self-center" />
               <span class="ect-flex-1 ect-min-w-[200px]">
                 <span
                   class="ect-block ect-font-body ect-text-sm ect-font-medium"

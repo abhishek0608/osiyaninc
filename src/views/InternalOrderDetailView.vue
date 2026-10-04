@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import LineItemThumb from '../components/LineItemThumb.vue'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
@@ -192,9 +193,12 @@ onMounted(() => {
               <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.16em] ect-text-charcoal/40 ect-mb-3">Line items</p>
               <ul class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
                 <li v-for="(item, index) in targetOrder.items" :key="`${item.slug}-${index}`" class="ect-flex ect-items-center ect-justify-between ect-gap-3 ect-rounded-lg ect-border ect-border-rose-100 ect-p-3">
-                  <div>
-                    <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ item.title }}</p>
-                    <p class="ect-font-body ect-text-xs ect-text-charcoal/45">Qty {{ item.qty }}</p>
+                  <div class="ect-flex ect-items-center ect-gap-3 ect-min-w-0">
+                    <LineItemThumb :image="item.image" :alt="item.title" />
+                    <div class="ect-min-w-0">
+                      <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ item.title }}</p>
+                      <p class="ect-font-body ect-text-xs ect-text-charcoal/45">Qty {{ item.qty }}</p>
+                    </div>
                   </div>
                   <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ item.price }}</p>
                 </li>
