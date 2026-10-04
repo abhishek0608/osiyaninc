@@ -85,18 +85,18 @@ function statusPillClass(order: MyOrder) {
                 </span>
               </li>
             </ul>
-            <section class="ect-px-5 sm:ect-px-6 ect-pb-5 sm:ect-pb-6 ect-pt-4">
+            <section class="ect-px-5 sm:ect-px-6 ect-pb-5 sm:ect-pb-6 ect-pt-4 ect-flex ect-flex-wrap ect-items-center ect-gap-2">
               <span
                 class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-2.5 ect-py-1 ect-rounded-full ect-font-body ect-text-xs ect-font-medium"
                 :class="statusPillClass(order)"
               >{{ orderStatusLabel(order) }}</span>
-              <span class="ect-inline-flex ect-items-center ect-gap-1.5 ect-ml-2 ect-px-2.5 ect-py-1 ect-rounded-full ect-border ect-border-gold-300/70 ect-font-body ect-text-xs ect-font-medium ect-text-gold-800">{{ orderPaymentLabel(order) }}</span>
+              <span class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-2.5 ect-py-1 ect-rounded-full ect-border ect-border-gold-300/70 ect-font-body ect-text-xs ect-font-medium ect-text-gold-800">{{ orderPaymentLabel(order) }}</span>
               <!-- Billed off a memo: the pieces were already with them, so the
                    consignment they came from is the useful thing to link to. -->
               <RouterLink
                 v-if="order.memo"
                 :to="{ name: 'memo-detail', params: { id: order.memo.id } }"
-                class="ect-inline-flex ect-items-center ect-gap-1.5 ect-ml-2 ect-px-2.5 ect-py-1 ect-rounded-full ect-border ect-border-charcoal/15 ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors"
+                class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-2.5 ect-py-1 ect-rounded-full ect-border ect-border-charcoal/15 ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors"
               >
                 From memo {{ order.memo.memoNo }}
               </RouterLink>

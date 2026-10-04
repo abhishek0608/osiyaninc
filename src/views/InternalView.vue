@@ -582,6 +582,15 @@ const exportError = ref('')
 const productMoreOpen = ref(false)
 const productMoreRef = ref<HTMLElement | null>(null)
 
+// Below lg the three filter selects fold behind one "Filters" button; the
+// badge counts the ones currently narrowing the list.
+const productFiltersOpen = ref(false)
+const productActiveFilterCount = computed(
+  () =>
+    [productStatusFilter.value, productCategoryFilter.value, productVectorFilter.value].filter((v) => v !== 'all')
+      .length,
+)
+
 function closeProductMoreOnOutsideClick(e: MouseEvent) {
   if (productMoreRef.value && !productMoreRef.value.contains(e.target as Node)) {
     productMoreOpen.value = false
@@ -771,6 +780,14 @@ function customerDetailPath(order: InternalOrder) {
 
 function openOrderDetail(order: InternalOrder) {
   void router.push({ name: 'internal-order', params: { id: order.id } })
+}
+
+// Same palette as the memo pills: closed-out orders stay quiet, live ones warm.
+function orderStatusPillClass(status: string) {
+  const s = status.toUpperCase()
+  if (s === 'CANCELLED' || s === 'REFUNDED') return 'ect-bg-charcoal/5 ect-text-charcoal/60'
+  if (s === 'FULFILLED') return 'ect-bg-emerald-50 ect-text-emerald-700'
+  return 'ect-bg-amber-50 ect-text-amber-700'
 }
 
 function createHomepageSlide(): HomepageSlideRecord {
@@ -1483,7 +1500,7 @@ onBeforeUnmount(() => {
       <section class="ect-bg-white ect-border ect-border-sand ect-rounded-lg ect-overflow-hidden">
         <div v-if="activeTabId === 'orders'" class="ect-overflow-x-auto">
           <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-2 ect-border-b ect-border-sand ect-bg-cream ect-px-4 ect-py-3">
-            <div class="ect-relative ect-w-full sm:ect-w-72">
+            <div class="ect-relative ect-min-w-0 ect-flex-1 sm:ect-flex-none sm:ect-w-72">
               <svg class="ect-absolute ect-left-3 ect-top-1/2 -ect-translate-y-1/2 ect-w-4 ect-h-4 ect-text-charcoal/35" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/></svg>
               <input
                 v-model="orderSearch"
@@ -1495,15 +1512,16 @@ onBeforeUnmount(() => {
             </div>
             <button
               type="button"
-              class="sm:ect-ml-auto ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
+              class="ect-shrink-0 sm:ect-ml-auto ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
               @click="newOrderOpen = true"
             >
-              New order
+              <svg class="ect-w-4 ect-h-4 ect-mr-1 sm:ect-hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14" /></svg>
+              <span class="sm:ect-hidden">New</span><span class="ect-hidden sm:ect-inline">New order</span>
             </button>
           </div>
           <InternalNewOrderModal v-if="newOrderOpen" @close="newOrderOpen = false" @created="onOrderCreated" />
-          <!-- Phones get one card per row; the table takes over from sm up. -->
-          <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
+          <!-- Phones and tablets get one card per row; the table takes over from lg up. -->
+          <ul class="lg:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
             <template v-if="orderListLoading">
               <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
                 <div class="ect-h-4 ect-w-1/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
@@ -1516,15 +1534,21 @@ onBeforeUnmount(() => {
                   <span class="ect-text-sm ect-font-semibold ect-text-charcoal">{{ order.orderNo }}</span>
                   <span class="ect-shrink-0 ect-text-sm ect-font-semibold ect-text-charcoal">{{ order.total }}</span>
                 </span>
-                <span class="ect-mt-0.5 ect-block ect-truncate ect-text-sm ect-text-charcoal/70">{{ order.customer }}</span>
+                <span class="ect-mt-0.5 ect-flex ect-items-center ect-justify-between ect-gap-3">
+                  <span class="ect-min-w-0 ect-truncate ect-text-sm ect-text-charcoal/70">{{ order.customer }}</span>
+                  <span
+                    class="ect-inline-flex ect-shrink-0 ect-items-center ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold ect-capitalize"
+                    :class="orderStatusPillClass(order.status)"
+                  >{{ order.status.toLowerCase() }}</span>
+                </span>
                 <span class="ect-mt-1 ect-block ect-text-xs ect-text-charcoal/45">
-                  <span class="ect-capitalize">{{ order.status }}</span> · {{ order.itemCount }} item{{ order.itemCount === 1 ? '' : 's' }} · {{ formatDay(order.createdAt) }}
+                  {{ order.itemCount }} item{{ order.itemCount === 1 ? '' : 's' }} · {{ formatDay(order.createdAt) }}
                 </span>
               </RouterLink>
             </li>
             <li v-if="!orderListLoading && !displayOrders.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No orders found.</li>
           </ul>
-          <table class="ect-hidden sm:ect-table ect-w-full ect-min-w-[980px] ect-border-collapse">
+          <table class="ect-hidden lg:ect-table ect-w-full ect-min-w-[980px] ect-border-collapse">
             <thead class="ect-bg-cream"><tr><th v-for="h in ['Order','Customer', 'Items', 'Status', 'Total', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="orderListLoading">
@@ -1599,12 +1623,13 @@ onBeforeUnmount(() => {
             </div>
             <select
               v-model="memoStatusFilter"
-              class="ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
+              class="ect-min-w-0 ect-flex-1 sm:ect-flex-none ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
               @change="loadMemos(true)"
             >
               <option v-for="opt in memoStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
-            <p v-if="memoSummary" class="sm:ect-ml-auto ect-font-body ect-text-xs ect-text-charcoal/55">
+            <!-- Phones: the summary drops under the filter + button row. -->
+            <p v-if="memoSummary" class="ect-order-last ect-basis-full sm:ect-order-none sm:ect-basis-auto sm:ect-ml-auto ect-font-body ect-text-xs ect-text-charcoal/55">
               <span class="ect-font-semibold ect-text-charcoal">{{ memoSummary.formattedOutstanding }}</span>
               out on {{ memoSummary.openCount }} memo{{ memoSummary.openCount === 1 ? '' : 's' }}
               <span v-if="memoSummary.overdueCount" class="ect-text-red-600">
@@ -1613,15 +1638,16 @@ onBeforeUnmount(() => {
             </p>
             <button
               type="button"
-              class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
+              class="ect-shrink-0 ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
               :class="memoSummary ? '' : 'sm:ect-ml-auto'"
               @click="newMemoOpen = true"
             >
-              New memo
+              <svg class="ect-w-4 ect-h-4 ect-mr-1 sm:ect-hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14" /></svg>
+              <span class="sm:ect-hidden">New</span><span class="ect-hidden sm:ect-inline">New memo</span>
             </button>
           </div>
           <InternalNewMemoModal v-if="newMemoOpen" @close="newMemoOpen = false" @created="onMemoCreated" />
-          <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
+          <ul class="lg:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
             <template v-if="memoListLoading">
               <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
                 <div class="ect-h-4 ect-w-1/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
@@ -1633,7 +1659,7 @@ onBeforeUnmount(() => {
                 <span class="ect-flex ect-items-center ect-justify-between ect-gap-3">
                   <span class="ect-text-sm ect-font-semibold ect-text-charcoal">{{ memo.memoNo }}</span>
                   <span
-                    class="ect-inline-flex ect-shrink-0 ect-items-center ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold"
+                    class="ect-inline-flex ect-shrink-0 ect-items-center ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold ect-capitalize"
                     :class="memo.isOverdue
                       ? 'ect-bg-red-50 ect-text-red-700'
                       : memo.status === 'CONVERTED'
@@ -1658,7 +1684,7 @@ onBeforeUnmount(() => {
             </li>
             <li v-if="!memoListLoading && !memos.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No memos found.</li>
           </ul>
-          <table class="ect-hidden sm:ect-table ect-w-full ect-min-w-[980px] ect-border-collapse">
+          <table class="ect-hidden lg:ect-table ect-w-full ect-min-w-[980px] ect-border-collapse">
             <thead class="ect-bg-cream"><tr><th v-for="h in ['Memo','Customer', 'Pieces', 'Status', 'Value out', 'Due', 'Issued']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="memoListLoading">
@@ -1697,7 +1723,7 @@ onBeforeUnmount(() => {
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">{{ memo.itemCount }}</td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">
                   <span
-                    class="ect-inline-flex ect-items-center ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold"
+                    class="ect-inline-flex ect-items-center ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold ect-capitalize"
                     :class="memo.isOverdue
                       ? 'ect-bg-red-50 ect-text-red-700'
                       : memo.status === 'CONVERTED'
@@ -1741,7 +1767,7 @@ onBeforeUnmount(() => {
 
         <div v-else-if="activeTabId === 'users'" class="ect-overflow-x-auto">
           <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-2 ect-border-b ect-border-sand ect-bg-cream ect-px-4 ect-py-3">
-            <div class="ect-relative ect-w-full sm:ect-w-72">
+            <div class="ect-relative ect-min-w-0 ect-flex-1 sm:ect-flex-none sm:ect-w-72">
               <svg class="ect-absolute ect-left-3 ect-top-1/2 -ect-translate-y-1/2 ect-w-4 ect-h-4 ect-text-charcoal/35" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/></svg>
               <input
                 v-model="userSearch"
@@ -1754,14 +1780,15 @@ onBeforeUnmount(() => {
             <button
               v-if="isAdminUser"
               type="button"
-              class="sm:ect-ml-auto ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
+              class="ect-shrink-0 sm:ect-ml-auto ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
               @click="newUserOpen = true"
             >
-              New user
+              <svg class="ect-w-4 ect-h-4 ect-mr-1 sm:ect-hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14" /></svg>
+              <span class="sm:ect-hidden">New</span><span class="ect-hidden sm:ect-inline">New user</span>
             </button>
           </div>
           <InternalNewUserModal v-if="newUserOpen" @close="newUserOpen = false" @created="onUserCreated" />
-          <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
+          <ul class="lg:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
             <template v-if="userListLoading">
               <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
                 <div class="ect-h-4 ect-w-1/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
@@ -1780,7 +1807,7 @@ onBeforeUnmount(() => {
             </li>
             <li v-if="!userListLoading && !users.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No users found.</li>
           </ul>
-          <table class="ect-hidden sm:ect-table ect-w-full ect-min-w-[940px] ect-border-collapse">
+          <table class="ect-hidden lg:ect-table ect-w-full ect-min-w-[940px] ect-border-collapse">
             <thead class="ect-bg-cream"><tr><th v-for="h in ['Name', 'Email', 'Type', 'Channel', 'Orders', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="userListLoading">
@@ -2607,7 +2634,7 @@ onBeforeUnmount(() => {
         <div v-else-if="activeTabId === 'products'" class="ect-overflow-x-auto">
           <div class="ect-flex ect-flex-wrap ect-items-center ect-justify-between ect-gap-2 ect-border-b ect-border-sand ect-bg-cream ect-px-4 ect-py-3">
             <div class="ect-flex ect-w-full ect-flex-wrap ect-items-center ect-gap-2 lg:ect-w-auto">
-              <div class="ect-relative ect-w-full sm:ect-w-72">
+              <div class="ect-relative ect-min-w-0 ect-flex-1 sm:ect-flex-none sm:ect-w-72">
                 <svg class="ect-absolute ect-left-3 ect-top-1/2 -ect-translate-y-1/2 ect-w-4 ect-h-4 ect-text-charcoal/35" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/></svg>
                 <input
                   v-model="productSearch"
@@ -2617,26 +2644,45 @@ onBeforeUnmount(() => {
                   @input="onProductSearchInput"
                 />
               </div>
-              <UiSelect
-                v-model="productStatusFilter"
-                :options="productStatusOptions"
-                class="ect-w-full sm:ect-w-44"
-                @update:model-value="onProductStatusChange"
-              />
-              <UiSelect
-                v-model="productCategoryFilter"
-                :options="productCategoryOptions"
-                class="ect-w-full sm:ect-w-44"
-                @update:model-value="onProductStatusChange"
-              />
-              <UiSelect
-                v-model="productVectorFilter"
-                :options="productVectorOptions"
-                class="ect-w-full sm:ect-w-48"
-                @update:model-value="onProductStatusChange"
-              />
+              <button
+                type="button"
+                class="lg:ect-hidden ect-shrink-0 ect-inline-flex ect-items-center ect-justify-center ect-gap-1.5 ect-rounded-full ect-border ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-transition-colors"
+                :class="productFiltersOpen ? 'ect-border-gold-400 ect-text-gold-700' : 'ect-border-charcoal/15 ect-text-charcoal/70'"
+                :aria-expanded="productFiltersOpen"
+                @click="productFiltersOpen = !productFiltersOpen"
+              >
+                <svg class="ect-w-4 ect-h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" /></svg>
+                Filters
+                <span
+                  v-if="productActiveFilterCount"
+                  class="ect-inline-flex ect-min-w-[1.125rem] ect-h-[1.125rem] ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-1 ect-text-[11px] ect-text-white"
+                >{{ productActiveFilterCount }}</span>
+              </button>
+              <div
+                class="ect-w-full ect-flex-col ect-gap-2 sm:ect-flex-row sm:ect-flex-wrap lg:ect-flex lg:ect-w-auto"
+                :class="productFiltersOpen ? 'ect-flex' : 'ect-hidden'"
+              >
+                <UiSelect
+                  v-model="productStatusFilter"
+                  :options="productStatusOptions"
+                  class="ect-w-full sm:ect-w-44"
+                  @update:model-value="onProductStatusChange"
+                />
+                <UiSelect
+                  v-model="productCategoryFilter"
+                  :options="productCategoryOptions"
+                  class="ect-w-full sm:ect-w-44"
+                  @update:model-value="onProductStatusChange"
+                />
+                <UiSelect
+                  v-model="productVectorFilter"
+                  :options="productVectorOptions"
+                  class="ect-w-full sm:ect-w-48"
+                  @update:model-value="onProductStatusChange"
+                />
+              </div>
             </div>
-            <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-2">
+            <div class="ect-flex ect-w-full ect-flex-wrap ect-items-center ect-gap-2 sm:ect-w-auto">
             <button
               v-if="aiRunning"
               type="button"
@@ -2701,15 +2747,16 @@ onBeforeUnmount(() => {
             </div>
             <RouterLink
               to="/internal/products/import"
-              class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors"
+              class="ect-flex-1 sm:ect-flex-none ect-whitespace-nowrap ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors"
             >
-              Mass upload
+              <span class="sm:ect-hidden">Upload</span><span class="ect-hidden sm:ect-inline">Mass upload</span>
             </RouterLink>
             <RouterLink
               to="/internal/products/new"
-              class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
+              class="ect-shrink-0 ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
             >
-              New product
+              <svg class="ect-w-4 ect-h-4 ect-mr-1 sm:ect-hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14" /></svg>
+              <span class="sm:ect-hidden">New</span><span class="ect-hidden sm:ect-inline">New product</span>
             </RouterLink>
             </div>
           </div>
@@ -2806,7 +2853,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-          <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
+          <ul class="lg:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
             <template v-if="productListLoading">
               <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
                 <div class="ect-h-4 ect-w-1/2 ect-rounded ect-bg-sand ect-animate-pulse"></div>
@@ -2815,9 +2862,9 @@ onBeforeUnmount(() => {
             </template>
             <li v-for="row in products" v-else :key="row.id">
               <RouterLink :to="`/internal/products/${row.slug}`" class="ect-block ect-px-4 ect-py-3.5 ect-font-body active:ect-bg-cream">
-                <span class="ect-flex ect-items-baseline ect-justify-between ect-gap-3">
+                <span class="ect-flex ect-items-center ect-justify-between ect-gap-3">
                   <span class="ect-min-w-0 ect-truncate ect-text-sm ect-font-semibold ect-text-charcoal">{{ row.title }}</span>
-                  <span class="ect-shrink-0 ect-text-xs ect-font-semibold" :class="row.active ? 'ect-text-emerald-700' : 'ect-text-charcoal/45'">{{ row.active ? 'Active' : 'Hidden' }}</span>
+                  <span class="ect-shrink-0 ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold" :class="row.active ? 'ect-bg-emerald-50 ect-text-emerald-700' : 'ect-bg-charcoal/5 ect-text-charcoal/60'">{{ row.active ? 'Active' : 'Hidden' }}</span>
                 </span>
                 <span class="ect-mt-0.5 ect-block ect-truncate ect-text-xs ect-text-charcoal/40">{{ row.slug }}</span>
                 <span class="ect-mt-1.5 ect-flex ect-flex-wrap ect-items-center ect-gap-x-2 ect-gap-y-1 ect-text-xs ect-text-charcoal/55">
@@ -2833,7 +2880,7 @@ onBeforeUnmount(() => {
             </li>
             <li v-if="!productListLoading && !products.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No products found.</li>
           </ul>
-          <table class="ect-hidden sm:ect-table ect-w-full ect-min-w-[920px] ect-border-collapse">
+          <table class="ect-hidden lg:ect-table ect-w-full ect-min-w-[920px] ect-border-collapse">
             <thead class="ect-bg-cream"><tr><th v-for="h in ['Product', 'Category', 'Material', 'Status', 'Photo vectors', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="productListLoading">

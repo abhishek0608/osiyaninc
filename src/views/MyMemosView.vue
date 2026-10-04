@@ -134,10 +134,13 @@ function itemLine(item: Memo['items'][number]) {
           <li v-for="memo in memos" :key="memo.id" class="ect-bg-white/90 ect-backdrop-blur-sm ect-rounded-2xl ect-border ect-border-sand ect-shadow-sm ect-overflow-hidden">
             <RouterLink
               :to="`/memos/${memo.id}`"
-              class="ect-flex ect-flex-wrap ect-gap-4 ect-p-5 sm:ect-p-6 ect-items-start hover:ect-bg-champagne/30 ect-transition-colors"
+              class="ect-grid ect-grid-cols-[minmax(0,1fr)_auto_auto] ect-items-start ect-gap-x-4 ect-gap-y-1 sm:ect-gap-y-0 ect-p-5 sm:ect-p-6 hover:ect-bg-champagne/30 ect-transition-colors"
             >
-              <span class="ect-flex-1 ect-min-w-0">
-                <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mb-0.5">{{ memo.memoNo }}</p>
+              <!-- Phones: number and amount share the top row and the dates run
+                   the full card width beneath; from sm up the dates stay in the
+                   left column beside the amount. -->
+              <p class="ect-col-start-1 ect-row-start-1 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal ect-mb-0.5">{{ memo.memoNo }}</p>
+              <span class="ect-col-start-1 ect-col-span-2 ect-row-start-2 sm:ect-col-span-1 sm:ect-col-start-1 ect-min-w-0">
                 <p class="ect-font-body ect-text-sm ect-text-charcoal/60">
                   Issued {{ formatDate(memo.issuedAt) }} · {{ memo.items.length }} {{ memo.items.length === 1 ? 'piece' : 'pieces' }}
                 </p>
@@ -152,11 +155,11 @@ function itemLine(item: Memo['items'][number]) {
                   Closed {{ formatDate(memo.closedAt) }}
                 </p>
               </span>
-              <span class="ect-text-right ect-shrink-0">
+              <span class="ect-col-start-2 ect-row-start-1 sm:ect-row-span-2 sm:ect-row-start-1 ect-text-right">
                 <span class="ect-font-display ect-text-lg ect-font-medium ect-text-charcoal ect-block">{{ memo.formattedOutstanding }}</span>
-                <span class="ect-font-body ect-text-xs ect-text-charcoal/45">of {{ memo.formattedSubtotal }} issued</span>
+                <span class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-whitespace-nowrap">of {{ memo.formattedSubtotal }} issued</span>
               </span>
-              <svg class="ect-w-4 ect-h-4 ect-text-charcoal/30 ect-shrink-0 ect-self-center" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <svg class="ect-col-start-3 ect-row-span-2 ect-row-start-1 ect-w-4 ect-h-4 ect-text-charcoal/30 ect-self-center" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
               </svg>
             </RouterLink>
@@ -178,17 +181,30 @@ function itemLine(item: Memo['items'][number]) {
               >{{ memoStatusLabel(memo) }}</span>
               <span v-if="memo.notes" class="ect-font-body ect-text-xs ect-text-charcoal/50">{{ memo.notes }}</span>
 
+              <!-- Phones read it straight under the pill; from sm up it sits
+                   below the whole row as before. -->
+              <p
+                v-if="memo.extensionCount"
+                class="ect-basis-full sm:ect-order-last ect-font-body ect-text-xs ect-text-charcoal/45"
+              >
+                Extended once · now due {{ formatDate(memo.dueDate) }}
+              </p>
+
               <!-- Extending only opens up as the period runs out; before that the
-                   button is visible but inert so the option is discoverable. -->
-              <span v-if="isOpenMemo(memo)" class="ect-ml-auto ect-flex ect-flex-wrap ect-items-center ect-gap-2 ect-justify-end">
-                <span v-if="memoExtendHint(memo)" class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-text-right">
+                   button is visible but inert so the option is discoverable.
+                   Phones get it as a full-width row with the hint above. -->
+              <span
+                v-if="isOpenMemo(memo)"
+                class="ect-flex ect-w-full ect-flex-col ect-gap-2 sm:ect-ml-auto sm:ect-w-auto sm:ect-flex-row sm:ect-flex-wrap sm:ect-items-center sm:ect-justify-end"
+              >
+                <span v-if="memoExtendHint(memo)" class="ect-font-body ect-text-xs ect-text-charcoal/45 sm:ect-text-right">
                   {{ memoExtendHint(memo) }}
                 </span>
                 <button
                   type="button"
                   :disabled="!memo.canExtend || extendingId === memo.id"
                   :title="memoExtendHint(memo) || `Extend this memo by another ${allowance?.memoDays || 30} days`"
-                  class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-3.5 ect-py-2 ect-rounded-xl ect-border ect-border-charcoal/20 ect-bg-white ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed disabled:hover:ect-border-charcoal/20 disabled:hover:ect-text-charcoal"
+                  class="ect-inline-flex ect-items-center ect-justify-center ect-gap-1.5 ect-px-3.5 ect-py-2.5 sm:ect-py-2 ect-rounded-xl ect-border ect-border-charcoal/20 ect-bg-white ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed disabled:hover:ect-border-charcoal/20 disabled:hover:ect-text-charcoal"
                   @click="extend(memo.id)"
                 >
                   <svg v-if="extendingId === memo.id" class="ect-w-3.5 ect-h-3.5 ect-animate-spin" fill="none" viewBox="0 0 24 24">
@@ -202,13 +218,6 @@ function itemLine(item: Memo['items'][number]) {
                 </button>
               </span>
             </section>
-
-            <p
-              v-if="memo.extensionCount"
-              class="ect-px-5 sm:ect-px-6 ect--mt-3 ect-pb-4 ect-font-body ect-text-xs ect-text-charcoal/45"
-            >
-              Extended once · now due {{ formatDate(memo.dueDate) }}
-            </p>
           </li>
         </ul>
 
