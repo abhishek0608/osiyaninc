@@ -738,12 +738,17 @@ onBeforeUnmount(() => {
         </ul>
 
         <div class="drawer-utility">
+          <div v-if="isLoggedIn && user" class="drawer-user">
+            <p>{{ user.name }}</p>
+            <p>{{ user.email }}</p>
+          </div>
           <RouterLink v-for="link in utilityLinks" :key="link.to" :to="link.to">{{ link.label }}</RouterLink>
           <RouterLink to="/wishlist">Wishlist</RouterLink>
           <template v-if="isLoggedIn">
             <RouterLink to="/orders">My Orders</RouterLink>
             <RouterLink v-if="canMemoUser" to="/memos">My Memos</RouterLink>
             <RouterLink to="/account">Account Settings</RouterLink>
+            <RouterLink v-if="isInternalUser" to="/internal">Internal workspace</RouterLink>
             <button type="button" class="drawer-signout" @click="signOut">Sign out</button>
           </template>
           <RouterLink v-else to="/login">Sign in</RouterLink>
@@ -776,7 +781,7 @@ onBeforeUnmount(() => {
         </template>
 
         <div class="drawer-utility">
-          <div v-if="user" class="internal-drawer-user">
+          <div v-if="user" class="drawer-user">
             <p>{{ user.name }}</p>
             <p>{{ user.email }}</p>
           </div>
@@ -1396,8 +1401,8 @@ onBeforeUnmount(() => {
   .internal-drawer-heading { margin: 14px 0 2px; }
   .internal-drawer .drawer-link { padding: 13px 0; font-size: 19px; }
   .internal-drawer .drawer-link.is-active { color: var(--gold-text); }
-  .internal-drawer-user p { margin: 0; color: var(--muted); font-size: 13px; letter-spacing: 0.02em; }
-  .internal-drawer-user p:first-child { color: var(--plum-ink); font-size: 15px; }
+  .drawer-user p { margin: 0; color: var(--muted); font-size: 13px; letter-spacing: 0.02em; }
+  .drawer-user p:first-child { color: var(--plum-ink); font-size: 15px; }
 }
 
 @media (max-width: 420px) {
