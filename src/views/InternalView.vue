@@ -1621,13 +1621,17 @@ onBeforeUnmount(() => {
                 @input="onMemoSearchInput"
               />
             </div>
-            <select
-              v-model="memoStatusFilter"
-              class="ect-min-w-0 ect-flex-1 sm:ect-flex-none ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
-              @change="loadMemos(true)"
-            >
-              <option v-for="opt in memoStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
+            <!-- Native arrow hugs the pill's curved edge; draw our own chevron inside the padding. -->
+            <div class="ect-relative ect-min-w-0 ect-flex-1 sm:ect-flex-none">
+              <select
+                v-model="memoStatusFilter"
+                class="ect-w-full ect-appearance-none ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-pl-4 ect-pr-10 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
+                @change="loadMemos(true)"
+              >
+                <option v-for="opt in memoStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </select>
+              <svg class="ect-pointer-events-none ect-absolute ect-right-4 ect-top-1/2 -ect-translate-y-1/2 ect-w-4 ect-h-4 ect-text-charcoal/45" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+            </div>
             <!-- Phones: the summary drops under the filter + button row. -->
             <p v-if="memoSummary" class="ect-order-last ect-basis-full sm:ect-order-none sm:ect-basis-auto sm:ect-ml-auto ect-font-body ect-text-xs ect-text-charcoal/55">
               <span class="ect-font-semibold ect-text-charcoal">{{ memoSummary.formattedOutstanding }}</span>
