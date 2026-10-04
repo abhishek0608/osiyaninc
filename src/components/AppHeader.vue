@@ -5,6 +5,7 @@ import { useCart } from '../composables/useCart'
 import { useWishlist } from '../composables/useWishlist'
 import { useAuth } from '../composables/useAuth'
 import { useSearch } from '../composables/useSearch'
+import { INTERNAL_WORKSPACE_TABS, useInternalWorkspaceTab } from '../composables/useInternalWorkspaceTab'
 import { API_BASE } from '../config-api'
 import {
   LOCALE_LABEL,
@@ -18,7 +19,8 @@ const route = useRoute()
 const router = useRouter()
 const { totalItems } = useCart()
 const { count: wishlistCount } = useWishlist()
-const { user, isLoggedIn, isInternalUser, canMemoUser, logout } = useAuth()
+const { user, isLoggedIn, isInternalUser, isAdminUser, canMemoUser, logout } = useAuth()
+const { activeTabId: activeInternalTab } = useInternalWorkspaceTab()
 const { query, searchByImage, submitTextSearch } = useSearch()
 
 const headerEl = ref<HTMLElement | null>(null)
@@ -195,7 +197,10 @@ function onSubmenuKeydown(event: KeyboardEvent) {
 /** The drawer and the search panel occupy the same strip, so only one opens. */
 function toggleDrawer() {
   menuOpen.value = !menuOpen.value
-  if (menuOpen.value) searchExpanded.value = false
+  if (menuOpen.value) {
+    searchExpanded.value = false
+    notificationOpen.value = false
+  }
 }
 
 function toggleDrawerCategory(key: string) {
@@ -351,6 +356,7 @@ function toggleAccountMenu() {
 
 function toggleNotifications() {
   accountMenuOpen.value = false
+  menuOpen.value = false
   notificationOpen.value = !notificationOpen.value
   if (notificationOpen.value) void loadInternalNotifications()
 }
@@ -405,13 +411,12 @@ onBeforeUnmount(() => {
     <div class="main-bar">
       <div class="main-inner">
         <button
-          v-if="!isInternalPath"
           class="menu-toggle"
           :class="{ 'is-open': menuOpen }"
           type="button"
           :aria-label="menuOpen ? 'Close menu' : 'Open menu'"
           :aria-expanded="menuOpen"
-          aria-controls="osiyan-mobile-nav"
+          :aria-controls="isInternalPath ? 'osiyan-internal-nav' : 'osiyan-mobile-nav'"
           @click="toggleDrawer"
         >
           <span /><span /><span />
@@ -743,6 +748,41 @@ onBeforeUnmount(() => {
           </template>
           <RouterLink v-else to="/login">Sign in</RouterLink>
           <p class="drawer-locale">{{ localeLabel }}</p>
+        </div>
+      </div>
+    </nav>
+    <!-- Internal drawer: the workspace sections (Full Admins only, matching the
+         desktop tab bar) plus the account links the collapsed header hides. -->
+    <nav v-if="menuOpen && isInternalPath" id="osiyan-internal-nav" class="mobile-drawer internal-drawer" aria-label="Internal workspace navigation">
+      <div class="drawer-scroll">
+        <template v-if="isAdminUser">
+          <p class="drawer-group-heading internal-drawer-heading">Workspace</p>
+          <ul class="drawer-categories">
+            <li v-for="tab in INTERNAL_WORKSPACE_TABS" :key="tab.id" class="drawer-category">
+              <!-- Every section shares the /internal path, so the router would
+                   mark all of them active; the tab id decides instead. -->
+              <RouterLink
+                :to="{ path: '/internal', query: { tab: tab.id } }"
+                class="drawer-link"
+                :class="{ 'is-active': activeInternalTab === tab.id }"
+                active-class=""
+                exact-active-class=""
+                :aria-current="activeInternalTab === tab.id ? 'page' : undefined"
+              >
+                {{ tab.label }}
+              </RouterLink>
+            </li>
+          </ul>
+        </template>
+
+        <div class="drawer-utility">
+          <div v-if="user" class="internal-drawer-user">
+            <p>{{ user.name }}</p>
+            <p>{{ user.email }}</p>
+          </div>
+          <RouterLink to="/">View storefront</RouterLink>
+          <RouterLink to="/account">Account Settings</RouterLink>
+          <button type="button" class="drawer-signout" @click="signOut">Sign out</button>
         </div>
       </div>
     </nav>
@@ -1351,6 +1391,13 @@ onBeforeUnmount(() => {
   .drawer-utility a { color: var(--text); text-decoration: none; font-size: 15px; letter-spacing: 0.04em; }
   .drawer-signout { border: 0; padding: 0; background: transparent; color: #b3453f; font: inherit; font-size: 15px; letter-spacing: 0.04em; cursor: pointer; }
   .drawer-locale { margin: 4px 0 0; color: var(--muted-light); font-size: 12.5px; letter-spacing: 0.04em; }
+
+  /* Nine sections, so the internal rows run tighter than the storefront's. */
+  .internal-drawer-heading { margin: 14px 0 2px; }
+  .internal-drawer .drawer-link { padding: 13px 0; font-size: 19px; }
+  .internal-drawer .drawer-link.is-active { color: var(--gold-text); }
+  .internal-drawer-user p { margin: 0; color: var(--muted); font-size: 13px; letter-spacing: 0.02em; }
+  .internal-drawer-user p:first-child { color: var(--plum-ink); font-size: 15px; }
 }
 
 @media (max-width: 420px) {
