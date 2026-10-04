@@ -10,7 +10,6 @@ import { API_BASE } from '../config-api'
 import {
   LOCALE_LABEL,
   NAV_ITEMS,
-  UTILITY_LINKS,
   type NavGroup,
   type NavItem,
 } from '../data/nav-menu'
@@ -102,7 +101,6 @@ async function loadInternalNotifications() {
 }
 
 const navItems: NavItem[] = NAV_ITEMS
-const utilityLinks = UTILITY_LINKS
 const localeLabel = LOCALE_LABEL
 
 const openItem = computed(() => navItems.find((item) => item.key === openCategory.value) ?? null)
@@ -742,13 +740,24 @@ onBeforeUnmount(() => {
             <p>{{ user.name }}</p>
             <p>{{ user.email }}</p>
           </div>
-          <RouterLink v-for="link in utilityLinks" :key="link.to" :to="link.to">{{ link.label }}</RouterLink>
+          <button
+            v-if="isLoggedIn && isInternalUser"
+            class="internal-switch-row drawer-internal-switch"
+            type="button"
+            role="switch"
+            :aria-checked="isInternalPath"
+            @click="toggleInternalView"
+          >
+            <span>Internal</span>
+            <span class="internal-switch" :class="{ 'is-on': isInternalPath }" aria-hidden="true">
+              <span />
+            </span>
+          </button>
           <RouterLink to="/wishlist">Wishlist</RouterLink>
           <template v-if="isLoggedIn">
             <RouterLink to="/orders">My Orders</RouterLink>
             <RouterLink v-if="canMemoUser" to="/memos">My Memos</RouterLink>
             <RouterLink to="/account">Account Settings</RouterLink>
-            <RouterLink v-if="isInternalUser" to="/internal">Internal workspace</RouterLink>
             <button type="button" class="drawer-signout" @click="signOut">Sign out</button>
           </template>
           <RouterLink v-else to="/login">Sign in</RouterLink>
@@ -785,7 +794,19 @@ onBeforeUnmount(() => {
             <p>{{ user.name }}</p>
             <p>{{ user.email }}</p>
           </div>
-          <RouterLink to="/">View storefront</RouterLink>
+          <button
+            v-if="isInternalUser"
+            class="internal-switch-row drawer-internal-switch"
+            type="button"
+            role="switch"
+            :aria-checked="isInternalPath"
+            @click="toggleInternalView"
+          >
+            <span>Internal</span>
+            <span class="internal-switch" :class="{ 'is-on': isInternalPath }" aria-hidden="true">
+              <span />
+            </span>
+          </button>
           <RouterLink to="/account">Account Settings</RouterLink>
           <button type="button" class="drawer-signout" @click="signOut">Sign out</button>
         </div>
@@ -1260,6 +1281,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .internal-switch-row:focus-visible { outline: 2px solid var(--plum); outline-offset: 2px; }
+.drawer-internal-switch { margin-top: 0; }
 .internal-switch { position: relative; width: 46px; height: 26px; flex: none; border-radius: 999px; background: #cfc6d2; transition: background 0.2s ease; }
 .internal-switch > span { position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(44, 28, 51, 0.18); transition: transform 0.2s ease; }
 .internal-switch.is-on { background: var(--gold); }

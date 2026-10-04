@@ -379,7 +379,4 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'About', key: 'about', to: '/about' },
 ]
 
-export const UTILITY_LINKS = [
-  { label: 'Book an appointment', to: '/services' },
-] as const
 export const LOCALE_LABEL = 'United States / $ USD'
