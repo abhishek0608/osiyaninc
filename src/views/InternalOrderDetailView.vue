@@ -128,10 +128,10 @@ onMounted(() => {
       <section v-if="loading && !targetOrder" class="ect-grid lg:ect-grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] ect-gap-5">
         <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">
           <div class="ect-h-3 ect-w-16 ect-rounded ect-bg-rose-100 ect-animate-pulse ect-mb-5"></div>
-          <div class="ect-space-y-5">
+          <div class="ect-grid ect-grid-cols-2 ect-gap-x-6 ect-gap-y-5">
             <div v-for="index in detailSkeletonRows" :key="index">
               <div class="ect-h-3 ect-w-20 ect-rounded ect-bg-rose-100 ect-animate-pulse ect-mb-2"></div>
-              <div class="ect-h-4 ect-w-36 ect-rounded ect-bg-rose-100 ect-animate-pulse"></div>
+              <div class="ect-h-4 ect-w-28 ect-rounded ect-bg-rose-100 ect-animate-pulse"></div>
             </div>
           </div>
         </article>
@@ -150,7 +150,7 @@ onMounted(() => {
       <section v-if="targetOrder" class="ect-grid lg:ect-grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] ect-gap-5">
         <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">
           <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.16em] ect-text-charcoal/40 ect-mb-3">Order</p>
-          <dl class="ect-space-y-4">
+          <dl class="ect-grid ect-grid-cols-2 ect-gap-x-6 ect-gap-y-4">
             <div>
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Order No</dt>
               <dd class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ targetOrder.orderNo }}</dd>
@@ -167,7 +167,7 @@ onMounted(() => {
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Items</dt>
               <dd class="ect-font-body ect-text-sm ect-text-charcoal">{{ targetOrder.itemCount }}</dd>
             </div>
-            <div>
+            <div class="ect-col-span-2">
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Created</dt>
               <dd class="ect-font-body ect-text-sm ect-text-charcoal">{{ formatDate(targetOrder.createdAt) }}</dd>
             </div>

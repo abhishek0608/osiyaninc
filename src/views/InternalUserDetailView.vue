@@ -330,10 +330,10 @@ onMounted(() => {
       <section v-if="loading && !targetUser" class="ect-grid lg:ect-grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] ect-gap-5">
         <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">
           <div class="ect-h-3 ect-w-16 ect-rounded ect-bg-rose-100 ect-animate-pulse ect-mb-5"></div>
-          <div class="ect-space-y-5">
+          <div class="ect-grid ect-grid-cols-2 ect-gap-x-6 ect-gap-y-5">
             <div v-for="index in detailSkeletonRows" :key="index">
               <div class="ect-h-3 ect-w-20 ect-rounded ect-bg-rose-100 ect-animate-pulse ect-mb-2"></div>
-              <div class="ect-h-4 ect-w-40 ect-rounded ect-bg-rose-100 ect-animate-pulse"></div>
+              <div class="ect-h-4 ect-w-28 ect-rounded ect-bg-rose-100 ect-animate-pulse"></div>
             </div>
           </div>
         </article>
@@ -351,14 +351,14 @@ onMounted(() => {
       <section v-if="targetUser" class="ect-grid lg:ect-grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] ect-gap-5">
         <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">
           <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.16em] ect-text-charcoal/40 ect-mb-3">Profile</p>
-          <dl class="ect-space-y-4">
+          <dl class="ect-grid ect-grid-cols-2 ect-gap-x-6 ect-gap-y-4">
             <div>
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Name</dt>
               <dd class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ targetUser.name }}</dd>
             </div>
             <div>
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Email</dt>
-              <dd class="ect-font-body ect-text-sm ect-text-charcoal">{{ targetUser.email }}</dd>
+              <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-break-all">{{ targetUser.email }}</dd>
             </div>
             <div>
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Role</dt>

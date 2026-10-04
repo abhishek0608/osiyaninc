@@ -240,7 +240,7 @@ onMounted(() => {
       <section v-if="memo" class="ect-grid lg:ect-grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] ect-gap-5">
         <article class="ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-p-5">
           <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.16em] ect-text-charcoal/40 ect-mb-3">Memo</p>
-          <dl class="ect-space-y-4">
+          <dl class="ect-grid ect-grid-cols-2 ect-gap-x-6 ect-gap-y-4">
             <div>
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Status</dt>
               <dd>
@@ -300,11 +300,11 @@ onMounted(() => {
                 </RouterLink>
               </dd>
             </div>
-            <div v-if="memo.notes">
+            <div v-if="memo.notes" class="ect-col-span-2">
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Notes</dt>
               <dd class="ect-font-body ect-text-sm ect-text-charcoal/70">{{ memo.notes }}</dd>
             </div>
-            <div v-if="memo.shipTo">
+            <div v-if="memo.shipTo" class="ect-col-span-2">
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Sent to</dt>
               <dd class="ect-font-body ect-text-sm ect-text-charcoal/70">
                 <span v-for="(value, key) in memo.shipTo" :key="key" class="ect-block">{{ value }}</span>
