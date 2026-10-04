@@ -375,22 +375,26 @@ onMounted(() => {
                   Tick pieces to mark them returned or bill them — anything left unticked stays on memo.
                 </template>
               </span>
-              <button
-                type="button"
-                :disabled="saving || !selectedLines.length"
-                class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
-                @click="runAction('return')"
-              >
-                Send back selected
-              </button>
-              <button
-                type="button"
-                :disabled="saving || !selectedLines.length"
-                class="ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
-                @click="runAction('convert')"
-              >
-                {{ selectedLines.length ? `Purchase selected · ${formatMoney(selectionTotal)}` : 'Purchase selected' }}
-              </button>
+              <!-- The two actions stay together, right-aligned; on a narrow screen
+                   they drop below the summary and fill the width. -->
+              <div class="ect-flex ect-flex-wrap ect-justify-end ect-gap-2 ect-ml-auto ect-w-full sm:ect-w-auto">
+                <button
+                  type="button"
+                  :disabled="saving || !selectedLines.length"
+                  class="ect-inline-flex ect-items-center ect-justify-center ect-whitespace-nowrap ect-flex-1 sm:ect-flex-none ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
+                  @click="runAction('return')"
+                >
+                  Send back selected
+                </button>
+                <button
+                  type="button"
+                  :disabled="saving || !selectedLines.length"
+                  class="ect-inline-flex ect-items-center ect-justify-center ect-whitespace-nowrap ect-flex-1 sm:ect-flex-none ect-rounded-full ect-bg-charcoal ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
+                  @click="runAction('convert')"
+                >
+                  {{ selectedLines.length ? `Purchase selected · ${formatMoney(selectionTotal)}` : 'Purchase selected' }}
+                </button>
+              </div>
             </div>
             <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-3">
               Send back closes the pieces as returned — use it once they are back in hand. Purchase creates a confirmed order and an invoice at the prices locked when the goods went out.

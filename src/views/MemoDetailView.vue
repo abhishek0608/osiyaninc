@@ -308,36 +308,40 @@ async function sendBackSelected() {
               Tick pieces to buy them at their memo prices or send them back to us — anything you leave unticked stays on memo.
             </template>
           </span>
-          <button
-            type="button"
-            :disabled="!selectedLines.length || busy"
-            class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-border-charcoal/20 ect-bg-white ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed disabled:hover:ect-border-charcoal/20 disabled:hover:ect-text-charcoal"
-            @click="sendBackSelected"
-          >
-            <svg v-if="returningId === memo.id" class="ect-w-3.5 ect-h-3.5 ect-animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="ect-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-              <path class="ect-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            <span>{{ returningId === memo.id ? 'Sending back…' : 'Send back selected' }}</span>
-          </button>
-          <button
-            type="button"
-            :disabled="!selectedLines.length || busy"
-            class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-4 ect-py-2.5 ect-rounded-xl ect-bg-charcoal ect-text-white ect-font-body ect-text-xs ect-font-semibold hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
-            @click="buySelected"
-          >
-            <svg v-if="convertingId === memo.id" class="ect-w-3.5 ect-h-3.5 ect-animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="ect-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-              <path class="ect-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            <span>{{
-              convertingId === memo.id
-                ? 'Purchasing…'
-                : selectedLines.length
-                  ? `Purchase selected · ${formatMoney(selectionTotal)}`
-                  : 'Purchase selected'
-            }}</span>
-          </button>
+          <!-- The two actions stay together, right-aligned; on a narrow screen
+               they drop below the summary and fill the width. -->
+          <div class="ect-flex ect-flex-wrap ect-justify-end ect-gap-2 ect-ml-auto ect-w-full sm:ect-w-auto">
+            <button
+              type="button"
+              :disabled="!selectedLines.length || busy"
+              class="ect-inline-flex ect-items-center ect-justify-center ect-gap-1.5 ect-whitespace-nowrap ect-flex-1 sm:ect-flex-none ect-px-4 ect-py-2.5 ect-rounded-xl ect-border ect-border-charcoal/20 ect-bg-white ect-font-body ect-text-xs ect-font-semibold ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed disabled:hover:ect-border-charcoal/20 disabled:hover:ect-text-charcoal"
+              @click="sendBackSelected"
+            >
+              <svg v-if="returningId === memo.id" class="ect-w-3.5 ect-h-3.5 ect-animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="ect-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="ect-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span>{{ returningId === memo.id ? 'Sending back…' : 'Send back selected' }}</span>
+            </button>
+            <button
+              type="button"
+              :disabled="!selectedLines.length || busy"
+              class="ect-inline-flex ect-items-center ect-justify-center ect-gap-1.5 ect-whitespace-nowrap ect-flex-1 sm:ect-flex-none ect-px-4 ect-py-2.5 ect-rounded-xl ect-bg-charcoal ect-text-white ect-font-body ect-text-xs ect-font-semibold hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
+              @click="buySelected"
+            >
+              <svg v-if="convertingId === memo.id" class="ect-w-3.5 ect-h-3.5 ect-animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="ect-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="ect-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span>{{
+                convertingId === memo.id
+                  ? 'Purchasing…'
+                  : selectedLines.length
+                    ? `Purchase selected · ${formatMoney(selectionTotal)}`
+                    : 'Purchase selected'
+              }}</span>
+            </button>
+          </div>
         </section>
 
         <!-- Ship-to & notes -->
