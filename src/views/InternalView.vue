@@ -556,6 +556,12 @@ function formatDate(value: string) {
   )
 }
 
+// Date without the time, for the narrow phone cards.
+function formatDay(value: string) {
+  if (!value) return '-'
+  return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium' }).format(new Date(value))
+}
+
 // --- Run all products through AI (regenerate description + image-search vector) ---
 // Driven from the products tab toolbar. Processes products in small batches via
 // cursor pagination so each request stays under serverless timeouts.
@@ -1496,8 +1502,30 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <InternalNewOrderModal v-if="newOrderOpen" @close="newOrderOpen = false" @created="onOrderCreated" />
-          <table class="ect-w-full ect-min-w-[980px] ect-border-collapse">
-            <thead class="ect-bg-cream"><tr><th v-for="h in ['Order', 'Customer', 'Items', 'Status', 'Total', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
+          <!-- Phones get one card per row; the table takes over from sm up. -->
+          <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
+            <template v-if="orderListLoading">
+              <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
+                <div class="ect-h-4 ect-w-1/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+                <div class="ect-mt-2 ect-h-3 ect-w-2/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+              </li>
+            </template>
+            <li v-for="order in displayOrders" v-else :key="order.id">
+              <RouterLink :to="{ name: 'internal-order', params: { id: order.id } }" class="ect-block ect-px-4 ect-py-3.5 ect-font-body active:ect-bg-cream">
+                <span class="ect-flex ect-items-baseline ect-justify-between ect-gap-3">
+                  <span class="ect-text-sm ect-font-semibold ect-text-charcoal">{{ order.orderNo }}</span>
+                  <span class="ect-shrink-0 ect-text-sm ect-font-semibold ect-text-charcoal">{{ order.total }}</span>
+                </span>
+                <span class="ect-mt-0.5 ect-block ect-truncate ect-text-sm ect-text-charcoal/70">{{ order.customer }}</span>
+                <span class="ect-mt-1 ect-block ect-text-xs ect-text-charcoal/45">
+                  <span class="ect-capitalize">{{ order.status }}</span> · {{ order.itemCount }} item{{ order.itemCount === 1 ? '' : 's' }} · {{ formatDay(order.createdAt) }}
+                </span>
+              </RouterLink>
+            </li>
+            <li v-if="!orderListLoading && !displayOrders.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No orders found.</li>
+          </ul>
+          <table class="ect-hidden sm:ect-table ect-w-full ect-min-w-[980px] ect-border-collapse">
+            <thead class="ect-bg-cream"><tr><th v-for="h in ['Order','Customer', 'Items', 'Status', 'Total', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="orderListLoading">
                 <tr v-for="index in skeletonRows" :key="index" class="ect-border-t ect-border-sand">
@@ -1593,8 +1621,45 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <InternalNewMemoModal v-if="newMemoOpen" @close="newMemoOpen = false" @created="onMemoCreated" />
-          <table class="ect-w-full ect-min-w-[980px] ect-border-collapse">
-            <thead class="ect-bg-cream"><tr><th v-for="h in ['Memo', 'Customer', 'Pieces', 'Status', 'Value out', 'Due', 'Issued']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
+          <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
+            <template v-if="memoListLoading">
+              <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
+                <div class="ect-h-4 ect-w-1/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+                <div class="ect-mt-2 ect-h-3 ect-w-2/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+              </li>
+            </template>
+            <li v-for="memo in memos" v-else :key="memo.id">
+              <RouterLink :to="{ name: 'internal-memo', params: { id: memo.id } }" class="ect-block ect-px-4 ect-py-3.5 ect-font-body active:ect-bg-cream">
+                <span class="ect-flex ect-items-center ect-justify-between ect-gap-3">
+                  <span class="ect-text-sm ect-font-semibold ect-text-charcoal">{{ memo.memoNo }}</span>
+                  <span
+                    class="ect-inline-flex ect-shrink-0 ect-items-center ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold"
+                    :class="memo.isOverdue
+                      ? 'ect-bg-red-50 ect-text-red-700'
+                      : memo.status === 'CONVERTED'
+                        ? 'ect-bg-emerald-50 ect-text-emerald-700'
+                        : memo.status === 'RETURNED' || memo.status === 'CANCELLED'
+                          ? 'ect-bg-charcoal/5 ect-text-charcoal/60'
+                          : 'ect-bg-amber-50 ect-text-amber-700'"
+                  >
+                    {{ memo.isOverdue ? 'Overdue' : memo.status.toLowerCase() }}
+                  </span>
+                </span>
+                <span class="ect-mt-0.5 ect-block ect-truncate ect-text-sm ect-text-charcoal/70">{{ memo.customer }}</span>
+                <span class="ect-mt-1 ect-flex ect-items-baseline ect-justify-between ect-gap-3 ect-text-xs ect-text-charcoal/45">
+                  <span>
+                    {{ memo.itemCount }} piece{{ memo.itemCount === 1 ? '' : 's' }} · due {{ formatDay(memo.dueDate) }}
+                    <template v-if="memoDaysLeft(memo) !== '—'"> · <span :class="memo.isOverdue ? 'ect-text-red-600' : ''">{{ memoDaysLeft(memo) }}</span></template>
+                  </span>
+                  <span class="ect-shrink-0 ect-text-sm ect-font-semibold ect-text-charcoal">{{ memo.formattedOutstanding }}</span>
+                </span>
+                <span v-if="memo.returnRequestedQty" class="ect-mt-1 ect-block ect-text-xs ect-font-semibold ect-text-sky-700">{{ memo.returnRequestedQty }} on the way back</span>
+              </RouterLink>
+            </li>
+            <li v-if="!memoListLoading && !memos.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No memos found.</li>
+          </ul>
+          <table class="ect-hidden sm:ect-table ect-w-full ect-min-w-[980px] ect-border-collapse">
+            <thead class="ect-bg-cream"><tr><th v-for="h in ['Memo','Customer', 'Pieces', 'Status', 'Value out', 'Due', 'Issued']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="memoListLoading">
                 <tr v-for="index in skeletonRows" :key="index" class="ect-border-t ect-border-sand">
@@ -1696,7 +1761,26 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <InternalNewUserModal v-if="newUserOpen" @close="newUserOpen = false" @created="onUserCreated" />
-          <table class="ect-w-full ect-min-w-[940px] ect-border-collapse">
+          <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
+            <template v-if="userListLoading">
+              <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
+                <div class="ect-h-4 ect-w-1/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+                <div class="ect-mt-2 ect-h-3 ect-w-2/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+              </li>
+            </template>
+            <li v-for="row in users" v-else :key="row.id">
+              <RouterLink :to="`/internal/users/${row.id}`" class="ect-block ect-px-4 ect-py-3.5 ect-font-body active:ect-bg-cream">
+                <span class="ect-flex ect-items-center ect-justify-between ect-gap-3">
+                  <span class="ect-min-w-0 ect-truncate ect-text-sm ect-font-semibold ect-text-charcoal">{{ row.name }}</span>
+                  <span class="ect-shrink-0 ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold" :class="row.isAdmin ? 'ect-bg-gold-700 ect-text-white' : row.isInternal ? 'ect-bg-charcoal ect-text-white' : 'ect-bg-cream ect-text-charcoal/60'">{{ row.isAdmin ? 'Full Admin' : row.isInternal ? 'Internal' : 'Customer' }}</span>
+                </span>
+                <span class="ect-mt-0.5 ect-block ect-truncate ect-text-sm ect-text-charcoal/60">{{ row.email }}</span>
+                <span class="ect-mt-1 ect-block ect-text-xs ect-text-charcoal/45">{{ row.channel }} · {{ row.orderCount }} order{{ row.orderCount === 1 ? '' : 's' }} · joined {{ formatDay(row.createdAt) }}</span>
+              </RouterLink>
+            </li>
+            <li v-if="!userListLoading && !users.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No users found.</li>
+          </ul>
+          <table class="ect-hidden sm:ect-table ect-w-full ect-min-w-[940px] ect-border-collapse">
             <thead class="ect-bg-cream"><tr><th v-for="h in ['Name', 'Email', 'Type', 'Channel', 'Orders', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="userListLoading">
@@ -1751,7 +1835,51 @@ onBeforeUnmount(() => {
           <p v-if="signupMessage" class="ect-border-b ect-border-sand ect-bg-emerald-50 ect-px-4 ect-py-2.5 ect-font-body ect-text-sm ect-text-emerald-800">{{ signupMessage }}</p>
           <p v-if="signupError" class="ect-border-b ect-border-sand ect-bg-red-50 ect-px-4 ect-py-2.5 ect-font-body ect-text-sm ect-text-red-700">{{ signupError }}</p>
 
-          <table class="ect-w-full ect-min-w-[1040px] ect-border-collapse">
+          <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
+            <template v-if="signupListLoading">
+              <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
+                <div class="ect-h-4 ect-w-1/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+                <div class="ect-mt-2 ect-h-3 ect-w-2/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+              </li>
+            </template>
+            <li v-for="row in signupRequests" v-else :key="row.reference" class="ect-font-body">
+              <RouterLink :to="{ name: 'internal-signup-request', params: { reference: row.reference } }" class="ect-block ect-px-4 ect-pt-3.5 active:ect-bg-cream" :class="row.status === 'pending' ? 'ect-pb-2' : 'ect-pb-3.5'">
+                <span class="ect-flex ect-items-center ect-justify-between ect-gap-3">
+                  <span class="ect-min-w-0 ect-truncate ect-text-sm ect-font-semibold ect-text-charcoal">{{ row.companyName || row.name }}</span>
+                  <span class="ect-shrink-0 ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold ect-capitalize" :class="signupStatusClass(row.status)">{{ row.status }}</span>
+                </span>
+                <span class="ect-mt-0.5 ect-block ect-truncate ect-text-sm ect-text-charcoal/70">
+                  <template v-if="row.companyName">{{ row.name }} · </template>{{ row.email }}
+                </span>
+                <span class="ect-mt-1 ect-block ect-text-xs ect-text-charcoal/45">{{ row.city }}, {{ row.state }} · {{ row.phone }} · {{ formatDay(row.createdAt) }}</span>
+              </RouterLink>
+              <div v-if="row.status === 'pending'" class="ect-flex ect-items-center ect-gap-2 ect-px-4 ect-pb-3.5">
+                <template v-if="isAdminUser">
+                  <button
+                    type="button"
+                    :disabled="signupActionReference === row.reference"
+                    class="ect-flex-1 ect-rounded-full ect-bg-charcoal ect-px-3.5 ect-py-2 ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-50 disabled:ect-cursor-not-allowed"
+                    @click="decideSignupRequest(row, 'approve')"
+                  >
+                    {{ signupActionReference === row.reference ? 'Working…' : 'Approve' }}
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="signupActionReference === row.reference"
+                    class="ect-flex-1 ect-rounded-full ect-border ect-border-charcoal/15 ect-px-3.5 ect-py-2 ect-text-sm ect-font-semibold ect-text-charcoal/70 hover:ect-border-red-400 hover:ect-text-red-700 ect-transition-colors disabled:ect-opacity-50 disabled:ect-cursor-not-allowed"
+                    @click="decideSignupRequest(row, 'reject')"
+                  >
+                    Reject
+                  </button>
+                </template>
+                <span v-else class="ect-text-xs ect-text-charcoal/40">Full Admin approval required</span>
+              </div>
+            </li>
+            <li v-if="!signupListLoading && !signupRequests.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">
+              {{ signupSearch.trim() ? 'No sign-up requests match your search.' : 'No sign-up requests in this view.' }}
+            </li>
+          </ul>
+          <table class="ect-hidden sm:ect-table ect-w-full ect-min-w-[1040px] ect-border-collapse">
             <thead class="ect-bg-cream">
               <tr>
                 <th v-for="h in ['Reference', 'Applicant', 'Company', 'Phone', 'Location', 'Submitted', 'Status', '']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th>
@@ -1851,7 +1979,7 @@ onBeforeUnmount(() => {
                     <path d="M10 9v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
                   </svg>
                   <span
-                    class="ect-pointer-events-none ect-absolute ect-left-0 ect-top-full ect-z-30 ect-mt-2 ect-w-[20rem] ect-max-w-[80vw] ect-rounded-xl ect-border ect-border-charcoal/10 ect-bg-white ect-p-4 ect-text-left ect-font-body ect-text-charcoal/70 ect-opacity-0 ect-shadow-[0_18px_50px_-20px_rgba(0,0,0,0.45)] ect-transition-opacity ect-duration-150 group-hover:ect-opacity-100 group-focus-within:ect-opacity-100"
+                    class="ect-pointer-events-none ect-absolute ect-right-0 sm:ect-right-auto sm:ect-left-0 ect-top-full ect-z-30 ect-mt-2 ect-w-[20rem] ect-max-w-[80vw] ect-rounded-xl ect-border ect-border-charcoal/10 ect-bg-white ect-p-4 ect-text-left ect-font-body ect-text-charcoal/70 ect-opacity-0 ect-shadow-[0_18px_50px_-20px_rgba(0,0,0,0.45)] ect-transition-opacity ect-duration-150 group-hover:ect-opacity-100 group-focus-within:ect-opacity-100"
                   >
                     <span class="ect-mb-2 ect-block ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal">For crisp, undistorted banners</span>
                     <span class="ect-mb-2.5 ect-block ect-text-xs ect-leading-relaxed ect-text-charcoal/55">The hero stretches each image to fill the frame (no cropping), so the image’s shape must match the slot or it will look squished.</span>
@@ -2538,7 +2666,7 @@ onBeforeUnmount(() => {
               </button>
               <div
                 v-if="productMoreOpen"
-                class="ect-absolute ect-right-0 ect-top-full ect-z-30 ect-mt-2 ect-w-56 ect-rounded-2xl ect-border ect-border-charcoal/10 ect-bg-white ect-py-1.5 ect-shadow-xl"
+                class="ect-absolute ect-left-0 sm:ect-left-auto sm:ect-right-0 ect-top-full ect-z-30 ect-mt-2 ect-w-56 ect-rounded-2xl ect-border ect-border-charcoal/10 ect-bg-white ect-py-1.5 ect-shadow-xl"
                 role="menu"
               >
                 <button
@@ -2678,7 +2806,34 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-          <table class="ect-w-full ect-min-w-[920px] ect-border-collapse">
+          <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
+            <template v-if="productListLoading">
+              <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
+                <div class="ect-h-4 ect-w-1/2 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+                <div class="ect-mt-2 ect-h-3 ect-w-1/3 ect-rounded ect-bg-sand ect-animate-pulse"></div>
+              </li>
+            </template>
+            <li v-for="row in products" v-else :key="row.id">
+              <RouterLink :to="`/internal/products/${row.slug}`" class="ect-block ect-px-4 ect-py-3.5 ect-font-body active:ect-bg-cream">
+                <span class="ect-flex ect-items-baseline ect-justify-between ect-gap-3">
+                  <span class="ect-min-w-0 ect-truncate ect-text-sm ect-font-semibold ect-text-charcoal">{{ row.title }}</span>
+                  <span class="ect-shrink-0 ect-text-xs ect-font-semibold" :class="row.active ? 'ect-text-emerald-700' : 'ect-text-charcoal/45'">{{ row.active ? 'Active' : 'Hidden' }}</span>
+                </span>
+                <span class="ect-mt-0.5 ect-block ect-truncate ect-text-xs ect-text-charcoal/40">{{ row.slug }}</span>
+                <span class="ect-mt-1.5 ect-flex ect-flex-wrap ect-items-center ect-gap-x-2 ect-gap-y-1 ect-text-xs ect-text-charcoal/55">
+                  <span>{{ row.category }} · {{ row.material }}</span>
+                  <span
+                    class="ect-inline-flex ect-items-center ect-rounded-full ect-px-2 ect-py-0.5 ect-font-semibold"
+                    :class="row.imageVectors ? 'ect-bg-emerald-100 ect-text-emerald-700' : 'ect-bg-amber-100 ect-text-amber-700'"
+                  >
+                    {{ row.imageVectors ? `Synced · ${row.imageVectors}` : 'Not synced' }}
+                  </span>
+                </span>
+              </RouterLink>
+            </li>
+            <li v-if="!productListLoading && !products.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No products found.</li>
+          </ul>
+          <table class="ect-hidden sm:ect-table ect-w-full ect-min-w-[920px] ect-border-collapse">
             <thead class="ect-bg-cream"><tr><th v-for="h in ['Product', 'Category', 'Material', 'Status', 'Photo vectors', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="productListLoading">

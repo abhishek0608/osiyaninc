@@ -333,7 +333,7 @@ function statusClass(status: string) {
           <span v-if="duplicateBagNos.size" class="ect-font-body ect-text-sm ect-text-amber-700">
             ⚠ Duplicate bag numbers in file: {{ [...duplicateBagNos].join(', ') }}
           </span>
-          <label class="ect-flex ect-items-center ect-gap-2 ect-font-body ect-text-sm ect-text-charcoal/70 ect-ml-auto">
+          <label class="ect-flex ect-items-center ect-gap-2 ect-font-body ect-text-sm ect-text-charcoal/70 sm:ect-ml-auto">
             Existing pieces:
             <select v-model="mode" class="ect-rounded-lg ect-border ect-border-charcoal/15 ect-px-2 ect-py-1.5 ect-text-sm">
               <option value="skip">Skip</option>
@@ -342,7 +342,23 @@ function statusClass(status: string) {
           </label>
         </div>
 
-        <div class="ect-overflow-x-auto ect-rounded-lg ect-border ect-border-rose-100">
+        <!-- Phones get one card per piece; the table takes over from sm up. -->
+        <ul class="sm:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-rose-100 ect-rounded-lg ect-border ect-border-rose-100 ect-bg-white ect-p-0 ect-font-body">
+          <li v-for="row in rows" :key="row.sheetRow" class="ect-px-3 ect-py-2.5">
+            <div class="ect-flex ect-items-baseline ect-justify-between ect-gap-3">
+              <span class="ect-text-sm ect-font-semibold ect-text-charcoal/80">{{ row.bagNo }}</span>
+              <span class="ect-shrink-0 ect-text-sm ect-text-charcoal/60">{{ row.price }}</span>
+            </div>
+            <p class="ect-mt-0.5 ect-text-xs ect-text-charcoal/55">
+              {{ [row.title, row.category, metalLabel(row), row.collection, `${row.stoneLines.length} stone line${row.stoneLines.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ') }}
+            </p>
+            <p class="ect-mt-1 ect-text-xs">
+              <span v-if="row.missing.length" class="ect-text-red-600">Row {{ row.sheetRow }} — missing: {{ row.missing.join(', ') }}</span>
+              <span v-else class="ect-text-green-700">Ready</span>
+            </p>
+          </li>
+        </ul>
+        <div class="ect-hidden sm:ect-block ect-overflow-x-auto ect-rounded-lg ect-border ect-border-rose-100">
           <table class="ect-w-full ect-min-w-[760px] ect-border-collapse">
             <thead class="ect-bg-rose-50">
               <tr>
