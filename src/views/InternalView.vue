@@ -1611,18 +1611,35 @@ onBeforeUnmount(() => {
 
         <div v-else-if="activeTabId === 'memos'" class="ect-overflow-x-auto">
           <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-2 ect-border-b ect-border-sand ect-bg-cream ect-px-4 ect-py-3">
-            <div class="ect-relative ect-w-full sm:ect-w-72">
+            <div class="ect-relative ect-min-w-0 ect-flex-1 sm:ect-flex-none sm:ect-w-72">
               <svg class="ect-absolute ect-left-3 ect-top-1/2 -ect-translate-y-1/2 ect-w-4 ect-h-4 ect-text-charcoal/35" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/></svg>
               <input
                 v-model="memoSearch"
                 type="search"
                 placeholder="Search memos…"
-                class="ect-w-full ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-pl-9 ect-pr-3 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-border-gold-400 focus:ect-outline-none"
+                class="ect-w-full ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-pl-9 ect-pr-3 ect-py-2.5 sm:ect-py-2 ect-font-body ect-text-base sm:ect-text-sm ect-text-charcoal placeholder:ect-text-charcoal/35 focus:ect-border-gold-400 focus:ect-outline-none"
                 @input="onMemoSearchInput"
               />
             </div>
+            <!-- Phones: a native dropdown is a tiny popup in a narrow window, so every status is a chip on its own scrolling row. -->
+            <div class="ect-order-1 ect-basis-[calc(100%+2rem)] -ect-mx-4 ect-flex ect-gap-2 ect-overflow-x-auto ect-px-4 ect-no-scrollbar sm:ect-hidden" role="radiogroup" aria-label="Memo status">
+              <button
+                v-for="opt in memoStatusOptions"
+                :key="opt.value"
+                type="button"
+                role="radio"
+                :aria-checked="memoStatusFilter === opt.value"
+                class="ect-shrink-0 ect-min-h-[40px] ect-rounded-full ect-border ect-px-4 ect-font-body ect-text-sm ect-font-semibold ect-transition-colors"
+                :class="memoStatusFilter === opt.value
+                  ? 'ect-border-charcoal ect-bg-charcoal ect-text-white'
+                  : 'ect-border-charcoal/15 ect-bg-white ect-text-charcoal/70'"
+                @click="memoStatusFilter !== opt.value && (memoStatusFilter = opt.value, loadMemos(true))"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
             <!-- Native arrow hugs the pill's curved edge; draw our own chevron inside the padding. -->
-            <div class="ect-relative ect-min-w-0 ect-flex-1 sm:ect-flex-none">
+            <div class="ect-relative ect-hidden sm:ect-block">
               <select
                 v-model="memoStatusFilter"
                 class="ect-w-full ect-appearance-none ect-rounded-full ect-border ect-border-charcoal/15 ect-bg-white ect-pl-4 ect-pr-10 ect-py-2 ect-font-body ect-text-sm ect-text-charcoal focus:ect-border-gold-400 focus:ect-outline-none"
@@ -1642,7 +1659,7 @@ onBeforeUnmount(() => {
             </p>
             <button
               type="button"
-              class="ect-shrink-0 ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
+              class="ect-shrink-0 ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2.5 sm:ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
               :class="memoSummary ? '' : 'sm:ect-ml-auto'"
               @click="newMemoOpen = true"
             >
@@ -2939,3 +2956,8 @@ onBeforeUnmount(() => {
     </div>
   </section>
 </template>
+
+<style scoped>
+.ect-no-scrollbar::-webkit-scrollbar { display: none; }
+.ect-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+</style>
