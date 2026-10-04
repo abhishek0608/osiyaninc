@@ -584,12 +584,15 @@ function hardFilterProducts(products, detected, options = {}) {
 // text-search hard filter so both paths constrain on the same reliable facets,
 // leaving stone colour / shape / fine detail to the vector ranking + description.
 // Rings use ring-family compatibility (solitaire≈cluster≈multi-stone); other
-// categories require an exact subtype match. If this empties the vector hits the
-// handler falls through to attribute scoring, which relaxes progressively.
+// categories require an exact subtype match. A product with no recorded material
+// or subtype is unknown, not a mismatch — most packing-list imports carry no
+// subtype, and rejecting them left a lone near-duplicate as the only result.
+// If this empties the vector hits the handler falls through to attribute
+// scoring, which relaxes progressively.
 function matchesDetectedStructure(product, detected) {
   if (detected.category && product.category !== detected.category) return false
-  if (detected.materials?.length && !detected.materials.includes(product.material)) return false
-  if (detected.subtype) {
+  if (detected.materials?.length && product.material && !detected.materials.includes(product.material)) return false
+  if (detected.subtype && product.subtype) {
     const subtypeOk =
       detected.category === 'Rings'
         ? areRingProfilesCompatible(product, detected)
