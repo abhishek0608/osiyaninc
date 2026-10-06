@@ -58,7 +58,19 @@ interface InternalProduct extends AuditFields {
   material: string
   active: boolean
   imageVectors: number
+  // Open memos holding a piece of this product, with the customer who has it.
+  memos: ProductMemoHolder[]
   updatedAt: string
+}
+
+interface ProductMemoHolder {
+  id: string
+  memoNo: string
+  dueDate: string
+  overdue: boolean
+  customerId: string | null
+  customer: string
+  customerEmail: string
 }
 
 interface HomepageSlideRecord {
@@ -446,11 +458,14 @@ function onUserCreated() {
 // payload so the table is no longer capped at the first 50 records) ---
 const products = ref<InternalProduct[]>([])
 const productSearch = ref('')
-const productStatusFilter = ref<'all' | 'active' | 'hidden'>('active')
+// The memo views ignore active/hidden: a hidden piece can still be out on memo.
+const productStatusFilter = ref<'all' | 'active' | 'hidden' | 'memo-out' | 'memo-in'>('active')
 const productStatusOptions = [
   { value: 'all', label: 'All products' },
   { value: 'active', label: 'Active products' },
   { value: 'hidden', label: 'Hidden products' },
+  { value: 'memo-out', label: 'On memo' },
+  { value: 'memo-in', label: 'Not on memo' },
 ]
 // Category filter. Values are the exact category strings the product editor
 // writes, comma-joined when one option spans several: bangles and bracelets are
@@ -488,7 +503,9 @@ async function loadProducts(reset = true) {
       skip: String(skip),
     })
     if (productSearch.value.trim()) params.set('search', productSearch.value.trim())
-    if (productStatusFilter.value !== 'all') params.set('status', productStatusFilter.value)
+    if (productStatusFilter.value === 'memo-out') params.set('memo', 'out')
+    else if (productStatusFilter.value === 'memo-in') params.set('memo', 'in')
+    else if (productStatusFilter.value !== 'all') params.set('status', productStatusFilter.value)
     if (productCategoryFilter.value !== 'all') params.set('category', productCategoryFilter.value)
     if (productVectorFilter.value !== 'all') params.set('vectors', productVectorFilter.value)
     const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
@@ -517,7 +534,7 @@ function onProductStatusChange() {
 const skeletonRows = Array.from({ length: 5 }, (_, index) => index)
 const orderSkeletonWidths = ['ect-w-32', 'ect-w-40', 'ect-w-10', 'ect-w-20', 'ect-w-20', 'ect-w-28']
 const userSkeletonWidths = ['ect-w-32', 'ect-w-44', 'ect-w-20', 'ect-w-24', 'ect-w-10', 'ect-w-28']
-const productSkeletonWidths = ['ect-w-44', 'ect-w-24', 'ect-w-24', 'ect-w-16', 'ect-w-20', 'ect-w-28']
+const productSkeletonWidths = ['ect-w-44', 'ect-w-24', 'ect-w-24', 'ect-w-16', 'ect-w-20', 'ect-w-36', 'ect-w-28']
 
 const displayOrders = computed<InternalOrder[]>(() => {
   if (orders.value.length) return orders.value
@@ -2897,12 +2914,23 @@ onBeforeUnmount(() => {
                     {{ row.imageVectors ? `Synced · ${row.imageVectors}` : 'Not synced' }}
                   </span>
                 </span>
+                <span
+                  v-for="memo in row.memos"
+                  :key="memo.id"
+                  class="ect-mt-1.5 ect-flex ect-items-center ect-gap-2 ect-text-xs"
+                >
+                  <span
+                    class="ect-shrink-0 ect-rounded-full ect-px-2 ect-py-0.5 ect-font-semibold"
+                    :class="memo.overdue ? 'ect-bg-red-50 ect-text-red-700' : 'ect-bg-amber-50 ect-text-amber-700'"
+                  >{{ memo.overdue ? 'Overdue memo' : 'On memo' }}</span>
+                  <span class="ect-min-w-0 ect-truncate ect-text-charcoal/70">{{ memo.customer }} · {{ memo.memoNo }}</span>
+                </span>
               </RouterLink>
             </li>
             <li v-if="!productListLoading && !products.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No products found.</li>
           </ul>
-          <table class="ect-hidden lg:ect-table ect-w-full ect-min-w-[920px] ect-border-collapse">
-            <thead class="ect-bg-cream"><tr><th v-for="h in ['Product', 'Category', 'Material', 'Status', 'Photo vectors', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
+          <table class="ect-hidden lg:ect-table ect-w-full ect-min-w-[1080px] ect-border-collapse">
+            <thead class="ect-bg-cream"><tr><th v-for="h in ['Product', 'Category', 'Material', 'Status', 'Photo vectors', 'On memo', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="productListLoading">
                 <tr v-for="index in skeletonRows" :key="index" class="ect-border-t ect-border-sand">
@@ -2931,11 +2959,29 @@ onBeforeUnmount(() => {
                     {{ row.imageVectors ? `Synced · ${row.imageVectors}` : 'Not synced' }}
                   </span>
                 </td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">
+                  <div v-if="row.memos.length" class="ect-space-y-2">
+                    <div v-for="memo in row.memos" :key="memo.id">
+                      <RouterLink
+                        v-if="memo.customerId"
+                        :to="`/internal/users/${memo.customerId}`"
+                        class="ect-text-charcoal hover:ect-text-gold-700 hover:ect-underline"
+                        :title="memo.customerEmail"
+                      >{{ memo.customer }}</RouterLink>
+                      <span v-else class="ect-text-charcoal">{{ memo.customer }}</span>
+                      <span class="ect-flex ect-items-center ect-gap-1.5 ect-text-xs">
+                        <RouterLink :to="`/internal/memos/${memo.id}`" class="ect-text-charcoal/50 hover:ect-text-gold-700 hover:ect-underline">{{ memo.memoNo }}</RouterLink>
+                        <span v-if="memo.overdue" class="ect-rounded-full ect-bg-red-50 ect-px-1.5 ect-font-semibold ect-text-red-700">Overdue</span>
+                      </span>
+                    </div>
+                  </div>
+                  <span v-else class="ect-text-charcoal/35">—</span>
+                </td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/55">{{ formatDate(row.createdAt) }}<span class="ect-block ect-text-xs ect-text-charcoal/40">by {{ row.createdBy || '—' }}</span></td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm ect-text-charcoal/55">{{ row.modifiedAt ? formatDate(row.modifiedAt) : formatDate(row.updatedAt) }}<span v-if="row.modifiedBy" class="ect-block ect-text-xs ect-text-charcoal/40">by {{ row.modifiedBy }}</span></td>
               </tr>
               <tr v-if="!productListLoading && !products.length" class="ect-border-t ect-border-sand">
-                <td colspan="7" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No products found.</td>
+                <td colspan="8" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No products found.</td>
               </tr>
             </tbody>
           </table>

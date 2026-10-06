@@ -48,6 +48,8 @@ import {
   extendMemo,
   formatMemoMoney,
   getMemoOutstandingPaise,
+  isMemoOverdue,
+  memoLineOutQty,
   returnMemoItems,
   toMemoPayload,
 } from '../server/api/memo.js'
@@ -430,6 +432,8 @@ async function handleProductsListResource(req, res, body) {
       .filter(Boolean)
     // Photo-vector filter: 'synced' → has ≥1 image embedding, 'missing' → none.
     const vectors = String(req?.query?.vectors || '').trim().toLowerCase()
+    // Memo filter: 'out' → a piece is with a customer on an open memo, 'in' → not.
+    const memo = String(req?.query?.memo || '').trim().toLowerCase()
 
     // Case-insensitive match across the fields shown in the products table.
     const where = {}
@@ -444,6 +448,11 @@ async function handleProductsListResource(req, res, body) {
     if (status === 'active') where.active = true
     else if (status === 'hidden') where.active = false
     if (categories.length) where.category = { in: categories, mode: 'insensitive' }
+    // A cancelled memo leaves its lines OUT, so the memo's own status has to be
+    // open too. Any variant counts, not just the active ones priced below.
+    const onMemoLine = { status: 'OUT', memo: { status: { in: OPEN_MEMO_STATUSES } } }
+    if (memo === 'out') where.variants = { some: { memoItems: { some: onMemoLine } } }
+    else if (memo === 'in') where.variants = { none: { memoItems: { some: onMemoLine } } }
 
     // Per-product embedded-photo counts, also used for the synced/missing
     // filter. Raw SQL because Prisma cannot touch Unsupported("vector") columns.
@@ -481,6 +490,44 @@ async function handleProductsListResource(req, res, body) {
       prisma.product.count({ where }),
     ])
 
+    // Which customer holds each piece on this page, and on which memo.
+    const memoLines = rows.length
+      ? await prisma.memoItem.findMany({
+          where: { ...onMemoLine, variant: { productId: { in: rows.map((p) => p.id) } } },
+          select: {
+            qty: true,
+            returnedQty: true,
+            convertedQty: true,
+            variant: { select: { productId: true } },
+            memo: {
+              select: {
+                id: true,
+                memoNo: true,
+                status: true,
+                dueDate: true,
+                customer: { select: { id: true, email: true, firstName: true, lastName: true } },
+              },
+            },
+          },
+        })
+      : []
+    const memosByProduct = new Map()
+    for (const line of memoLines) {
+      if (memoLineOutQty(line) <= 0) continue
+      const list = memosByProduct.get(line.variant.productId) || []
+      if (list.some((m) => m.id === line.memo.id)) continue
+      list.push({
+        id: line.memo.id,
+        memoNo: line.memo.memoNo,
+        dueDate: line.memo.dueDate,
+        overdue: isMemoOverdue(line.memo),
+        customerId: line.memo.customer?.id || null,
+        customer: memoCustomerName(line.memo.customer),
+        customerEmail: line.memo.customer?.email || '',
+      })
+      memosByProduct.set(line.variant.productId, list)
+    }
+
     const actorMap = await resolveActorMap(rows.flatMap((p) => [p.createdById, p.updatedById]))
     const products = rows.map((product) => {
       const variant = pickVariantForPricing(product.variants)
@@ -493,6 +540,7 @@ async function handleProductsListResource(req, res, body) {
         material: product.material,
         active: product.active,
         imageVectors: vectorCounts.get(product.id) || 0,
+        memos: memosByProduct.get(product.id) || [],
         pricePaise: variant?.listPricePaise ?? null,
         price: variant ? formatMoney(variant.listPricePaise, variant.currency || 'USD') : null,
         createdBy: actorName(actorMap, product.createdById),
