@@ -407,6 +407,7 @@ async function handleDashboardResource(req, res, body) {
 // ---------------------------------------------------------------------------
 
 const PRODUCT_PAGE_SIZE = 50
+const SOLD_ORDER_STATUSES = ['CONFIRMED', 'FULFILLED']
 
 async function handleProductsListResource(req, res, body) {
   if (req.method !== 'GET') {
@@ -432,8 +433,9 @@ async function handleProductsListResource(req, res, body) {
       .filter(Boolean)
     // Photo-vector filter: 'synced' → has ≥1 image embedding, 'missing' → none.
     const vectors = String(req?.query?.vectors || '').trim().toLowerCase()
-    // Memo filter: 'out' → a piece is with a customer on an open memo, 'in' → not.
-    const memo = String(req?.query?.memo || '').trim().toLowerCase()
+    // Stock filter: 'memo' → with a customer on an open memo, 'sold' → billed on
+    // a live order, 'in-stock' → neither. Every piece is exactly one of the three.
+    const stock = String(req?.query?.stock || '').trim().toLowerCase()
 
     // Case-insensitive match across the fields shown in the products table.
     const where = {}
@@ -451,8 +453,14 @@ async function handleProductsListResource(req, res, body) {
     // A cancelled memo leaves its lines OUT, so the memo's own status has to be
     // open too. Any variant counts, not just the active ones priced below.
     const onMemoLine = { status: 'OUT', memo: { status: { in: OPEN_MEMO_STATUSES } } }
-    if (memo === 'out') where.variants = { some: { memoItems: { some: onMemoLine } } }
-    else if (memo === 'in') where.variants = { none: { memoItems: { some: onMemoLine } } }
+    // Inventory is never decremented on a sale, so "sold" comes from orders. A
+    // PENDING order is a checkout still waiting on payment, not a sale.
+    const soldLine = { order: { status: { in: SOLD_ORDER_STATUSES } } }
+    const onMemo = { variants: { some: { memoItems: { some: onMemoLine } } } }
+    const notOnMemo = { variants: { none: { memoItems: { some: onMemoLine } } } }
+    if (stock === 'memo') where.AND = [onMemo]
+    else if (stock === 'sold') where.AND = [notOnMemo, { variants: { some: { orderItems: { some: soldLine } } } }]
+    else if (stock === 'in-stock') where.AND = [notOnMemo, { variants: { none: { orderItems: { some: soldLine } } } }]
 
     // Per-product embedded-photo counts, also used for the synced/missing
     // filter. Raw SQL because Prisma cannot touch Unsupported("vector") columns.
@@ -511,6 +519,14 @@ async function handleProductsListResource(req, res, body) {
           },
         })
       : []
+    const soldRows = rows.length
+      ? await prisma.product.findMany({
+          where: { id: { in: rows.map((p) => p.id) }, variants: { some: { orderItems: { some: soldLine } } } },
+          select: { id: true },
+        })
+      : []
+    const soldIds = new Set(soldRows.map((p) => p.id))
+
     const memosByProduct = new Map()
     for (const line of memoLines) {
       if (memoLineOutQty(line) <= 0) continue
@@ -541,6 +557,7 @@ async function handleProductsListResource(req, res, body) {
         active: product.active,
         imageVectors: vectorCounts.get(product.id) || 0,
         memos: memosByProduct.get(product.id) || [],
+        stockStatus: memosByProduct.has(product.id) ? 'memo' : soldIds.has(product.id) ? 'sold' : 'in-stock',
         pricePaise: variant?.listPricePaise ?? null,
         price: variant ? formatMoney(variant.listPricePaise, variant.currency || 'USD') : null,
         createdBy: actorName(actorMap, product.createdById),

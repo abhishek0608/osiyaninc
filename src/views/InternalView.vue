@@ -60,8 +60,11 @@ interface InternalProduct extends AuditFields {
   imageVectors: number
   // Open memos holding a piece of this product, with the customer who has it.
   memos: ProductMemoHolder[]
+  stockStatus: ProductStockStatus
   updatedAt: string
 }
+
+type ProductStockStatus = 'in-stock' | 'memo' | 'sold'
 
 interface ProductMemoHolder {
   id: string
@@ -458,14 +461,27 @@ function onUserCreated() {
 // payload so the table is no longer capped at the first 50 records) ---
 const products = ref<InternalProduct[]>([])
 const productSearch = ref('')
-// The memo views ignore active/hidden: a hidden piece can still be out on memo.
-const productStatusFilter = ref<'all' | 'active' | 'hidden' | 'memo-out' | 'memo-in'>('active')
-const productStatusOptions = [
+// Where the piece is: every product is exactly one of these.
+const productStockFilter = ref<'all' | ProductStockStatus>('all')
+const productStockOptions = [
   { value: 'all', label: 'All products' },
-  { value: 'active', label: 'Active products' },
-  { value: 'hidden', label: 'Hidden products' },
-  { value: 'memo-out', label: 'On memo' },
-  { value: 'memo-in', label: 'Not on memo' },
+  { value: 'in-stock', label: 'In stock' },
+  { value: 'memo', label: 'On memo' },
+  { value: 'sold', label: 'Sold' },
+]
+const productStockLabels: Record<ProductStockStatus, string> = { 'in-stock': 'In stock', memo: 'On memo', sold: 'Sold' }
+// Same palette as the memo pills: on memo warm, sold quiet.
+function productStockPillClass(status: ProductStockStatus) {
+  if (status === 'memo') return 'ect-bg-amber-50 ect-text-amber-700'
+  if (status === 'sold') return 'ect-bg-charcoal/5 ect-text-charcoal/60'
+  return 'ect-bg-emerald-50 ect-text-emerald-700'
+}
+// Storefront visibility, independent of stock: a hidden piece can still be out on memo.
+const productVisibilityFilter = ref<'all' | 'active' | 'hidden'>('all')
+const productVisibilityOptions = [
+  { value: 'all', label: 'All visibility' },
+  { value: 'active', label: 'Active' },
+  { value: 'hidden', label: 'Hidden' },
 ]
 // Category filter. Values are the exact category strings the product editor
 // writes, comma-joined when one option spans several: bangles and bracelets are
@@ -503,9 +519,8 @@ async function loadProducts(reset = true) {
       skip: String(skip),
     })
     if (productSearch.value.trim()) params.set('search', productSearch.value.trim())
-    if (productStatusFilter.value === 'memo-out') params.set('memo', 'out')
-    else if (productStatusFilter.value === 'memo-in') params.set('memo', 'in')
-    else if (productStatusFilter.value !== 'all') params.set('status', productStatusFilter.value)
+    if (productStockFilter.value !== 'all') params.set('stock', productStockFilter.value)
+    if (productVisibilityFilter.value !== 'all') params.set('status', productVisibilityFilter.value)
     if (productCategoryFilter.value !== 'all') params.set('category', productCategoryFilter.value)
     if (productVectorFilter.value !== 'all') params.set('vectors', productVectorFilter.value)
     const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
@@ -604,7 +619,7 @@ const productMoreRef = ref<HTMLElement | null>(null)
 const productFiltersOpen = ref(false)
 const productActiveFilterCount = computed(
   () =>
-    [productStatusFilter.value, productCategoryFilter.value, productVectorFilter.value].filter((v) => v !== 'all')
+    [productStockFilter.value, productVisibilityFilter.value, productCategoryFilter.value, productVectorFilter.value].filter((v) => v !== 'all')
       .length,
 )
 
@@ -2701,9 +2716,15 @@ onBeforeUnmount(() => {
                 :class="productFiltersOpen ? 'ect-flex' : 'ect-hidden'"
               >
                 <UiSelect
-                  v-model="productStatusFilter"
-                  :options="productStatusOptions"
+                  v-model="productStockFilter"
+                  :options="productStockOptions"
                   class="ect-w-full sm:ect-w-44"
+                  @update:model-value="onProductStatusChange"
+                />
+                <UiSelect
+                  v-model="productVisibilityFilter"
+                  :options="productVisibilityOptions"
+                  class="ect-w-full sm:ect-w-40"
                   @update:model-value="onProductStatusChange"
                 />
                 <UiSelect
@@ -2902,7 +2923,10 @@ onBeforeUnmount(() => {
               <RouterLink :to="`/internal/products/${row.slug}`" class="ect-block ect-px-4 ect-py-3.5 ect-font-body active:ect-bg-cream">
                 <span class="ect-flex ect-items-center ect-justify-between ect-gap-3">
                   <span class="ect-min-w-0 ect-truncate ect-text-sm ect-font-semibold ect-text-charcoal">{{ row.title }}</span>
-                  <span class="ect-shrink-0 ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold" :class="row.active ? 'ect-bg-emerald-50 ect-text-emerald-700' : 'ect-bg-charcoal/5 ect-text-charcoal/60'">{{ row.active ? 'Active' : 'Hidden' }}</span>
+                  <span class="ect-flex ect-shrink-0 ect-items-center ect-gap-1.5">
+                    <span v-if="!row.active" class="ect-rounded-full ect-border ect-border-charcoal/15 ect-px-2 ect-py-0.5 ect-text-xs ect-text-charcoal/55">Hidden</span>
+                    <span class="ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold" :class="productStockPillClass(row.stockStatus)">{{ productStockLabels[row.stockStatus] }}</span>
+                  </span>
                 </span>
                 <span class="ect-mt-0.5 ect-block ect-truncate ect-text-xs ect-text-charcoal/40">{{ row.slug }}</span>
                 <span class="ect-mt-1.5 ect-flex ect-flex-wrap ect-items-center ect-gap-x-2 ect-gap-y-1 ect-text-xs ect-text-charcoal/55">
@@ -2950,7 +2974,10 @@ onBeforeUnmount(() => {
                 </td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">{{ row.category }}</td>
                 <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">{{ row.material }}</td>
-                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">{{ row.active ? 'Active' : 'Hidden' }}</td>
+                <td class="ect-px-4 ect-py-3 ect-font-body ect-text-sm">
+                  <span class="ect-inline-flex ect-items-center ect-rounded-full ect-px-2.5 ect-py-1 ect-text-xs ect-font-semibold" :class="productStockPillClass(row.stockStatus)">{{ productStockLabels[row.stockStatus] }}</span>
+                  <span v-if="!row.active" class="ect-block ect-mt-1 ect-text-xs ect-text-charcoal/45">Hidden</span>
+                </td>
                 <td class="ect-px-4 ect-py-3">
                   <span
                     class="ect-inline-flex ect-items-center ect-rounded-full ect-px-2.5 ect-py-1 ect-font-body ect-text-xs ect-font-semibold"
