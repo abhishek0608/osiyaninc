@@ -519,13 +519,26 @@ async function handleProductsListResource(req, res, body) {
           },
         })
       : []
-    const soldRows = rows.length
-      ? await prisma.product.findMany({
-          where: { id: { in: rows.map((p) => p.id) }, variants: { some: { orderItems: { some: soldLine } } } },
-          select: { id: true },
+    // Who bought each sold piece on this page, and on which order — shown next
+    // to the Sold pill the same way the memo holder sits next to On memo.
+    const soldLines = rows.length
+      ? await prisma.orderItem.findMany({
+          where: { ...soldLine, variant: { productId: { in: rows.map((p) => p.id) } } },
+          orderBy: { order: { createdAt: 'desc' } },
+          select: {
+            variant: { select: { productId: true } },
+            order: {
+              select: {
+                id: true,
+                orderNo: true,
+                createdAt: true,
+                shipTo: true,
+                customer: { select: { id: true, email: true, firstName: true, lastName: true } },
+              },
+            },
+          },
         })
       : []
-    const soldIds = new Set(soldRows.map((p) => p.id))
 
     const memosByProduct = new Map()
     for (const line of memoLines) {
@@ -543,6 +556,20 @@ async function handleProductsListResource(req, res, body) {
       })
       memosByProduct.set(line.variant.productId, list)
     }
+    const salesByProduct = new Map()
+    for (const line of soldLines) {
+      const list = salesByProduct.get(line.variant.productId) || []
+      if (list.some((o) => o.id === line.order.id)) continue
+      list.push({
+        id: line.order.id,
+        orderNo: line.order.orderNo,
+        soldAt: line.order.createdAt,
+        customerId: line.order.customer?.id || null,
+        customer: orderCustomerName(line.order),
+        customerEmail: line.order.customer?.email || '',
+      })
+      salesByProduct.set(line.variant.productId, list)
+    }
 
     const actorMap = await resolveActorMap(rows.flatMap((p) => [p.createdById, p.updatedById]))
     const products = rows.map((product) => {
@@ -557,7 +584,8 @@ async function handleProductsListResource(req, res, body) {
         active: product.active,
         imageVectors: vectorCounts.get(product.id) || 0,
         memos: memosByProduct.get(product.id) || [],
-        stockStatus: memosByProduct.has(product.id) ? 'memo' : soldIds.has(product.id) ? 'sold' : 'in-stock',
+        sales: salesByProduct.get(product.id) || [],
+        stockStatus: memosByProduct.has(product.id) ? 'memo' : salesByProduct.has(product.id) ? 'sold' : 'in-stock',
         pricePaise: variant?.listPricePaise ?? null,
         price: variant ? formatMoney(variant.listPricePaise, variant.currency || 'USD') : null,
         createdBy: actorName(actorMap, product.createdById),
@@ -733,6 +761,16 @@ async function handleOrderResource(req, res, body) {
 // ---------------------------------------------------------------------------
 
 const MEMO_PAGE_SIZE = 50
+
+// A guest checkout has no User row; the ship-to snapshot still carries the name.
+function orderCustomerName(order) {
+  return (
+    [order.customer?.firstName, order.customer?.lastName].filter(Boolean).join(' ').trim() ||
+    order.customer?.email ||
+    (order.shipTo && typeof order.shipTo === 'object' && String(order.shipTo.name || '').trim()) ||
+    'Guest'
+  )
+}
 
 function memoCustomerName(customer) {
   return (

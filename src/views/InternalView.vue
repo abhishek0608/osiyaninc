@@ -60,6 +60,8 @@ interface InternalProduct extends AuditFields {
   imageVectors: number
   // Open memos holding a piece of this product, with the customer who has it.
   memos: ProductMemoHolder[]
+  // Live orders that billed a piece of this product, with the buyer.
+  sales: ProductSale[]
   stockStatus: ProductStockStatus
   updatedAt: string
 }
@@ -71,6 +73,15 @@ interface ProductMemoHolder {
   memoNo: string
   dueDate: string
   overdue: boolean
+  customerId: string | null
+  customer: string
+  customerEmail: string
+}
+
+interface ProductSale {
+  id: string
+  orderNo: string
+  soldAt: string
   customerId: string | null
   customer: string
   customerEmail: string
@@ -2949,12 +2960,20 @@ onBeforeUnmount(() => {
                   >{{ memo.overdue ? 'Overdue memo' : 'On memo' }}</span>
                   <span class="ect-min-w-0 ect-truncate ect-text-charcoal/70">{{ memo.customer }} · {{ memo.memoNo }}</span>
                 </span>
+                <span
+                  v-for="sale in row.memos.length ? [] : row.sales"
+                  :key="sale.id"
+                  class="ect-mt-1.5 ect-flex ect-items-center ect-gap-2 ect-text-xs"
+                >
+                  <span class="ect-shrink-0 ect-rounded-full ect-bg-charcoal/5 ect-px-2 ect-py-0.5 ect-font-semibold ect-text-charcoal/60">Sold</span>
+                  <span class="ect-min-w-0 ect-truncate ect-text-charcoal/70">{{ sale.customer }} · {{ sale.orderNo }}</span>
+                </span>
               </RouterLink>
             </li>
             <li v-if="!productListLoading && !products.length" class="ect-px-4 ect-py-6 ect-font-body ect-text-sm ect-text-charcoal/45">No products found.</li>
           </ul>
           <table class="ect-hidden lg:ect-table ect-w-full ect-min-w-[1080px] ect-border-collapse">
-            <thead class="ect-bg-cream"><tr><th v-for="h in ['Product', 'Category', 'Material', 'Status', 'Photo vectors', 'On memo', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
+            <thead class="ect-bg-cream"><tr><th v-for="h in ['Product', 'Category', 'Material', 'Status', 'Photo vectors', 'Customer', 'Created', 'Modified']" :key="h" class="ect-px-4 ect-py-3 ect-text-left ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">{{ h }}</th></tr></thead>
             <tbody>
               <template v-if="productListLoading">
                 <tr v-for="index in skeletonRows" :key="index" class="ect-border-t ect-border-sand">
@@ -2999,6 +3018,21 @@ onBeforeUnmount(() => {
                       <span class="ect-flex ect-items-center ect-gap-1.5 ect-text-xs">
                         <RouterLink :to="`/internal/memos/${memo.id}`" class="ect-text-charcoal/50 hover:ect-text-gold-700 hover:ect-underline">{{ memo.memoNo }}</RouterLink>
                         <span v-if="memo.overdue" class="ect-rounded-full ect-bg-red-50 ect-px-1.5 ect-font-semibold ect-text-red-700">Overdue</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div v-else-if="row.sales.length" class="ect-space-y-2">
+                    <div v-for="sale in row.sales" :key="sale.id">
+                      <RouterLink
+                        v-if="sale.customerId"
+                        :to="`/internal/users/${sale.customerId}`"
+                        class="ect-text-charcoal hover:ect-text-gold-700 hover:ect-underline"
+                        :title="sale.customerEmail"
+                      >{{ sale.customer }}</RouterLink>
+                      <span v-else class="ect-text-charcoal">{{ sale.customer }}</span>
+                      <span class="ect-flex ect-items-center ect-gap-1.5 ect-text-xs">
+                        <RouterLink :to="`/internal/orders/${sale.id}`" class="ect-text-charcoal/50 hover:ect-text-gold-700 hover:ect-underline">{{ sale.orderNo }}</RouterLink>
+                        <span class="ect-text-charcoal/40">{{ formatDate(sale.soldAt) }}</span>
                       </span>
                     </div>
                   </div>
