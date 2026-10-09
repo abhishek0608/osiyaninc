@@ -16,6 +16,18 @@ interface InternalOrder {
   createdAt: string
 }
 
+interface InternalMemo {
+  id: string
+  memoNo: string
+  status: string
+  isOverdue: boolean
+  itemCount: number
+  issuedAt: string
+  dueDate: string
+  formattedSubtotal: string
+  formattedOutstanding: string
+}
+
 interface InternalUser {
   id: string
   name: string
@@ -65,6 +77,60 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(
     new Date(value)
   )
+}
+
+// --- Related memos -------------------------------------------------------
+// Orders come with the dashboard payload, but memos do not, so they are
+// fetched separately once the target user is known. Memos are the riskier
+// thing to track per customer (goods out, unpaid), so staff see them here
+// next to the memo limit they set above.
+const memos = ref<InternalMemo[]>([])
+const memosLoading = ref(false)
+const memosError = ref('')
+const memosTotal = ref(0)
+const memosHasMore = ref(false)
+
+const openMemoCount = computed(() => memos.value.filter((memo) => isOpenMemo(memo)).length)
+
+function isOpenMemo(memo: InternalMemo) {
+  return memo.status !== 'CONVERTED' && memo.status !== 'RETURNED' && memo.status !== 'CANCELLED'
+}
+
+function memoDaysLeft(memo: InternalMemo) {
+  if (!isOpenMemo(memo)) return ''
+  const days = Math.ceil((new Date(memo.dueDate).getTime() - Date.now()) / 86400000)
+  if (days < 0) return `${Math.abs(days)}d overdue`
+  if (days === 0) return 'Due today'
+  return `${days}d left`
+}
+
+function memoStatusLabel(memo: InternalMemo) {
+  return memo.isOverdue ? 'Overdue' : memo.status.toLowerCase()
+}
+
+async function loadMemos(customerId: string) {
+  if (!isInternalUser.value || !user.value?.id) return
+  memosLoading.value = true
+  memosError.value = ''
+  try {
+    const params = new URLSearchParams({
+      resource: 'memos-list',
+      userId: user.value.id,
+      customerId,
+    })
+    const res = await fetch(`${API_BASE}/api/internal?${params.toString()}`)
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || 'Unable to load memos.')
+    // Ignore a late response for a user we have since navigated away from.
+    if (customerId !== String(route.params.id || '')) return
+    memos.value = data.memos || []
+    memosTotal.value = data.total ?? memos.value.length
+    memosHasMore.value = Boolean(data.hasMore)
+  } catch (e) {
+    memosError.value = e instanceof Error ? e.message : 'Unable to load memos.'
+  } finally {
+    memosLoading.value = false
+  }
 }
 
 async function loadDashboard() {
@@ -286,6 +352,19 @@ function cancelMemoSettings() {
   resetMemoDraft(targetUser.value)
 }
 
+
+// Memos key off the route id rather than the resolved user so they load in
+// parallel with the (slower) dashboard call instead of after it.
+watch(
+  () => String(route.params.id || ''),
+  (id) => {
+    memos.value = []
+    memosTotal.value = 0
+    memosHasMore.value = false
+    if (id && isInternalUser.value) void loadMemos(id)
+  },
+  { immediate: true },
+)
 
 onMounted(() => {
   if (!isInternalUser.value) {
@@ -562,6 +641,67 @@ onMounted(() => {
               </li>
             </ul>
             <p v-else class="ect-font-body ect-text-sm ect-text-charcoal/45">No matching orders found for this user.</p>
+          </div>
+        </article>
+
+        <article class="lg:ect-col-start-2 ect-bg-white ect-border ect-border-rose-200/50 ect-rounded-lg ect-overflow-hidden">
+          <header class="ect-flex ect-items-end ect-justify-between ect-gap-3 ect-p-5 ect-border-b ect-border-rose-200/30">
+            <div>
+              <p class="ect-font-body ect-text-[11px] ect-uppercase ect-tracking-[0.16em] ect-text-rose-600 ect-mb-1">Related memos</p>
+              <h2 class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Pieces taken on memo by this account</h2>
+            </div>
+            <span v-if="!memosLoading" class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-text-right ect-whitespace-nowrap">
+              {{ memosTotal }} found<template v-if="openMemoCount"> · {{ openMemoCount }} open</template>
+            </span>
+          </header>
+          <div class="ect-p-5">
+            <div v-if="memosLoading" class="ect-space-y-3">
+              <div v-for="index in 2" :key="index" class="ect-h-20 ect-rounded-lg ect-border ect-border-rose-100 ect-bg-rose-50/50 ect-animate-pulse"></div>
+            </div>
+            <p v-else-if="memosError" class="ect-font-body ect-text-sm ect-text-red-600">{{ memosError }}</p>
+            <ul v-else-if="memos.length" class="ect-list-none ect-m-0 ect-p-0 ect-space-y-3">
+              <li v-for="memo in memos" :key="memo.id">
+                <RouterLink
+                  :to="{ name: 'internal-memo', params: { id: memo.id } }"
+                  class="ect-block ect-rounded-lg ect-border ect-border-rose-100 ect-p-4 ect-transition hover:ect-border-gold-400 hover:ect-bg-cream/40"
+                >
+                  <div class="ect-flex ect-items-start ect-justify-between ect-gap-3">
+                    <div class="ect-min-w-0">
+                      <p class="ect-flex ect-items-center ect-gap-2 ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">
+                        <span>{{ memo.memoNo }}</span>
+                        <span
+                          class="ect-inline-flex ect-shrink-0 ect-items-center ect-rounded-full ect-px-2.5 ect-py-0.5 ect-text-xs ect-font-semibold ect-capitalize"
+                          :class="memo.isOverdue
+                            ? 'ect-bg-red-50 ect-text-red-700'
+                            : memo.status === 'CONVERTED'
+                              ? 'ect-bg-emerald-50 ect-text-emerald-700'
+                              : memo.status === 'RETURNED' || memo.status === 'CANCELLED'
+                                ? 'ect-bg-charcoal/5 ect-text-charcoal/60'
+                                : 'ect-bg-amber-50 ect-text-amber-700'"
+                        >
+                          {{ memoStatusLabel(memo) }}
+                        </span>
+                      </p>
+                      <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-1">
+                        Issued {{ formatDate(memo.issuedAt) }}
+                        <template v-if="memoDaysLeft(memo)"> · <span :class="memo.isOverdue ? 'ect-text-red-600' : ''">{{ memoDaysLeft(memo) }}</span></template>
+                      </p>
+                    </div>
+                    <div class="ect-text-right ect-shrink-0">
+                      <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ memo.formattedSubtotal }}</p>
+                      <p v-if="isOpenMemo(memo)" class="ect-font-body ect-text-xs ect-text-charcoal/45">{{ memo.formattedOutstanding }} out</p>
+                    </div>
+                  </div>
+                  <p class="ect-font-body ect-text-xs ect-text-charcoal/50 ect-mt-2">{{ memo.itemCount }} items</p>
+                </RouterLink>
+              </li>
+            </ul>
+            <p v-else class="ect-font-body ect-text-sm ect-text-charcoal/45">No memos raised for this user.</p>
+            <p v-if="memosHasMore" class="ect-font-body ect-text-xs ect-text-charcoal/40 ect-mt-3">
+              Showing the latest {{ memos.length }}. Open the
+              <RouterLink :to="{ path: '/internal', query: { tab: 'memos' } }" class="ect-text-rose-700 hover:ect-underline">Memos tab</RouterLink>
+              for the full history.
+            </p>
           </div>
         </article>
       </section>

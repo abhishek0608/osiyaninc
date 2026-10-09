@@ -86,7 +86,14 @@ function onKeydown(e: KeyboardEvent) {
       <span class="ect-truncate" :class="selectedLabel ? '' : 'ect-text-charcoal/35'">{{ selectedLabel || placeholder }}</span>
       <svg class="ect-w-4 ect-h-4 ect-shrink-0 ect-text-charcoal/40 ect-transition-transform" :class="open ? 'ect-rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
     </button>
-    <span v-if="open" @click="open = false" class="ect-fixed ect-inset-0 ect-z-10"></span>
+    <!--
+      .prevent matters: callers wrap this select in a <label>, and a click on a
+      non-interactive element inside a label re-dispatches a click to the
+      label's first button, i.e. the toggle above. Without it, every click on
+      this backdrop closes the list and immediately reopens it, and the
+      backdrop covers the whole screen, so nothing on the page can be clicked.
+    -->
+    <span v-if="open" @click.prevent="open = false" class="ect-fixed ect-inset-0 ect-z-10"></span>
     <div
       v-if="open"
       ref="listRef"

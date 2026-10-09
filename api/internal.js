@@ -794,9 +794,13 @@ async function handleMemosListResource(req, res, body) {
 
     const search = String(req?.query?.search || '').trim()
     const statusFilter = String(req?.query?.status || '').trim().toUpperCase()
+    // ?customerId= narrows to one customer's memos — the user detail page's
+    // "Related memos" card, mirroring the related orders beside it.
+    const customerId = String(req?.query?.customerId || '').trim()
     const skip = Math.max(Number(req?.query?.skip) || 0, 0)
 
     const where = {}
+    if (customerId) where.customerId = customerId
     if (search) {
       where.OR = [
         { memoNo: { contains: search, mode: 'insensitive' } },
