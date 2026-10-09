@@ -14,6 +14,9 @@ interface InternalOrder {
   customer: string
   customerEmail: string
   status: string
+  subtotal?: string
+  /** Formatted amount taken off, or null when the order had no discount. */
+  discount?: string | null
   total: string
   itemCount: number
   createdAt: string
@@ -160,12 +163,20 @@ onMounted(() => {
               <dd class="ect-font-body ect-text-sm ect-text-charcoal ect-capitalize">{{ targetOrder.status }}</dd>
             </div>
             <div>
-              <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Total</dt>
-              <dd class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ targetOrder.total }}</dd>
-            </div>
-            <div>
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Items</dt>
               <dd class="ect-font-body ect-text-sm ect-text-charcoal">{{ targetOrder.itemCount }}</dd>
+            </div>
+            <div v-if="targetOrder.discount" class="ect-col-span-2">
+              <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Amount</dt>
+              <dd class="ect-mt-1 ect-space-y-1 ect-font-body ect-text-sm">
+                <div class="ect-flex ect-justify-between"><span class="ect-text-charcoal/60">Subtotal</span><span class="ect-text-charcoal">{{ targetOrder.subtotal }}</span></div>
+                <div class="ect-flex ect-justify-between"><span class="ect-text-charcoal/60">Discount</span><span class="ect-text-emerald-700">− {{ targetOrder.discount }}</span></div>
+                <div class="ect-flex ect-justify-between ect-border-t ect-border-rose-200/40 ect-pt-1 ect-font-semibold"><span class="ect-text-charcoal">Total</span><span class="ect-text-charcoal">{{ targetOrder.total }}</span></div>
+              </dd>
+            </div>
+            <div v-else>
+              <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Total</dt>
+              <dd class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">{{ targetOrder.total }}</dd>
             </div>
             <div class="ect-col-span-2">
               <dt class="ect-font-body ect-text-xs ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/35">Created</dt>

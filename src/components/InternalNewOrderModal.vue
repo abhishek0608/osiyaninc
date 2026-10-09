@@ -4,6 +4,8 @@ import UiSelect from './UiSelect.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
 import InternalQrScanner, { type ScanFeedback } from './InternalQrScanner.vue'
+import InternalDiscountInput from './InternalDiscountInput.vue'
+import { useDiscountDraft } from '../composables/useDiscountDraft'
 
 const emit = defineEmits<{ close: []; created: [] }>()
 
@@ -58,6 +60,10 @@ const statusOptions = [
 const subtotalPaise = computed(() =>
   lines.value.reduce((sum, line) => sum + (line.pricePaise || 0) * line.qty, 0),
 )
+
+// Internal-only discount to close the sale; the server recomputes and stores
+// the resolved dollar amount, never the percent.
+const discountDraft = useDiscountDraft(subtotalPaise)
 
 // ProductVariant.listPricePaise (surfaced here as pricePaise) holds WHOLE US
 // DOLLARS despite the name, so there is nothing to divide — dividing by 100
@@ -216,6 +222,10 @@ async function submit() {
     errorMsg.value = 'Add at least one product.'
     return
   }
+  if (discountDraft.error.value) {
+    errorMsg.value = discountDraft.error.value
+    return
+  }
   saving.value = true
   try {
     const res = await fetch(`${API_BASE}/api/internal?resource=order-create`, {
@@ -227,6 +237,7 @@ async function submit() {
         status: status.value,
         notes: notes.value.trim(),
         items,
+        discount: discountDraft.payload.value,
       }),
     })
     const data = await res.json().catch(() => ({}))
@@ -352,7 +363,31 @@ async function submit() {
               ✕
             </button>
           </div>
-          <p class="ect-font-body ect-text-sm ect-font-semibold ect-text-charcoal">Subtotal: {{ formatPaise(subtotalPaise) }}</p>
+        </div>
+        <div v-if="lines.length" class="ect-mt-3 ect-border-t ect-border-sand ect-pt-3">
+          <div class="ect-flex ect-flex-wrap ect-items-center ect-gap-3">
+            <span class="ect-flex-1 ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">Discount</span>
+            <InternalDiscountInput v-model:mode="discountDraft.mode.value" v-model:raw="discountDraft.raw.value" :disabled="saving" />
+          </div>
+          <dl class="ect-mt-3 ect-space-y-1 ect-font-body ect-text-sm">
+            <div class="ect-flex ect-justify-between">
+              <dt class="ect-text-charcoal/60">Subtotal</dt>
+              <dd class="ect-text-charcoal">{{ formatPaise(subtotalPaise) }}</dd>
+            </div>
+            <div v-if="discountDraft.discount.value > 0" class="ect-flex ect-justify-between">
+              <dt class="ect-text-charcoal/60">Discount</dt>
+              <dd class="ect-text-emerald-700">
+                − {{ formatPaise(discountDraft.discount.value) }}
+                <span v-if="discountDraft.mode.value === 'amount'" class="ect-text-charcoal/45">({{ discountDraft.percentOfSubtotal.value.toFixed(1) }}%)</span>
+              </dd>
+            </div>
+            <div class="ect-flex ect-justify-between ect-border-t ect-border-sand ect-pt-2 ect-text-base ect-font-semibold">
+              <dt class="ect-text-charcoal">Total</dt>
+              <dd class="ect-text-charcoal">{{ formatPaise(discountDraft.total.value) }}</dd>
+            </div>
+          </dl>
+          <p v-if="discountDraft.error.value" class="ect-mt-1 ect-font-body ect-text-xs ect-text-red-600">{{ discountDraft.error.value }}</p>
+          <p v-else class="ect-mt-1 ect-font-body ect-text-xs ect-text-charcoal/45">Shown to the customer on the invoice. Can't exceed the subtotal.</p>
         </div>
         <p v-else class="ect-mt-2 ect-font-body ect-text-xs ect-text-charcoal/45">No products added yet.</p>
       </div>
@@ -384,7 +419,7 @@ async function submit() {
           class="ect-rounded-full ect-bg-charcoal ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-50 disabled:ect-cursor-not-allowed"
           @click="submit"
         >
-          {{ saving ? 'Creating…' : 'Create order' }}
+          {{ saving ? 'Creating…' : lines.length ? `Create order · ${formatPaise(discountDraft.total.value)}` : 'Create order' }}
         </button>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { randomBytes, scryptSync } from 'node:crypto'
 import { prisma } from '../server/api/db.js'
 import { applyCors, handlePreflight } from '../server/api/cors.js'
-import { creditLimitToUsd, formatUsd } from '../server/api/money.js'
+import { creditLimitToUsd, formatUsd, resolveDiscountUsd, DiscountError } from '../server/api/money.js'
 import { resolveActorMap, actorName } from '../server/api/audit.js'
 import { invalidateCatalogProductsCache } from '../server/api/products-source.js'
 import { generateProductAiDescription } from '../server/api/product-ai.js'
@@ -731,6 +731,9 @@ async function handleOrderResource(req, res, body) {
         customer: customerName,
         customerEmail: order.customer?.email || '',
         status: order.status,
+        subtotal: formatMoney(order.subtotalPaise, order.currency),
+        discount: order.discountPaise > 0 ? formatMoney(order.discountPaise, order.currency) : null,
+        discountValue: order.discountPaise,
         total: formatMoney(order.totalPaise, order.currency),
         itemCount: order.items.reduce((sum, item) => sum + item.qty, 0),
         createdBy: actorName(actorMap, order.createdById) || customerName,
@@ -936,7 +939,9 @@ async function handleMemoResource(req, res, body) {
         return res.status(200).json({ memo: await withLineImages(toMemoPayload(memo)) })
       }
       if (action === 'convert') {
-        const result = await convertMemoToOrder({ memoId, lines, actorId: internalUser.id })
+        // Staff may take an agreed amount off the pieces being billed; the
+        // customer-side conversion in api/account.js never sends a discount.
+        const result = await convertMemoToOrder({ memoId, lines, actorId: internalUser.id, discount: body?.discount })
         return res.status(200).json({
           memo: await withLineImages(toMemoPayload(result.memo)),
           order: result.order,
@@ -959,7 +964,7 @@ async function handleMemoResource(req, res, body) {
     res.setHeader('Allow', 'GET,POST,OPTIONS')
     return res.status(405).json({ message: 'Method not allowed' })
   } catch (err) {
-    if (err instanceof MemoError) {
+    if (err instanceof MemoError || err instanceof DiscountError) {
       return res.status(err.status).json({ message: err.message, code: err.code })
     }
     console.error('Internal memo action failed:', err)
@@ -1186,6 +1191,16 @@ async function handleOrderCreateResource(req, res, body) {
 
     const subtotalPaise = lines.reduce((sum, line) => sum + line.pricePaise * line.qty, 0)
     const currency = lines[0].currency
+    // Internal-only: staff can take an agreed amount off to close the sale.
+    // Only the resolved dollar figure is stored — see resolveDiscountUsd.
+    let discountPaise = 0
+    try {
+      discountPaise = resolveDiscountUsd(body?.discount, subtotalPaise)
+    } catch (err) {
+      if (err instanceof DiscountError) return res.status(err.status).json({ message: err.message })
+      throw err
+    }
+    const totalPaise = subtotalPaise - discountPaise
 
     // Sequential ORD-000123 numbers; orderNo is unique, so retry with the next
     // number if a concurrent create grabbed the same one.
@@ -1200,7 +1215,8 @@ async function handleOrderCreateResource(req, res, body) {
             status,
             customerId: customer?.id || undefined,
             subtotalPaise,
-            totalPaise: subtotalPaise,
+            discountPaise,
+            totalPaise,
             currency,
             notes: notes || undefined,
             createdById: internalUser.id,

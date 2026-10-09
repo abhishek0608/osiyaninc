@@ -5,6 +5,8 @@ import LineItemThumb from '../components/LineItemThumb.vue'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
 import { API_BASE } from '../config-api'
 import { useAuth } from '../composables/useAuth'
+import { useDiscountDraft } from '../composables/useDiscountDraft'
+import InternalDiscountInput from '../components/InternalDiscountInput.vue'
 
 interface MemoItem {
   id: string
@@ -78,6 +80,10 @@ const selectedCount = computed(() => selectedLines.value.reduce((sum, line) => s
 const selectionTotal = computed(() =>
   selectedItems.value.reduce((sum, item) => sum + item.pricePaise * item.outQty, 0),
 )
+
+// Staff discount on this purchase only: it applies to the ticked pieces, and
+// anything left on memo keeps its locked price. Reset after every action.
+const discountDraft = useDiscountDraft(selectionTotal)
 
 function toggleLine(item: MemoItem) {
   selected.value = { ...selected.value, [item.id]: !selected.value[item.id] }
@@ -173,6 +179,10 @@ async function runAction(action: 'return' | 'convert' | 'cancel') {
     return
   }
   if (action === 'cancel' && !window.confirm('Cancel this memo? Use this only for a memo raised in error.')) return
+  if (action === 'convert' && discountDraft.error.value) {
+    actionError.value = discountDraft.error.value
+    return
+  }
 
   saving.value = true
   actionError.value = ''
@@ -185,12 +195,17 @@ async function runAction(action: 'return' | 'convert' | 'cancel') {
         userId: user.value.id,
         memoId: memo.value.id,
         ...(action === 'cancel' ? {} : { lines: selectedLines.value }),
+        ...(action === 'convert' ? { discount: discountDraft.payload.value } : {}),
       }),
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.message || 'Unable to update this memo.')
     if (action === 'convert' && data.order) {
-      actionMessage.value = `Converted to order ${data.order.orderNo}${data.invoice ? ` and invoice ${data.invoice.invoiceNo}` : ''}.`
+      const off = discountDraft.discount.value
+      actionMessage.value = `Converted to order ${data.order.orderNo}${data.invoice ? ` and invoice ${data.invoice.invoiceNo}` : ''}${
+        off > 0 ? ` with ${formatMoney(off)} off` : ''
+      }.`
+      discountDraft.reset()
     } else if (action === 'return') {
       actionMessage.value = `${selectedCount.value} ${selectedCount.value === 1 ? 'piece' : 'pieces'} marked returned.`
     } else {
@@ -395,9 +410,21 @@ onMounted(() => {
                   class="ect-inline-flex ect-items-center ect-justify-center ect-whitespace-nowrap ect-flex-1 sm:ect-flex-none ect-rounded-full ect-bg-charcoal ect-px-5 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors disabled:ect-opacity-40 disabled:ect-cursor-not-allowed"
                   @click="runAction('convert')"
                 >
-                  {{ selectedLines.length ? `Purchase selected · ${formatMoney(selectionTotal)}` : 'Purchase selected' }}
+                  {{ selectedLines.length ? `Purchase selected · ${formatMoney(discountDraft.total.value)}` : 'Purchase selected' }}
                 </button>
               </div>
+            </div>
+            <div class="ect-mt-3 ect-pt-3 ect-border-t ect-border-rose-200/30 ect-flex ect-flex-wrap ect-items-center ect-gap-3">
+              <span class="ect-font-body ect-text-xs ect-font-semibold ect-uppercase ect-tracking-[0.12em] ect-text-charcoal/45">Discount</span>
+              <InternalDiscountInput v-model:mode="discountDraft.mode.value" v-model:raw="discountDraft.raw.value" :disabled="saving || !selectedLines.length" />
+              <span v-if="discountDraft.error.value" class="ect-font-body ect-text-sm ect-text-red-600">{{ discountDraft.error.value }}</span>
+              <span v-else-if="discountDraft.discount.value > 0" class="ect-font-body ect-text-sm ect-text-charcoal/60">
+                − {{ formatMoney(discountDraft.discount.value) }} → total
+                <span class="ect-text-charcoal ect-font-semibold">{{ formatMoney(discountDraft.total.value) }}</span>
+              </span>
+              <span class="ect-flex-1 ect-min-w-[200px] ect-text-right ect-font-body ect-text-xs ect-text-charcoal/40">
+                Applies to the ticked pieces only. Order and invoice are created at the discounted total.
+              </span>
             </div>
             <p class="ect-font-body ect-text-xs ect-text-charcoal/45 ect-mt-3">
               Send back closes the pieces as returned — use it once they are back in hand. Purchase creates a confirmed order and an invoice at the prices locked when the goods went out.

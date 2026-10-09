@@ -1,5 +1,5 @@
 import { prisma } from './db.js'
-import { creditLimitToUsd, formatUsd } from './money.js'
+import { creditLimitToUsd, formatUsd, resolveDiscountUsd } from './money.js'
 import { renderDetails, renderShell, sendResend } from './signup-requests.js'
 
 // Memo = goods on consignment. The pieces leave with the customer but stay ours
@@ -440,7 +440,7 @@ export async function requestMemoReturn({ memoId, lines = null, customerId }) {
  * `customerId` scopes the memo to its owner for self-service conversion; staff
  * callers omit it, the same contract as extendMemo.
  */
-export async function convertMemoToOrder({ memoId, lines = null, actorId = null, customerId = null }) {
+export async function convertMemoToOrder({ memoId, lines = null, actorId = null, customerId = null, discount = null }) {
   const memo = await loadOpenMemo(memoId)
   if (customerId && memo.customerId !== customerId) {
     throw new MemoError('MEMO_NOT_FOUND', 'Memo not found.', 404)
@@ -449,6 +449,11 @@ export async function convertMemoToOrder({ memoId, lines = null, actorId = null,
   const customer = await getMemoCustomer(memo.customerId)
 
   const subtotalPaise = resolved.reduce((sum, { item, qty }) => sum + item.pricePaise * qty, 0)
+  // A discount is a staff decision on this conversion only: pieces still out
+  // keep their locked memo price, and a customer converting their own memo
+  // cannot pass one. Only the resolved dollar amount is stored.
+  const discountPaise = customerId ? 0 : resolveDiscountUsd(discount, subtotalPaise)
+  const totalPaise = subtotalPaise - discountPaise
 
   return prisma.$transaction(async (tx) => {
     let order = null
@@ -463,7 +468,8 @@ export async function convertMemoToOrder({ memoId, lines = null, actorId = null,
             customerId: memo.customerId,
             memoId: memo.id,
             subtotalPaise,
-            totalPaise: subtotalPaise,
+            discountPaise,
+            totalPaise,
             currency: memo.currency,
             notes: `Converted from memo ${memo.memoNo}`,
             createdById: actorId || undefined,
@@ -493,7 +499,7 @@ export async function convertMemoToOrder({ memoId, lines = null, actorId = null,
           data: {
             invoiceNo: `INV-${String(invoiceSeq).padStart(6, '0')}`,
             orderId: order.id,
-            amountPaise: subtotalPaise,
+            amountPaise: totalPaise,
             status: 'issued',
           },
           select: { id: true, invoiceNo: true },
