@@ -23,8 +23,8 @@ export const INTERNAL_MOBILE_TABS = INTERNAL_WORKSPACE_TABS.filter((tab) => tab.
 export function useInternalWorkspaceTab() {
   const route = useRoute()
   const activeTabId = computed<InternalWorkspaceTabId>(() => {
-    if (route.name === 'internal-order') return 'orders'
-    if (route.name === 'internal-memo') return 'memos'
+    if (route.name === 'internal-order' || route.name === 'internal-order-new') return 'orders'
+    if (route.name === 'internal-memo' || route.name === 'internal-memo-new') return 'memos'
     if (route.name === 'internal-user') return 'users'
     if (route.name === 'internal-signup-request') return 'approvals'
     if (route.name === 'internal-product' && String(route.params.slug || '') === 'new') return 'new'

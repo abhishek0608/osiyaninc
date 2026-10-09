@@ -2,8 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import InternalWorkspaceTabs from '../components/InternalWorkspaceTabs.vue'
-import InternalNewOrderModal from '../components/InternalNewOrderModal.vue'
-import InternalNewMemoModal from '../components/InternalNewMemoModal.vue'
 import InternalNewUserModal from '../components/InternalNewUserModal.vue'
 import UiSelect from '../components/UiSelect.vue'
 import { PACKING_LIST_COLUMNS, piecesToGrid } from '../data/packingList'
@@ -444,24 +442,9 @@ function signupStatusClass(status: SignupRequestStatus) {
   return 'ect-bg-sand ect-text-gold-700'
 }
 
-// --- "New …" creation modals, one per tab ---
-const newOrderOpen = ref(false)
-const newMemoOpen = ref(false)
+// --- "New …" creation. Orders and memos have their own pages under
+// /internal/orders/new and /internal/memos/new; users still use a modal. ---
 const newUserOpen = ref(false)
-
-function onOrderCreated() {
-  newOrderOpen.value = false
-  void loadOrders(true)
-  void loadMemos(true)
-}
-
-// A freshly issued memo opens straight away: the next step is usually to
-// hand over or ship the pieces, and that is done from the memo's own page.
-function onMemoCreated(memo: { id: string; memoNo: string }) {
-  newMemoOpen.value = false
-  void loadMemos(true)
-  if (memo.id) void router.push({ name: 'internal-memo', params: { id: memo.id } })
-}
 
 function onUserCreated() {
   newUserOpen.value = false
@@ -1553,16 +1536,14 @@ onBeforeUnmount(() => {
                 @input="onOrderSearchInput"
               />
             </div>
-            <button
-              type="button"
+            <RouterLink
+              :to="{ name: 'internal-order-new' }"
               class="ect-shrink-0 sm:ect-ml-auto ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
-              @click="newOrderOpen = true"
             >
               <svg class="ect-w-4 ect-h-4 ect-mr-1 sm:ect-hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14" /></svg>
               <span class="sm:ect-hidden">New</span><span class="ect-hidden sm:ect-inline">New order</span>
-            </button>
+            </RouterLink>
           </div>
-          <InternalNewOrderModal v-if="newOrderOpen" @close="newOrderOpen = false" @created="onOrderCreated" />
           <!-- Phones and tablets get one card per row; the table takes over from lg up. -->
           <ul class="lg:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
             <template v-if="orderListLoading">
@@ -1700,17 +1681,15 @@ onBeforeUnmount(() => {
                 · {{ memoSummary.formattedOverdue }} overdue ({{ memoSummary.overdueCount }})
               </span>
             </p>
-            <button
-              type="button"
+            <RouterLink
+              :to="{ name: 'internal-memo-new' }"
               class="ect-shrink-0 ect-inline-flex ect-items-center ect-justify-center ect-rounded-full ect-bg-charcoal ect-px-4 ect-py-2.5 sm:ect-py-2 ect-font-body ect-text-sm ect-font-semibold ect-text-white hover:ect-bg-noir ect-transition-colors"
               :class="memoSummary ? '' : 'sm:ect-ml-auto'"
-              @click="newMemoOpen = true"
             >
               <svg class="ect-w-4 ect-h-4 ect-mr-1 sm:ect-hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14" /></svg>
               <span class="sm:ect-hidden">New</span><span class="ect-hidden sm:ect-inline">New memo</span>
-            </button>
+            </RouterLink>
           </div>
-          <InternalNewMemoModal v-if="newMemoOpen" @close="newMemoOpen = false" @created="onMemoCreated" />
           <ul class="lg:ect-hidden ect-m-0 ect-list-none ect-divide-y ect-divide-sand ect-p-0">
             <template v-if="memoListLoading">
               <li v-for="index in skeletonRows" :key="index" class="ect-px-4 ect-py-3.5">
