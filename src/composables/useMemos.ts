@@ -45,6 +45,7 @@ export interface Memo {
   canExtend: boolean
   extendWindowDays: number
   currency: string
+  subtotalPaise: number
   formattedSubtotal: string
   outstandingPaise: number
   formattedOutstanding: string

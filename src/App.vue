@@ -15,6 +15,8 @@ const isChatRoute = computed(() => route.name === 'chat')
 const isInternalPath = computed(
   () => typeof route.path === 'string' && route.path.startsWith('/internal'),
 )
+// Printable documents carry no site chrome at all — see DocumentView.
+const isBareRoute = computed(() => route.meta.bare === true)
 const { bookingOpen, bookingService, closeBooking } = useServiceBooking()
 const { isLoggedIn, sessionExpiresSoon, refreshCurrentUser, logout } = useAuth()
 
@@ -78,11 +80,11 @@ watch(isLoggedIn, (loggedIn, wasLoggedIn) => {
     Your session expires in less than five minutes. Continue using the site to stay signed in,
     or <button class="ect-underline" type="button" @click="logout">sign out now</button>.
   </aside>
-  <AppHeader />
+  <AppHeader v-if="!isBareRoute" />
   <main>
     <RouterView />
   </main>
-  <AppFooter v-if="!isChatRoute && !isInternalPath" />
-  <ChatWidget v-if="!isChatRoute && !isInternalPath" />
+  <AppFooter v-if="!isChatRoute && !isInternalPath && !isBareRoute" />
+  <ChatWidget v-if="!isChatRoute && !isInternalPath && !isBareRoute" />
   <ServiceBookingModal :open="bookingOpen" :service="bookingService" @close="closeBooking" />
 </template>

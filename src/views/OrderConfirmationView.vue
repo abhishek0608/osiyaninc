@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useDocumentLinks } from '../composables/useDocumentLinks'
 import { useMyOrders } from '../composables/useMyOrders'
 
 const route = useRoute()
 const { orders, load, findByOrderNo } = useMyOrders()
+const { documentHref } = useDocumentLinks()
 
 // Checkout has just written this order server-side, so the list is refetched
 // rather than reused — a cached copy from earlier in the session would not
@@ -124,7 +126,18 @@ const unsettledOrder = computed(() => {
         </ul>
       </section>
 
-      <RouterLink to="/" class="ect-inline-block ect-px-8 ect-py-3 ect-bg-charcoal ect-text-white ect-font-body ect-text-base ect-font-semibold ect-rounded-sm hover:ect-bg-noir ect-transition-colors">Back to Home</RouterLink>
+      <nav class="ect-flex ect-flex-wrap ect-items-center ect-justify-center ect-gap-3">
+        <RouterLink to="/" class="ect-inline-block ect-px-8 ect-py-3 ect-bg-charcoal ect-text-white ect-font-body ect-text-base ect-font-semibold ect-rounded-sm hover:ect-bg-noir ect-transition-colors">Back to Home</RouterLink>
+        <a
+          v-if="placedOrder"
+          :href="documentHref('invoice', placedOrder.id)"
+          target="_blank"
+          rel="noopener"
+          class="ect-inline-flex ect-items-center ect-gap-2 ect-px-8 ect-py-3 ect-border ect-border-charcoal/20 ect-bg-white ect-text-charcoal ect-font-body ect-text-base ect-font-semibold ect-rounded-sm hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors"
+        >
+          Download invoice
+        </a>
+      </nav>
     </article>
   </section>
 </template>

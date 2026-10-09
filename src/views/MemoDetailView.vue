@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import LineItemThumb from '../components/LineItemThumb.vue'
 import { useAuth } from '../composables/useAuth'
+import { useDocumentLinks } from '../composables/useDocumentLinks'
 import {
   useMemos,
   isOpenMemo,
@@ -15,6 +16,7 @@ import {
 
 const route = useRoute()
 const { isLoggedIn } = useAuth()
+const { documentHref } = useDocumentLinks()
 const {
   memos,
   allowance,
@@ -210,10 +212,25 @@ async function sendBackSelected() {
               Closed {{ formatDate(memo.closedAt) }}
             </p>
           </span>
-          <span
-            class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-3 ect-py-1.5 ect-rounded-full ect-font-body ect-text-xs ect-font-medium ect-shrink-0"
-            :class="statusPillClass(memo)"
-          >{{ memoStatusLabel(memo) }}</span>
+          <span class="ect-flex ect-items-center ect-gap-2 ect-shrink-0">
+            <span
+              class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-3 ect-py-1.5 ect-rounded-full ect-font-body ect-text-xs ect-font-medium"
+              :class="statusPillClass(memo)"
+            >{{ memoStatusLabel(memo) }}</span>
+            <!-- Opens the printable memo in a new tab with the browser's print
+                 dialog already up; "Save as PDF" lives there. -->
+            <a
+              :href="documentHref('memo', memo.id)"
+              target="_blank"
+              rel="noopener"
+              class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-3 ect-py-1.5 ect-rounded-full ect-border ect-border-charcoal/20 ect-bg-white ect-font-body ect-text-xs ect-font-medium ect-text-charcoal hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors"
+            >
+              <svg class="ect-w-3.5 ect-h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Download PDF
+            </a>
+          </span>
         </header>
 
         <!-- Summary tiles -->

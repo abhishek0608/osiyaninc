@@ -9,6 +9,7 @@ import { useAuth } from './useAuth'
 
 export interface MyOrderItem {
   id: string
+  variantId: string
   title: string
   slug: string
   image: string
@@ -26,8 +27,14 @@ export interface MyOrder {
   itemCount: number
   subtotalUsd: number
   discountUsd: number
+  taxUsd: number
+  shippingUsd: number
   totalUsd: number
   currency: string
+  formattedSubtotal: string
+  formattedDiscount: string
+  formattedTax: string
+  formattedShipping: string
   formattedTotal: string
   paymentTerm: 'immediate' | 'terms'
   /** Only meaningful for immediate orders; a terms order was never charged. */
@@ -38,6 +45,8 @@ export interface MyOrder {
   shipTo: Record<string, string> | null
   /** Set when the order came out of a memo — the pieces were already with them. */
   memo: { id: string; memoNo: string } | null
+  /** Raised when a memo is converted; a checkout order has none (yet). */
+  invoice: { invoiceNo: string; status: string; dueDate: string | null; paidAt: string | null } | null
   items: MyOrderItem[]
 }
 

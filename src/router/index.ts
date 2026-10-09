@@ -31,6 +31,9 @@ const router = createRouter({
     { path: '/checkout', name: 'checkout', component: () => import('../views/CheckoutView.vue'), meta: { title: 'Checkout', noindex: true } },
     { path: '/order-confirmation', name: 'order-confirmation', component: () => import('../views/OrderConfirmationView.vue'), meta: { title: 'Order Confirmation', noindex: true } },
     { path: '/memo-confirmation', name: 'memo-confirmation', component: () => import('../views/MemoConfirmationView.vue'), meta: { title: 'Memo Raised', noindex: true } },
+    // Printable memo / invoice behind the "Download PDF" buttons. `bare` drops the
+    // site header, footer and chat widget so the browser's Save as PDF is clean.
+    { path: '/documents/:kind(memo|invoice)/:id', name: 'document', component: () => import('../views/DocumentView.vue'), meta: { title: 'Document', noindex: true, bare: true } },
     { path: '/high-jewelry', name: 'high-jewelry', component: () => import('../views/HighJewelryView.vue'), meta: { title: 'High Jewelry', description: "A harmonious blend of nature's finest gemstones and diamonds curated to perfection — the Osiyan high jewelry suites." } },
     { path: '/about', name: 'about', component: () => import('../views/AboutView.vue'), meta: { title: 'About Us', description: 'The story of Osiyan — high-end designer jewelry where rare colorstones and the timeless brilliance of diamonds come together in a passionate dance.' } },
     { path: '/services', name: 'services', component: () => import('../views/ServicesView.vue'), meta: { title: 'Services', description: 'Jewellery services at Kiana — custom design, repair, resizing, polishing and more.' } },

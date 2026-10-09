@@ -3,10 +3,12 @@ import { onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import LineItemThumb from '../components/LineItemThumb.vue'
 import { useAuth } from '../composables/useAuth'
+import { useDocumentLinks } from '../composables/useDocumentLinks'
 import { useMyOrders, orderPaymentLabel, orderStatusLabel, type MyOrder } from '../composables/useMyOrders'
 
 const { isLoggedIn } = useAuth()
 const { orders, loading, settled, error, load } = useMyOrders()
+const { documentHref } = useDocumentLinks()
 
 onMounted(() => void load())
 
@@ -100,6 +102,19 @@ function statusPillClass(order: MyOrder) {
               >
                 From memo {{ order.memo.memoNo }}
               </RouterLink>
+              <!-- Printable invoice in a new tab; the browser's print dialog
+                   opens on its own, which is where "Save as PDF" lives. -->
+              <a
+                :href="documentHref('invoice', order.id)"
+                target="_blank"
+                rel="noopener"
+                class="ect-inline-flex ect-items-center ect-gap-1.5 ect-px-2.5 ect-py-1 ect-rounded-full ect-border ect-border-charcoal/15 ect-font-body ect-text-xs ect-font-medium ect-text-charcoal/70 hover:ect-border-gold-400 hover:ect-text-gold-700 ect-transition-colors ect-ml-auto"
+              >
+                <svg class="ect-w-3.5 ect-h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                Download invoice
+              </a>
             </section>
           </li>
         </ul>

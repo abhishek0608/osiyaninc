@@ -305,8 +305,14 @@ export function toMyOrderPayload(order) {
     itemCount: items.reduce((sum, item) => sum + item.qty, 0),
     subtotalUsd: order.subtotalPaise,
     discountUsd: order.discountPaise,
+    taxUsd: order.taxPaise || 0,
+    shippingUsd: order.shippingPaise || 0,
     totalUsd: order.totalPaise,
     currency: order.currency,
+    formattedSubtotal: formatUsd(order.subtotalPaise, order.currency),
+    formattedDiscount: formatUsd(order.discountPaise, order.currency),
+    formattedTax: formatUsd(order.taxPaise || 0, order.currency),
+    formattedShipping: formatUsd(order.shippingPaise || 0, order.currency),
     formattedTotal: formatUsd(order.totalPaise, order.currency),
     paymentTerm: onTerms ? 'terms' : 'immediate',
     // Only meaningful for immediate orders; a terms order was never charged.
@@ -318,6 +324,16 @@ export function toMyOrderPayload(order) {
     // Set when the order came out of a memo, so the account pages can point
     // back at the consignment the pieces were already out on.
     memo: order.memo ? { id: order.memo.id, memoNo: order.memo.memoNo } : null,
+    // Only a memo conversion raises an Invoice row today; a checkout order has
+    // none, and its printable invoice is headed by the order number instead.
+    invoice: order.invoice
+      ? {
+          invoiceNo: order.invoice.invoiceNo,
+          status: order.invoice.status,
+          dueDate: order.invoice.dueDate || null,
+          paidAt: order.invoice.paidAt || null,
+        }
+      : null,
     items,
   }
 }
@@ -329,6 +345,7 @@ export async function getMyOrders(customerId) {
     include: {
       payments: { select: { status: true } },
       memo: { select: { id: true, memoNo: true } },
+      invoice: { select: { invoiceNo: true, status: true, dueDate: true, paidAt: true } },
       items: {
         orderBy: { createdAt: 'asc' },
         include: {
